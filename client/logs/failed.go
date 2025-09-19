@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
+	"github.com/calypr/data-client/client/commonUtils"
 )
 
 var failedLogFilename string

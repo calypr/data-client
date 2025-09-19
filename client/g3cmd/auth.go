@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
-	"github.com/calypr/data-client/data-client/logs"
+	"github.com/calypr/data-client/client/logs"
 )
 
 func init() {

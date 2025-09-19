@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
-	"github.com/calypr/data-client/data-client/logs"
+	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 

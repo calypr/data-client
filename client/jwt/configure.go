@@ -1,6 +1,6 @@
 package jwt
 
-//go:generate mockgen -destination=./data-client/mocks/mock_configure.go -package=mocks github.com/calypr/data-client/data-client/jwt ConfigureInterface
+//go:generate mockgen -destination=./data-client/mocks/mock_configure.go -package=mocks github.com/calypr/data-client/client/jwt ConfigureInterface
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
+	"github.com/calypr/data-client/client/commonUtils"
 	homedir "github.com/mitchellh/go-homedir"
 	"gopkg.in/ini.v1"
 )

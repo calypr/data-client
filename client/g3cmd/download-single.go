@@ -3,7 +3,7 @@ package g3cmd
 import (
 	"log"
 
-	"github.com/calypr/data-client/data-client/logs"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 

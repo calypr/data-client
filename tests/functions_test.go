@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/data-client/jwt"
-	"github.com/calypr/data-client/data-client/mocks"
+	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/mocks"
 	"github.com/golang/mock/gomock"
 )
 

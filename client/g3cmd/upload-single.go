@@ -4,12 +4,11 @@ package g3cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
+	"github.com/calypr/data-client/client/commonUtils"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +23,6 @@ func init() {
 		Long:    `Gets a presigned URL for which to upload a file associated with a GUID and then uploads the specified file.`,
 		Example: `./data-client upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("Notice: this is the upload method which requires the user to provide a GUID. In this method file will be uploaded to a specified GUID.\nIf your intention is to upload file without pre-existing GUID, consider to use \"./data-client upload\" instead.\n\n")
 			err := UploadSingle(profile, guid, filePath, bucketName)
 			if err != nil {
 				log.Fatalln(err.Error())
@@ -43,7 +41,7 @@ func init() {
 
 func UploadSingle(profile string, guid string, filePath string, bucketName string) error {
 	// disable logs
-	log.SetOutput(io.Discard)
+	log.SetOutput(os)
 
 	// // initialize transmission logs
 	// logs.InitSucceededLog(profile)

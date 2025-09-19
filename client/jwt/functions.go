@@ -1,7 +1,7 @@
 package jwt
 
-//go:generate mockgen -destination=./data-client/mocks/mock_functions.go -package=mocks github.com/calypr/data-client/data-client/jwt FunctionInterface
-//go:generate mockgen -destination=./data-client/mocks/mock_request.go -package=mocks github.com/calypr/data-client/data-client/jwt RequestInterface
+//go:generate mockgen -destination=./data-client/mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/jwt FunctionInterface
+//go:generate mockgen -destination=./data-client/mocks/mock_request.go -package=mocks github.com/calypr/data-client/client/jwt RequestInterface
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
+	"github.com/calypr/data-client/client/commonUtils"
 	"github.com/hashicorp/go-version"
 )
 
@@ -221,7 +221,7 @@ func (f *Functions) GetResponse(profileConfig *Credential, endpointPostPrefix st
 
 		// 401 code is general error code from FENCE. the error message is also not clear for the case
 		// that the token expired. Temporary solution: get new access token and make another attempt.
-		if resp != nil && resp.StatusCode == 401 {
+		if resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 503) {
 			isExpiredToken = true
 		} else {
 			return prefixEndPoint, resp, err

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/data-client/data-client/logs"
+	"github.com/calypr/data-client/client/logs"
 	pb "gopkg.in/cheggaaa/pb.v1"
 )
 

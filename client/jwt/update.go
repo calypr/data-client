@@ -5,8 +5,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
-	"github.com/calypr/data-client/data-client/logs"
+	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/hashicorp/go-version"
 )
 
@@ -15,10 +15,14 @@ func UpdateConfig(profile string, apiEndpoint string, credFile string, fenceToke
 	var conf Configure
 	var req Request
 
+	fmt.Println("TOK, CRED FILE: ", fenceToken, credFile)
+
 	profileConfig, err := conf.ReadCredentials(credFile, fenceToken)
 	if err != nil {
 		return err
 	}
+	fmt.Println("PROF CONF ACC TOK: ", profileConfig.AccessToken)
+
 	profileConfig.Profile = profile
 	apiEndpoint = strings.TrimSpace(apiEndpoint)
 	if apiEndpoint[len(apiEndpoint)-1:] == "/" {

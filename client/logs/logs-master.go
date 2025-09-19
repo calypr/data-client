@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
+	"github.com/calypr/data-client/client/commonUtils"
 	homedir "github.com/mitchellh/go-homedir"
 )
 

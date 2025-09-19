@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
-	"github.com/calypr/data-client/data-client/logs"
+	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/logs"
 	pb "gopkg.in/cheggaaa/pb.v1"
 
 	"github.com/spf13/cobra"
