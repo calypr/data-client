@@ -4,6 +4,7 @@ package g3cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -41,7 +42,7 @@ func init() {
 
 func UploadSingle(profile string, guid string, filePath string, bucketName string) error {
 	// disable logs
-	log.SetOutput(os)
+	log.SetOutput(io.Discard)
 
 	// // initialize transmission logs
 	// logs.InitSucceededLog(profile)
