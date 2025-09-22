@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/client/commonUtils"
-	pb "gopkg.in/cheggaaa/pb.v1"
 )
 
 var multipartUploadLock sync.Mutex
@@ -129,8 +128,8 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 	var parts []MultipartPartObject
 	numOfWorkers, numOfChunks, chunkSize := calculateChunksAndWorkers(fi.Size())
 	chunkIndexCh := make(chan int, numOfChunks)
-	bar := pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(fileInfo.Filename + " ")
-	bar.Start()
+	//bar := pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(fileInfo.Filename + " ")
+	//bar.Start()
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < numOfWorkers; i++ {
@@ -195,7 +194,7 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 
 				multipartUploadLock.Lock() // to avoid racing conditions
 				parts = append(parts, (MultipartPartObject{PartNumber: chunkIndex, ETag: eTag}))
-				bar.Add(n)
+				//bar.Add(n)
 				multipartUploadLock.Unlock()
 			}
 			wg.Done()
@@ -208,7 +207,7 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 	close(chunkIndexCh)
 
 	wg.Wait()
-	bar.Finish()
+	//bar.Finish()
 
 	if len(parts) != numOfChunks {
 		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
