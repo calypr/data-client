@@ -22,12 +22,11 @@ var multipartUploadLock sync.Mutex
 
 // UploadSingleMultipart uploads a single file to Gen3 using the multipart upload strategy.
 // This is the preferred method for large files as it provides resilience through retries on a per-chunk basis.
-func UploadSingleMultipart(profile string, filePath string, bucketName string) error {
+func UploadSingleMultipart(profile string, filePath string, bucketName string, guid string) error {
 	// To align with a library-style function that returns errors instead of logging directly,
 	// we can temporarily discard the default logger's output. Note that the underlying
 	// `multipartUpload` function uses a separate `logs` package for its own record-keeping.
 	log.SetOutput(io.Discard)
-	defer log.SetOutput(os.Stderr) // Restore the logger when the function exits
 
 	// Instantiate interface to Gen3
 	gen3Interface := NewGen3Interface()
@@ -64,7 +63,7 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string) e
 	// Call the existing, robust multipartUpload function to perform the upload.
 	// This function handles all the complex logic of chunking, concurrency, API calls, and retries.
 	// We pass 0 for the initial retryCount.
-	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName)
+	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, guid)
 	if err != nil {
 		// The underlying function will have already logged the specifics.
 		// We return a clean error to the caller.
@@ -88,12 +87,12 @@ func retry(attempts int, filePath string, guid string, f func() error) (err erro
 
 		time.Sleep(GetWaitTime(i))
 
-		log.Println("Retrying after error: ", err)
+		//log.Println("Retrying after error: ", err)
 	}
 	return fmt.Errorf("After %d attempts, last error: %s", attempts, err)
 }
 
-func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucketName string) error {
+func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucketName string, guid string) error {
 	// NOTE @mpingram -- multipartUpload does not yet use the new Shepherd API
 	// because Shepherd does not yet support multipart uploads.
 	file, err := os.Open(fileInfo.FilePath)
@@ -117,7 +116,7 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 		return err
 	}
 
-	uploadID, guid, err := InitMultipartUpload(g3, fileInfo.Filename, bucketName)
+	uploadID, guid, err := InitMultipartUpload(g3, fileInfo.Filename, bucketName, guid)
 	if err != nil {
 		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
 		err = fmt.Errorf("FAILED multipart upload for %s: %s", fileInfo.Filename, err.Error())
@@ -146,7 +145,7 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 				})
 				if err != nil {
 					//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-					log.Println(err.Error())
+					//log.Println(err.Error())
 					continue
 				}
 
@@ -161,7 +160,7 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 				})
 				if err != nil {
 					//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-					log.Println(err.Error())
+					//log.Println(err.Error())
 					continue
 				}
 

@@ -230,7 +230,8 @@ func processMultipartUpload(gen3Interface Gen3Interface, multipartFilePaths []st
 			log.Println("Process filename error for file: " + err.Error())
 			continue
 		}
-		err = multipartUpload(gen3Interface, fileInfo, 0, bucketName)
+		// GUID doesn't appear t oever get passed in here so pass an empty string
+		err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, "")
 		if err != nil {
 			log.Println(err.Error())
 		} else {

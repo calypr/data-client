@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/calypr/data-client/client/commonUtils"
 	"github.com/calypr/data-client/client/logs"
+	"github.com/spf13/cobra"
 )
 
 func updateRetryObject(ro *commonUtils.RetryObject, filePath string, filename string, fileMetadata commonUtils.FileMetadata, guid string, retryCount int, isMultipart bool) {
@@ -54,7 +54,6 @@ func retryUpload(failedLogMap map[string]commonUtils.RetryObject) {
 	var presignedURL string
 	var err error
 
-	fmt.Println()
 	if len(failedLogMap) == 0 {
 		log.Println("No failed file in log, no need to retry upload.")
 		return
@@ -97,7 +96,7 @@ func retryUpload(failedLogMap map[string]commonUtils.RetryObject) {
 
 		if ro.Multipart {
 			fileInfo := FileInfo{FilePath: ro.FilePath, Filename: ro.Filename}
-			err = multipartUpload(gen3Interface, fileInfo, ro.RetryCount, ro.Bucket)
+			err = multipartUpload(gen3Interface, fileInfo, ro.RetryCount, ro.Bucket, ro.GUID)
 			if err != nil {
 				updateRetryObject(&ro, ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, true)
 				handleFailedRetry(ro, retryObjCh, err, true)
