@@ -5,8 +5,8 @@ import (
 	"log"
 	"sort"
 
-	"github.com/spf13/cobra"
 	"github.com/calypr/data-client/client/logs"
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -20,9 +20,16 @@ func init() {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
 			gen3Interface := NewGen3Interface()
-				profileConfig, err := conf.ParseConfig(profile)
+			profileConfig, err := conf.ParseConfig(profile)
 			if err != nil {
 				log.Fatalf("Fatal config parse error: %s\n", err)
+			}
+
+			valid, err := conf.IsValidCredential(profileConfig)
+			if err != nil && valid {
+				log.Println(err)
+			} else if !valid {
+				log.Fatal(err)
 			}
 
 			host, resourceAccess, err := gen3Interface.CheckPrivileges(&profileConfig)

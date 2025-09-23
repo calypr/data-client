@@ -182,6 +182,13 @@ func init() {
 				log.Println(err.Error())
 			}
 
+			valid, err := conf.IsValidCredential(profileConfig)
+			if err != nil && valid {
+				log.Println(err)
+			} else if !valid {
+				log.Fatal(err)
+			}
+
 			failedLogPath, err = commonUtils.ParseRootPath(failedLogPath)
 			if err != nil {
 				log.Println(err.Error())

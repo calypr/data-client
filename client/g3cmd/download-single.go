@@ -30,6 +30,13 @@ func init() {
 				log.Println(err.Error())
 			}
 
+			valid, err := conf.IsValidCredential(profileConfig)
+			if err != nil && valid {
+				log.Println(err)
+			} else if !valid {
+				log.Fatal(err)
+			}
+
 			obj := ManifestObject{
 				ObjectID: guid,
 			}

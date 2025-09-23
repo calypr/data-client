@@ -37,6 +37,11 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string, g
 		return fmt.Errorf("error parsing profile config: %w", err)
 	}
 
+	valid, err := conf.IsValidCredential(profileConfig)
+	if err != nil && !valid {
+		return err
+	}
+
 	// Validate the file path to ensure it points to a single, existing file.
 	filePaths, err := commonUtils.ParseFilePaths(filePath, false)
 	if err != nil {

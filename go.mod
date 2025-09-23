@@ -1,6 +1,8 @@
 module github.com/calypr/data-client
 
-go 1.17
+go 1.21
+
+toolchain go1.24.2
 
 require (
 	github.com/golang/mock v1.6.0
@@ -13,6 +15,7 @@ require (
 )
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect

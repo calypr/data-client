@@ -414,6 +414,13 @@ func init() {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
+			valid, err := conf.IsValidCredential(profileConfig)
+			if err != nil && valid {
+				log.Println(err)
+			} else if !valid {
+				log.Fatal(err)
+			}
+
 			manifestPath, _ = commonUtils.GetAbsolutePath(manifestPath)
 			manifestFile, err := os.Open(manifestPath)
 			if err != nil {

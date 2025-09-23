@@ -60,6 +60,11 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 		return err
 	}
 
+	valid, err := conf.IsValidCredential(profileConfig)
+	if err != nil && !valid {
+		return err
+	}
+
 	filePaths, err := commonUtils.ParseFilePaths(filePath, false)
 	if len(filePaths) > 1 {
 		return errors.New("more than 1 file location has been found. Do not use \"*\" in file path or provide a folder as file path")

@@ -209,6 +209,7 @@ func (f *Functions) GetResponse(profileConfig *Credential, endpointPostPrefix st
 	if profileConfig.APIKey == "" && profileConfig.AccessToken == "" && profileConfig.APIEndpoint == "" {
 		return "", resp, fmt.Errorf("No credentials found in the configuration file! Please use \"./data-client configure\" to configure your credentials first %s", profileConfig)
 	}
+
 	host, _ := url.Parse(profileConfig.APIEndpoint)
 	prefixEndPoint := host.Scheme + "://" + host.Host
 	apiEndpoint := host.Scheme + "://" + host.Host + endpointPostPrefix

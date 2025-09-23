@@ -39,6 +39,13 @@ func init() {
 				log.Fatalln("Error occurred during parsing config file for hostname: " + err.Error())
 			}
 
+			valid, err := conf.IsValidCredential(profileConfig)
+			if err != nil && valid {
+				log.Println(err)
+			} else if !valid {
+				log.Fatal(err)
+			}
+
 			host, err := gen3Interface.GetHost(&profileConfig)
 			if err != nil {
 				log.Fatalln("Error occurred during parsing config file for hostname: " + err.Error())

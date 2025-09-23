@@ -12,8 +12,10 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/golang-jwt/jwt/v5"
 	homedir "github.com/mitchellh/go-homedir"
 	"gopkg.in/ini.v1"
 )
@@ -39,6 +41,7 @@ type ConfigureInterface interface {
 	UpdateConfigFile(Credential) error
 	ParseKeyValue(str string, expr string) (string, error)
 	ParseConfig(profile string) (Credential, error)
+	IsValidCredential(Credential) (bool, error)
 }
 
 func (conf *Configure) ReadFile(filePath string, fileType string) string {
@@ -256,5 +259,51 @@ func (conf *Configure) ParseConfig(profile string) (Credential, error) {
 	// UseShepherd and MinShepherdVersion are optional
 	profileConfig.UseShepherd = sec.Key("use_shepherd").String()
 	profileConfig.MinShepherdVersion = sec.Key("min_shepherd_version").String()
+
 	return profileConfig, nil
+}
+
+func (conf *Configure) IsValidCredential(profileConfig Credential) (bool, error) {
+	/* Checks to see if credential in credential file is still valid */
+	const expirationThresholdDays = 10
+	// Parse the token without verifying the signature to access the claims.
+	token, _, err := new(jwt.Parser).ParseUnverified(profileConfig.APIKey, jwt.MapClaims{})
+	if err != nil {
+		return false, fmt.Errorf("ERROR: Invalid token format: %v", err)
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return false, fmt.Errorf("Unable to parse claims from provided token %#v", token)
+	}
+
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return false, fmt.Errorf("ERROR: 'exp' claim not found or is not a number for claims %s", claims)
+	}
+
+	iat, ok := claims["iat"].(float64)
+	if !ok {
+		return false, fmt.Errorf("ERROR: 'iat' claim not found or is not a number for claims %s", claims)
+	}
+
+	now := time.Now().UTC()
+	expTime := time.Unix(int64(exp), 0).UTC()
+	iatTime := time.Unix(int64(iat), 0).UTC()
+
+	if expTime.Before(now) {
+		return false, fmt.Errorf("key %s expired %s < %s", profileConfig.APIKey, expTime.Format(time.RFC3339), now.Format(time.RFC3339))
+	}
+	if iatTime.After(now) {
+		return false, fmt.Errorf("key %s not yet valid %s > %s", profileConfig.APIKey, iatTime.Format(time.RFC3339), now.Format(time.RFC3339))
+	}
+
+	delta := expTime.Sub(now)
+	if delta > 0 && delta.Hours() < float64(expirationThresholdDays*24) {
+		daysUntilExpiration := int(delta.Hours() / 24)
+		if daysUntilExpiration > 0 {
+			return true, fmt.Errorf("WARNING %s: Key will expire in %d days, on %s", profileConfig.APIKey, daysUntilExpiration, expTime.Format(time.RFC3339))
+		}
+	}
+	return true, nil
 }

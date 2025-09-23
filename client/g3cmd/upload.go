@@ -46,6 +46,13 @@ func init() {
 				return
 			}
 
+			valid, err := conf.IsValidCredential(profileConfig)
+			if err != nil && valid {
+				log.Println(err)
+			} else if !valid {
+				log.Fatal(err)
+			}
+
 			if hasMetadata {
 				hasShepherd, err := gen3Interface.CheckForShepherdAPI(&profileConfig)
 				if err != nil {
