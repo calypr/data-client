@@ -15,7 +15,45 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/logs"
+	"github.com/spf13/cobra"
 )
+
+func init() {
+	var bucketName string
+	var filePath string
+	var guid string
+
+	var uploadMultipartCmd = &cobra.Command{
+		Use:   "upload-multipart",
+		Short: "Upload a single file to object storage using multipart upload.",
+		Long:  `Uploads a single file using the multipart upload strategy, which is preferred for large files due to improved resilience and retry capabilities.`,
+		Example: "Upload a file and get a new GUID:\n./data-client upload-multipart --profile=<profile-name> --file-path=<path-to-file/data.bam>\n" +
+			"Upload a file using a pre-existing GUID:\n./data-client upload-multipart --profile=<profile-name> --file-path=<path-to-file/data.bam> --guid=<existing-guid>",
+		Run: func(cmd *cobra.Command, args []string) {
+			logs.InitSucceededLog(profile)
+			logs.InitFailedLog(profile)
+			logs.SetToBoth()
+			logs.InitScoreBoard(MaxRetryCount)
+			fmt.Println(profile, filePath, bucketName, guid)
+			err := UploadSingleMultipart(profile, filePath, bucketName, guid)
+			if err != nil {
+				log.Fatalf("Multipart upload failed: %v", err)
+			}
+
+			logs.PrintScoreBoard()
+			logs.CloseAll()
+		},
+	}
+
+	uploadMultipartCmd.Flags().StringVar(&profile, "profile", "", "Specify profile to use")
+	uploadMultipartCmd.MarkFlagRequired("profile") //nolint:errcheck
+	uploadMultipartCmd.Flags().StringVar(&filePath, "file-path", "", "The path to the single file to be uploaded")
+	uploadMultipartCmd.MarkFlagRequired("file-path") //nolint:errcheck
+	uploadMultipartCmd.Flags().StringVar(&guid, "guid", "", "Optional: A pre-existing GUID to associate with the uploaded file. If empty, Gen3 will generate a new one.")
+	uploadMultipartCmd.Flags().StringVar(&bucketName, "bucket", "", "The bucket to which the file will be uploaded. If not provided, defaults to Gen3's configured DATA_UPLOAD_BUCKET.")
+	RootCmd.AddCommand(uploadMultipartCmd)
+}
 
 var multipartUploadLock sync.Mutex
 
@@ -56,18 +94,18 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string, g
 		return fmt.Errorf("the file specified \"%s\" does not exist", absFilePath)
 	}
 
-	// Create the FileInfo struct required by the multipartUpload function.
-	fileInfo := FileInfo{
-		FilePath: absFilePath,
-		Filename: filepath.Base(absFilePath),
-		// FileMetadata can be left empty as it's not critical for the multipart upload logic.
+	// Create the FileUploadRequestObject struct required by the multipartUpload function.
+	fileInfo := commonUtils.FileUploadRequestObject{
+		FilePath:     absFilePath,
+		Filename:     filepath.Base(absFilePath),
 		FileMetadata: commonUtils.FileMetadata{},
+		GUID:         guid,
 	}
 
 	// Call the existing, robust multipartUpload function to perform the upload.
 	// This function handles all the complex logic of chunking, concurrency, API calls, and retries.
 	// We pass 0 for the initial retryCount.
-	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, guid)
+	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName)
 	if err != nil {
 		// The underlying function will have already logged the specifics.
 		// We return a clean error to the caller.
@@ -96,46 +134,50 @@ func retry(attempts int, filePath string, guid string, f func() error) (err erro
 	return fmt.Errorf("After %d attempts, last error: %s", attempts, err)
 }
 
-func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucketName string, guid string) error {
-	// NOTE @mpingram -- multipartUpload does not yet use the new Shepherd API
-	// because Shepherd does not yet support multipart uploads.
-	file, err := os.Open(fileInfo.FilePath)
+func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, retryCount int, bucketName string) error {
+	// Use furObject.FilePath
+	file, err := os.Open(furObject.FilePath)
 	if err != nil {
-		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, "", retryCount, true, true)
-		err = fmt.Errorf("FAILED multipart upload for %s due to file open error: %s", fileInfo.FilePath, err.Error())
+		err = fmt.Errorf("FAILED multipart upload for %s due to file open error: %s", furObject.FilePath, err.Error())
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 		return err
 	}
 	defer file.Close()
 
 	fi, err := file.Stat()
 	if err != nil {
-		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, "", retryCount, true, true)
-		err = fmt.Errorf("FAILED multipart upload for %s: file stat error, file may be missing or unreadable because of permissions", fileInfo.Filename)
+		err = fmt.Errorf("FAILED multipart upload for %s: file stat error, file may be missing or unreadable because of permissions", furObject.Filename)
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 		return err
 	}
-
+	if fi.Size() == 0 {
+		err = fmt.Errorf("FAILED multipart upload for %s: the file size must be greater than 0", fi.Name())
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
+		return err
+	}
 	if fi.Size() > MultipartFileSizeLimit {
-		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, "", retryCount, true, true)
 		err = fmt.Errorf("FAILED multipart upload for %s: the file size has exceeded the limit allowed and cannot be uploaded. The maximum allowed file size is %s", fi.Name(), FormatSize(MultipartFileSizeLimit))
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 		return err
 	}
-
-	uploadID, guid, err := InitMultipartUpload(g3, fileInfo.Filename, bucketName, guid)
+	// Use the refactored InitMultipartUpload with the unified object
+	uploadID, guid, err := InitMultipartUpload(g3, furObject, bucketName)
 	if err != nil {
-		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-		err = fmt.Errorf("FAILED multipart upload for %s: %s", fileInfo.Filename, err.Error())
+		err = fmt.Errorf("FAILED multipart upload for %s: %s", furObject.Filename, err.Error())
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 		return err
 	}
-	// update failed log with new guid
-	//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
+	// Update the FURObject's GUID with the one returned from Gen3 (in case it was newly generated)
+	// We'll update the failed log with this GUID for consistency
+	furObject.GUID = guid
+	logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 
-	key := guid + "/" + fileInfo.Filename
-	var parts []MultipartPartObject
+	key := guid + "/" + furObject.Filename
+	parts := []MultipartPartObject{}
 	numOfWorkers, numOfChunks, chunkSize := calculateChunksAndWorkers(fi.Size())
 	chunkIndexCh := make(chan int, numOfChunks)
 	//bar := pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(fileInfo.Filename + " ")
 	//bar.Start()
-
 	wg := sync.WaitGroup{}
 	for i := 0; i < numOfWorkers; i++ {
 		wg.Add(1)
@@ -143,33 +185,33 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 			buf := make([]byte, chunkSize)
 			for chunkIndex := range chunkIndexCh {
 				var presignedURL string
-				err = retry(MaxRetryCount, fileInfo.FilePath, guid, func() (err error) {
+				// Use furObject.FilePath and new guid for logging
+				err = retry(MaxRetryCount, furObject.FilePath, guid, func() (err error) {
 					presignedURL, err = GenerateMultipartPresignedURL(g3, key, uploadID, chunkIndex, bucketName)
 					return
 				})
 				if err != nil {
-					//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-					//log.Println(err.Error())
+					logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, retryCount, true, true)
 					continue
 				}
 
+				// Update log calls inside the worker to use the new guid and furObject data
 				var n int
-				err = retry(MaxRetryCount, fileInfo.FilePath, guid, func() (err error) {
+				err = retry(MaxRetryCount, furObject.FilePath, guid, func() (err error) {
 					n, err = file.ReadAt(buf[:cap(buf)], int64((chunkIndex-1))*chunkSize)
 					buf = buf[:n]
-					if err == io.EOF { // finished reading
+					if err == io.EOF {
 						err = nil
 					}
 					return
 				})
 				if err != nil {
-					//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-					//log.Println(err.Error())
+					logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, retryCount, true, true)
 					continue
 				}
 
 				var eTag string
-				err = retry(MaxRetryCount, fileInfo.FilePath, guid, func() (err error) {
+				err = retry(MaxRetryCount, furObject.FilePath, guid, func() (err error) {
 					req, err := http.NewRequest(http.MethodPut, presignedURL, bytes.NewReader(buf))
 					if err != nil {
 						err = errors.New("Error occurred when creating HTTP request: " + err.Error())
@@ -192,12 +234,11 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 					return
 				})
 				if err != nil {
-					//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-					//log.Println(err.Error())
+					logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, retryCount, true, true)
 					continue
 				}
 
-				multipartUploadLock.Lock() // to avoid racing conditions
+				multipartUploadLock.Lock()
 				parts = append(parts, (MultipartPartObject{PartNumber: chunkIndex, ETag: eTag}))
 				//bar.Add(n)
 				multipartUploadLock.Unlock()
@@ -213,10 +254,9 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 
 	wg.Wait()
 	//bar.Finish()
-
 	if len(parts) != numOfChunks {
-		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-		err = fmt.Errorf("FAILED multipart upload for %s: Total number of received ETags doesn't match the total number of chunks", fileInfo.Filename)
+		err = fmt.Errorf("FAILED multipart upload for %s: Total number of received ETags doesn't match the total number of chunks", furObject.Filename)
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 		return err
 	}
 
@@ -225,13 +265,13 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 	})
 
 	if err = CompleteMultipartUpload(g3, key, uploadID, parts, bucketName); err != nil {
-		//logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
-		err = fmt.Errorf("FAILED multipart upload for %s: %s", fileInfo.Filename, err.Error())
+		err = fmt.Errorf("FAILED multipart upload for %s: %s", furObject.Filename, err.Error())
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
 		return err
 	}
 
-	//log.Printf("Successfully uploaded file \"%s\" to GUID %s.\n", fileInfo.FilePath, guid)
-	//logs.DeleteFromFailedLog(fileInfo.FilePath, true)
-	//logs.WriteToSucceededLog(fileInfo.FilePath, guid, true)
+	// Successful upload cleanup
+	logs.DeleteFromFailedLog(furObject.FilePath, true)
+	logs.WriteToSucceededLog(furObject.FilePath, furObject.GUID, true)
 	return nil
 }

@@ -80,6 +80,7 @@ type FileInfo struct {
 	FilePath     string
 	Filename     string
 	FileMetadata commonUtils.FileMetadata
+	ObjectId     string
 }
 
 // RenamedOrSkippedFileInfo is a helper struct for recording renamed or skipped files
@@ -124,8 +125,10 @@ const MaxRetryCount = 5
 const maxWaitTime = 300
 
 // InitMultipartUpload helps sending requests to FENCE to init a multipart upload
-func InitMultipartUpload(g3 Gen3Interface, filename string, bucketName string, guid string) (string, string, error) {
-	multipartInitObject := InitRequestObject{Filename: filename, Bucket: bucketName, GUID: guid}
+func InitMultipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, bucketName string) (string, string, error) {
+	// Use Filename and GUID directly from the unified request object
+	multipartInitObject := InitRequestObject{Filename: furObject.Filename, Bucket: bucketName, GUID: furObject.GUID}
+
 	objectBytes, err := json.Marshal(multipartInitObject)
 	if err != nil {
 		return "", "", errors.New("Error has occurred during marshalling data for multipart upload initialization, detailed error message: " + err.Error())
@@ -179,7 +182,6 @@ func CompleteMultipartUpload(g3 Gen3Interface, key string, uploadID string, part
 
 	function.Config = configure
 	function.Request = request
-
 	multipartCompleteObject := MultipartCompleteRequestObject{Key: key, UploadID: uploadID, Parts: parts, Bucket: bucketName}
 	objectBytes, err := json.Marshal(multipartCompleteObject)
 	if err != nil {
@@ -355,7 +357,6 @@ func GenerateUploadRequest(g3 Gen3Interface, furObject commonUtils.FileUploadReq
 		if furObject.Bucket != "" {
 			endPointPostfix += "&bucket=" + furObject.Bucket
 		}
-
 		msg, err := g3.DoRequestWithSignedHeader(&profileConfig, endPointPostfix, "application/json", nil)
 		if err != nil && !strings.Contains(err.Error(), "No GUID found") {
 			return furObject, errors.New("Upload error: " + err.Error())
@@ -417,23 +418,30 @@ func DeleteRecord(g3 Gen3Interface, guid string) (string, error) {
 	return msg, err
 }
 
-func separateSingleAndMultipartUploads(filePaths []string, forceMultipart bool) ([]string, []string) {
+func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestObject, forceMultipart bool) ([]commonUtils.FileUploadRequestObject, []commonUtils.FileUploadRequestObject) {
 	fileSizeLimit := FileSizeLimit // 5GB
 	if forceMultipart {
 		fileSizeLimit = minMultipartChunkSize // 5MB
 	}
-	singlepartFilePaths := make([]string, 0)
-	multipartFilePaths := make([]string, 0)
-	for _, filePath := range filePaths {
+	singlepartObjects := make([]commonUtils.FileUploadRequestObject, 0)
+	multipartObjects := make([]commonUtils.FileUploadRequestObject, 0)
+
+	for _, object := range objects {
+		filePath := object.FilePath
+
+		// Check if file exists locally
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			log.Printf("The file you specified \"%s\" does not exist locally", filePath)
+			logs.AddToFailedLog(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false, true)
 			continue
 		}
 
-		func() {
+		// Use a closure to handle file operations and cleanup
+		func(obj commonUtils.FileUploadRequestObject) {
 			file, err := os.Open(filePath)
 			if err != nil {
 				log.Println("File open error occurred when validating file path: " + err.Error())
+				logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
 				return
 			}
 			defer file.Close()
@@ -441,6 +449,7 @@ func separateSingleAndMultipartUploads(filePaths []string, forceMultipart bool) 
 			fi, err := file.Stat()
 			if err != nil {
 				log.Println("File stat error occurred when validating file path: " + err.Error())
+				logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
 				return
 			}
 			if fi.IsDir() {
@@ -451,22 +460,25 @@ func separateSingleAndMultipartUploads(filePaths []string, forceMultipart bool) 
 				log.Println("File \"" + filePath + "\" has been found in local submission history and has been skipped to prevent duplicated submissions.")
 				return
 			}
-			logs.AddToFailedLog(filePath, filepath.Base(filePath), commonUtils.FileMetadata{}, "", 0, false, true)
+
+			// Add to failed log initially, it will be removed on success
+			// This is an existing pattern, keeping it here.
+			logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
 
 			if fi.Size() > MultipartFileSizeLimit {
 				log.Printf("The file size of %s has exceeded the limit allowed and cannot be uploaded. The maximum allowed file size is %s\n", fi.Name(), FormatSize(MultipartFileSizeLimit))
 			} else if fi.Size() > int64(fileSizeLimit) {
-				multipartFilePaths = append(multipartFilePaths, filePath)
+				multipartObjects = append(multipartObjects, obj)
 			} else {
-				singlepartFilePaths = append(singlepartFilePaths, filePath)
+				singlepartObjects = append(singlepartObjects, obj)
 			}
-		}()
+		}(object)
 	}
-	return singlepartFilePaths, multipartFilePaths
+	return singlepartObjects, multipartObjects
 }
 
 // ProcessFilename returns an FileInfo object which has the information about the path and name to be used for upload of a file
-func ProcessFilename(uploadPath string, filePath string, includeSubDirName bool, includeMetadata bool) (FileInfo, error) {
+func ProcessFilename(uploadPath string, filePath string, objectId string, includeSubDirName bool, includeMetadata bool) (commonUtils.FileUploadRequestObject, error) {
 	var err error
 	filePath, err = commonUtils.GetAbsolutePath(filePath)
 	filename := filepath.Base(filePath)
@@ -499,18 +511,18 @@ func ProcessFilename(uploadPath string, filePath string, includeSubDirName bool,
 		if _, err := os.Stat(metadataFilePath); err == nil {
 			metadataFileBytes, err = os.ReadFile(metadataFilePath)
 			if err != nil {
-				return FileInfo{}, errors.New("Error reading metadata file " + metadataFilePath + ": " + err.Error())
+				return commonUtils.FileUploadRequestObject{}, errors.New("Error reading metadata file " + metadataFilePath + ": " + err.Error())
 			}
 			err := json.Unmarshal(metadataFileBytes, &metadata)
 			if err != nil {
-				return FileInfo{}, errors.New("Error parsing metadata file " + metadataFilePath + ": " + err.Error())
+				return commonUtils.FileUploadRequestObject{}, errors.New("Error parsing metadata file " + metadataFilePath + ": " + err.Error())
 			}
 		} else {
 			// No metadata file was found for this file -- proceed, but warn the user.
 			log.Printf("WARNING: File metadata is enabled, but could not find the metadata file %v for file %v. Execute `data-client upload --help` for more info on file metadata.\n", metadataFilePath, filePath)
 		}
 	}
-	return FileInfo{filePath, filename, metadata}, err
+	return commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, err
 }
 
 func getFullFilePath(filePath string, filename string) (string, error) {

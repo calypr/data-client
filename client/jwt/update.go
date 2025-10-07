@@ -15,13 +15,10 @@ func UpdateConfig(profile string, apiEndpoint string, credFile string, fenceToke
 	var conf Configure
 	var req Request
 
-	fmt.Println("TOK, CRED FILE: ", fenceToken, credFile)
-
 	profileConfig, err := conf.ReadCredentials(credFile, fenceToken)
 	if err != nil {
 		return err
 	}
-	fmt.Println("PROF CONF ACC TOK: ", profileConfig.AccessToken)
 
 	profileConfig.Profile = profile
 	apiEndpoint = strings.TrimSpace(apiEndpoint)
