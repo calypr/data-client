@@ -17,6 +17,7 @@ import (
 	"github.com/calypr/data-client/client/commonUtils"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
+	pb "gopkg.in/cheggaaa/pb.v1"
 )
 
 func init() {
@@ -35,12 +36,10 @@ func init() {
 			logs.InitFailedLog(profile)
 			logs.SetToBoth()
 			logs.InitScoreBoard(MaxRetryCount)
-			fmt.Println(profile, filePath, bucketName, guid)
-			err := UploadSingleMultipart(profile, filePath, bucketName, guid)
+			err := UploadSingleMultipart(profile, filePath, bucketName, guid, true)
 			if err != nil {
 				log.Fatalf("Multipart upload failed: %v", err)
 			}
-
 			logs.PrintScoreBoard()
 			logs.CloseAll()
 		},
@@ -59,12 +58,11 @@ var multipartUploadLock sync.Mutex
 
 // UploadSingleMultipart uploads a single file to Gen3 using the multipart upload strategy.
 // This is the preferred method for large files as it provides resilience through retries on a per-chunk basis.
-func UploadSingleMultipart(profile string, filePath string, bucketName string, guid string) error {
-	// To align with a library-style function that returns errors instead of logging directly,
-	// we can temporarily discard the default logger's output. Note that the underlying
-	// `multipartUpload` function uses a separate `logs` package for its own record-keeping.
-	log.SetOutput(io.Discard)
-
+func UploadSingleMultipart(profile string, filePath string, bucketName string, guid string, enableLogs bool) error {
+	//toggleable logs
+	if !enableLogs {
+		log.SetOutput(io.Discard)
+	}
 	// Instantiate interface to Gen3
 	gen3Interface := NewGen3Interface()
 
@@ -176,8 +174,12 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	parts := []MultipartPartObject{}
 	numOfWorkers, numOfChunks, chunkSize := calculateChunksAndWorkers(fi.Size())
 	chunkIndexCh := make(chan int, numOfChunks)
-	//bar := pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(fileInfo.Filename + " ")
-	//bar.Start()
+	var bar *pb.ProgressBar
+	// Only use progress bar output if logger is not muted
+	if log.Writer() != io.Discard {
+		bar = pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(furObject.Filename + " ")
+		bar.Start()
+	}
 	wg := sync.WaitGroup{}
 	for i := 0; i < numOfWorkers; i++ {
 		wg.Add(1)
@@ -240,7 +242,9 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 
 				multipartUploadLock.Lock()
 				parts = append(parts, (MultipartPartObject{PartNumber: chunkIndex, ETag: eTag}))
-				//bar.Add(n)
+				if log.Writer() != io.Discard {
+					bar.Add(n)
+				}
 				multipartUploadLock.Unlock()
 			}
 			wg.Done()
@@ -253,7 +257,9 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	close(chunkIndexCh)
 
 	wg.Wait()
-	//bar.Finish()
+	if log.Writer() != io.Discard {
+		bar.Finish()
+	}
 	if len(parts) != numOfChunks {
 		err = fmt.Errorf("FAILED multipart upload for %s: Total number of received ETags doesn't match the total number of chunks", furObject.Filename)
 		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)

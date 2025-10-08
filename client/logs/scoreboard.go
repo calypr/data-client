@@ -2,6 +2,8 @@ package logs
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"sync"
 	"text/tabwriter"
@@ -18,7 +20,7 @@ func InitScoreBoard(maxRetryCount int) {
 }
 
 func PrintScoreBoard() {
-	if scoreBoard != nil {
+	if scoreBoard != nil && log.Writer() != io.Discard {
 		sum := 0
 		fmt.Println("\n\nSubmission Results")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 0, ' ', tabwriter.Debug)
@@ -35,6 +37,7 @@ func PrintScoreBoard() {
 		fmt.Fprintf(w, "TOTAL \t %d\n", sum)
 		w.Flush()
 	}
+
 }
 
 func IncrementScore(index int) {

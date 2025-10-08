@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +25,12 @@ func init() {
 		Long:    `Gets a presigned URL for which to upload a file associated with a GUID and then uploads the specified file.`,
 		Example: `./data-client upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
 		Run: func(cmd *cobra.Command, args []string) {
-			err := UploadSingle(profile, guid, filePath, bucketName)
+			// initialize transmission logs
+			logs.InitSucceededLog(profile)
+			logs.InitFailedLog(profile)
+			logs.SetToBoth()
+			logs.InitScoreBoard(0)
+			err := UploadSingle(profile, guid, filePath, bucketName, false)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}
@@ -40,15 +46,10 @@ func init() {
 	RootCmd.AddCommand(uploadSingleCmd)
 }
 
-func UploadSingle(profile string, guid string, filePath string, bucketName string) error {
-	// disable logs
-	log.SetOutput(io.Discard)
-
-	// // initialize transmission logs
-	// logs.InitSucceededLog(profile)
-	// logs.InitFailedLog(profile)
-	// logs.SetToBoth()
-	// logs.InitScoreBoard(0)
+func UploadSingle(profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
+	if !enableLogs {
+		log.SetOutput(io.Discard)
+	}
 
 	// Instantiate interface to Gen3
 	gen3Interface := NewGen3Interface()
@@ -77,20 +78,20 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	}
 	filename := filepath.Base(filePath)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		// logs.AddToFailedLog(filePath, filename, commonUtils.FileMetadata{}, "", 0, false, true)
-		// logs.IncrementScore(logs.ScoreBoardLen - 1)
-		// logs.PrintScoreBoard()
-		// logs.CloseAll()
+		logs.AddToFailedLog(filePath, filename, commonUtils.FileMetadata{}, "", 0, false, log.Writer() != io.Discard)
+		logs.IncrementScore(logs.ScoreBoardLen - 1)
+		logs.PrintScoreBoard()
+		logs.CloseAll()
 		return fmt.Errorf("[ERROR] The file you specified \"%s\" does not exist locally", filePath)
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		// logs.AddToFailedLog(filePath, filename, commonUtils.FileMetadata{}, "", 0, false, true)
-		// logs.IncrementScore(logs.ScoreBoardLen - 1)
-		// logs.PrintScoreBoard()
-		// logs.CloseAll()
-		// log.Fatalln("File open error: " + err.Error())
+		logs.AddToFailedLog(filePath, filename, commonUtils.FileMetadata{}, "", 0, false, log.Writer() != io.Discard)
+		logs.IncrementScore(logs.ScoreBoardLen - 1)
+		logs.PrintScoreBoard()
+		logs.CloseAll()
+		log.Fatalln("File open error: " + err.Error())
 		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s", filePath, err.Error())
 	}
 	defer file.Close()
@@ -100,21 +101,21 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file)
 	if err != nil {
 		file.Close()
-		// logs.AddToFailedLog(furObject.FilePath, furObject.Filename, commonUtils.FileMetadata{}, furObject.GUID, 0, false, true)
-		// logs.IncrementScore(logs.ScoreBoardLen - 1)
-		// logs.PrintScoreBoard()
-		// logs.CloseAll()
-		// log.Fatalf("Error occurred during request generation: %s", err.Error())
+		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, commonUtils.FileMetadata{}, furObject.GUID, 0, false, true)
+		logs.IncrementScore(logs.ScoreBoardLen - 1)
+		logs.PrintScoreBoard()
+		logs.CloseAll()
+		log.Fatalf("Error occurred during request generation: %s", err.Error())
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s", filePath, err.Error())
 	}
 	err = uploadFile(furObject, 0)
 	if err != nil {
+		logs.IncrementScore(logs.ScoreBoardLen - 1) // update failed score
 		return fmt.Errorf("[ERROR] Error uploading file %s: %s", filePath, err.Error())
-		// logs.IncrementScore(logs.ScoreBoardLen - 1) // update failed score
-	} /*else {
-	// logs.IncrementScore(0) // update succeeded score
-	}*/
-	// logs.PrintScoreBoard()
-	// logs.CloseAll()
+	} else {
+		logs.IncrementScore(0) // update succeeded score
+	}
+	logs.PrintScoreBoard()
+	logs.CloseAll()
 	return nil
 }

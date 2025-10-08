@@ -180,7 +180,6 @@ func ParseFilePaths(filePath string, metadataEnabled bool) ([]string, error) {
 			}
 		}()
 	}
-	log.Println("Finish parsing all file paths for \"" + fullFilePath + "\"")
 	return filePaths, err
 }
 
