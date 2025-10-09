@@ -431,8 +431,8 @@ func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestOb
 
 		// Check if file exists locally
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			log.Printf("The file you specified \"%s\" does not exist locally", filePath)
-			logs.AddToFailedLog(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false, true)
+			//log.Printf("The file you specified \"%s\" does not exist locally", filePath)
+			//logs.AddToFailedLog(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false, true)
 			continue
 		}
 
@@ -440,16 +440,16 @@ func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestOb
 		func(obj commonUtils.FileUploadRequestObject) {
 			file, err := os.Open(filePath)
 			if err != nil {
-				log.Println("File open error occurred when validating file path: " + err.Error())
-				logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
+				//log.Println("File open error occurred when validating file path: " + err.Error())
+				//logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
 				return
 			}
 			defer file.Close()
 
 			fi, err := file.Stat()
 			if err != nil {
-				log.Println("File stat error occurred when validating file path: " + err.Error())
-				logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
+				//log.Println("File stat error occurred when validating file path: " + err.Error())
+				//logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
 				return
 			}
 			if fi.IsDir() {
@@ -457,16 +457,16 @@ func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestOb
 			}
 
 			if logs.ExistsInSucceededLog(filePath) {
-				log.Println("File \"" + filePath + "\" has been found in local submission history and has been skipped to prevent duplicated submissions.")
+				//log.Println("File \"" + filePath + "\" has been found in local submission history and has been skipped to prevent duplicated submissions.")
 				return
 			}
 
 			// Add to failed log initially, it will be removed on success
 			// This is an existing pattern, keeping it here.
-			logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
+			//logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
 
 			if fi.Size() > MultipartFileSizeLimit {
-				log.Printf("The file size of %s has exceeded the limit allowed and cannot be uploaded. The maximum allowed file size is %s\n", fi.Name(), FormatSize(MultipartFileSizeLimit))
+				//log.Printf("The file size of %s has exceeded the limit allowed and cannot be uploaded. The maximum allowed file size is %s\n", fi.Name(), FormatSize(MultipartFileSizeLimit))
 			} else if fi.Size() > int64(fileSizeLimit) {
 				multipartObjects = append(multipartObjects, obj)
 			} else {
@@ -489,12 +489,12 @@ func ProcessFilename(uploadPath string, filePath string, objectId string, includ
 			presentPath := strings.TrimSuffix(uploadPath, commonUtils.PathSeparator+"*")
 			fileInfo, err := os.Stat(presentPath)
 			if err != nil {
-				log.Fatal(err)
+				return commonUtils.FileUploadRequestObject{}, err
 			}
 			if !fileInfo.IsDir() {
 				pwd, err := os.Getwd()
 				if err != nil {
-					log.Fatal(err)
+					return commonUtils.FileUploadRequestObject{}, err
 				}
 				filename = strings.TrimPrefix(presentPath, pwd)
 
@@ -519,7 +519,7 @@ func ProcessFilename(uploadPath string, filePath string, objectId string, includ
 			}
 		} else {
 			// No metadata file was found for this file -- proceed, but warn the user.
-			log.Printf("WARNING: File metadata is enabled, but could not find the metadata file %v for file %v. Execute `data-client upload --help` for more info on file metadata.\n", metadataFilePath, filePath)
+			//log.Printf("WARNING: File metadata is enabled, but could not find the metadata file %v for file %v. Execute `data-client upload --help` for more info on file metadata.\n", metadataFilePath, filePath)
 		}
 	}
 	return commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, err
@@ -557,19 +557,19 @@ func uploadFile(furObject commonUtils.FileUploadRequestObject, retryCount int) e
 	client := &http.Client{}
 	resp, err := client.Do(furObject.Request)
 	if err != nil {
-		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
+		//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
 		furObject.Bar.Finish()
 		return errors.New("Error occurred during upload: " + err.Error())
 	}
 	if resp.StatusCode != 200 {
-		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
+		//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
 		furObject.Bar.Finish()
 		return errors.New("Upload request got a non-200 response with status code " + strconv.Itoa(resp.StatusCode))
 	}
 	furObject.Bar.Finish()
-	log.Printf("Successfully uploaded file \"%s\" to GUID %s.\n", furObject.FilePath, furObject.GUID)
-	logs.DeleteFromFailedLog(furObject.FilePath, true)
-	logs.WriteToSucceededLog(furObject.FilePath, furObject.GUID, false)
+	//log.Printf("Successfully uploaded file \"%s\" to GUID %s.\n", furObject.FilePath, furObject.GUID)
+	//logs.DeleteFromFailedLog(furObject.FilePath, true)
+	//logs.WriteToSucceededLog(furObject.FilePath, furObject.GUID, false)
 	return nil
 }
 

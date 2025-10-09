@@ -28,7 +28,15 @@ func init() {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
 
-			err := jwt.UpdateConfig(profile, apiEndpoint, credFile, fenceToken, useShepherd, minShepherdVersion)
+			err := jwt.UpdateConfig(
+				&jwt.Credential{
+					Profile:            profile,
+					APIEndpoint:        apiEndpoint,
+					AccessToken:        fenceToken,
+					UseShepherd:        useShepherd,
+					MinShepherdVersion: minShepherdVersion,
+				},
+			)
 			if err != nil {
 				log.Println(err.Error())
 			}

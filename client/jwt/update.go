@@ -10,29 +10,23 @@ import (
 	"github.com/hashicorp/go-version"
 )
 
-func UpdateConfig(profile string, apiEndpoint string, credFile string, fenceToken string, useShepherd string, minShepherdVersion string) error {
+func UpdateConfig(cred *Credential) error {
 
 	var conf Configure
 	var req Request
 
-	profileConfig, err := conf.ReadCredentials(credFile, fenceToken)
-	if err != nil {
-		return err
+	cred.APIEndpoint = strings.TrimSpace(cred.APIEndpoint)
+	if cred.APIEndpoint[len(cred.APIEndpoint)-1:] == "/" {
+		cred.APIEndpoint = cred.APIEndpoint[:len(cred.APIEndpoint)-1]
 	}
-
-	profileConfig.Profile = profile
-	apiEndpoint = strings.TrimSpace(apiEndpoint)
-	if apiEndpoint[len(apiEndpoint)-1:] == "/" {
-		apiEndpoint = apiEndpoint[:len(apiEndpoint)-1]
-	}
-	parsedURL, err := conf.ValidateUrl(apiEndpoint)
+	parsedURL, err := conf.ValidateUrl(cred.APIEndpoint)
 	if err != nil {
 		return fmt.Errorf("Errr occurred when validating apiendpoint URL: %s", err.Error())
 	}
 
 	prefixEndPoint := parsedURL.Scheme + "://" + parsedURL.Host
-	if profileConfig.AccessToken == "" {
-		err = req.RequestNewAccessToken(prefixEndPoint+commonUtils.FenceAccessTokenEndpoint, profileConfig)
+	if cred.AccessToken == "" {
+		err = req.RequestNewAccessToken(prefixEndPoint+commonUtils.FenceAccessTokenEndpoint, cred)
 		if err != nil {
 			receivedErrorString := err.Error()
 			errorMessageString := receivedErrorString
@@ -44,25 +38,22 @@ func UpdateConfig(profile string, apiEndpoint string, credFile string, fenceToke
 			return fmt.Errorf("Error occurred when validating profile config: %s", errorMessageString)
 		}
 	}
-	profileConfig.APIEndpoint = apiEndpoint
 
-	useShepherd = strings.TrimSpace(useShepherd)
-	profileConfig.UseShepherd = useShepherd
-	minShepherdVersion = strings.TrimSpace(minShepherdVersion)
-	if minShepherdVersion != "" {
-		_, err = version.NewVersion(minShepherdVersion)
+	cred.UseShepherd = strings.TrimSpace(cred.UseShepherd)
+	cred.MinShepherdVersion = strings.TrimSpace(cred.MinShepherdVersion)
+	if cred.MinShepherdVersion != "" {
+		_, err = version.NewVersion(cred.MinShepherdVersion)
 		if err != nil {
 			return fmt.Errorf("Error occurred when validating minShepherdVersion: %s", err.Error())
 		}
 	}
-	profileConfig.MinShepherdVersion = minShepherdVersion
 
 	// Store user info in ~/.gen3/gen3_client_config.ini
-	err = conf.UpdateConfigFile(*profileConfig)
+	err = conf.UpdateConfigFile(*cred)
 	if err != nil {
 		return err
 	}
-	log.Println(`Profile '` + profile + `' has been configured successfully.`)
+	log.Println(`Profile '` + cred.Profile + `' has been configured successfully.`)
 	err = logs.CloseMessageLog()
 	if err != nil {
 		log.Println(err.Error())
