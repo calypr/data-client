@@ -25,6 +25,13 @@ func UpdateConfig(cred *Credential) error {
 	}
 
 	prefixEndPoint := parsedURL.Scheme + "://" + parsedURL.Host
+	fileCredential, err := conf.ParseConfig(cred.Profile)
+	if err != nil {
+		return err
+	}
+	if cred.APIKey == "" {
+		cred.APIKey = fileCredential.APIKey
+	}
 	if cred.AccessToken == "" {
 		err = req.RequestNewAccessToken(prefixEndPoint+commonUtils.FenceAccessTokenEndpoint, cred)
 		if err != nil {
