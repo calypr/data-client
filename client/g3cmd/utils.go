@@ -481,29 +481,36 @@ func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestOb
 func ProcessFilename(uploadPath string, filePath string, objectId string, includeSubDirName bool, includeMetadata bool) (commonUtils.FileUploadRequestObject, error) {
 	var err error
 	filePath, err = commonUtils.GetAbsolutePath(filePath)
-	filename := filepath.Base(filePath)
+	if err != nil {
+		return commonUtils.FileUploadRequestObject{}, err
+	}
+
+	filename := filepath.Base(filePath) // Default to base filename
+
 	var metadata commonUtils.FileMetadata
 	if includeSubDirName {
-		uploadPath, err := commonUtils.GetAbsolutePath(uploadPath)
-		if err == nil {
-			presentPath := strings.TrimSuffix(uploadPath, commonUtils.PathSeparator+"*")
-			fileInfo, err := os.Stat(presentPath)
+		absUploadPath, err := commonUtils.GetAbsolutePath(uploadPath)
+		if err != nil {
+			return commonUtils.FileUploadRequestObject{}, err
+		}
+
+		// Ensure absUploadPath is a directory path for relative calculation
+		// Trim the optional wildcard if present
+		uploadDir := strings.TrimSuffix(absUploadPath, commonUtils.PathSeparator+"*")
+		fileInfo, err := os.Stat(uploadDir)
+		if err != nil {
+			return commonUtils.FileUploadRequestObject{}, err
+		}
+		if fileInfo.IsDir() {
+			// Calculate the path of the file relative to the upload directory
+			relPath, err := filepath.Rel(uploadDir, filePath)
 			if err != nil {
 				return commonUtils.FileUploadRequestObject{}, err
 			}
-			if !fileInfo.IsDir() {
-				pwd, err := os.Getwd()
-				if err != nil {
-					return commonUtils.FileUploadRequestObject{}, err
-				}
-				filename = strings.TrimPrefix(presentPath, pwd)
-
-			} else {
-				filename = strings.TrimPrefix(filePath, presentPath)
-			}
-			filename = strings.TrimPrefix(filename, commonUtils.PathSeparator)
+			filename = relPath
 		}
 	}
+
 	if includeMetadata {
 		// The metadata path is the file name plus '_metadata.json'
 		metadataFilePath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + "_metadata.json"
@@ -522,7 +529,7 @@ func ProcessFilename(uploadPath string, filePath string, objectId string, includ
 			//log.Printf("WARNING: File metadata is enabled, but could not find the metadata file %v for file %v. Execute `data-client upload --help` for more info on file metadata.\n", metadataFilePath, filePath)
 		}
 	}
-	return commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, err
+	return commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, nil
 }
 
 func getFullFilePath(filePath string, filename string) (string, error) {
