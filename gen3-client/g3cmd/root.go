@@ -55,7 +55,7 @@ func initConfig() {
 
 	// version checker
 	// Temp. disabling version check message to reduce confusion
-	if os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "true" &&
+	if false && os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
 		gitversion != "" && gitversion != "N/A" {
 		githubTag := &latest.GithubTag{
 			Owner:      "uc-cdis",
