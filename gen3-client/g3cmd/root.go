@@ -55,7 +55,7 @@ func initConfig() {
 
 	// version checker
 	if os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
-	gitversion != "" && gitversion != "N/A" {
+		gitversion != "" && gitversion != "N/A" {
 		githubTag := &latest.GithubTag{
 			Owner:      "uc-cdis",
 			Repository: "cdis-data-client",
@@ -78,13 +78,16 @@ func initConfig() {
 				return true
 			},
 		}
-		res, err := latest.Check(githubTag, gitversion)
-		if err != nil {
-			log.Println("Error occurred when checking for latest version: " + err.Error())
-		} else if res.Outdated {
-			log.Println("A new version of gen3-client is available! The latest version is " + res.Current + ". You are using version " + gitversion)
-			log.Println("Please download the latest gen3-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
-		}
+
+		// Commenting out version check for now to reduce confusion
+		//
+		// 	res, err := latest.Check(githubTag, gitversion)
+		// 	if err != nil {
+		// 		log.Println("Error occurred when checking for latest version: " + err.Error())
+		// 	} else if res.Outdated {
+		// 		log.Println("A new version of gen3-client is available! The latest version is " + res.Current + ". You are using version " + gitversion)
+		// 		log.Println("Please download the latest gen3-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
+		// 	}
 	}
 	logs.SetToMessageLog()
 }
