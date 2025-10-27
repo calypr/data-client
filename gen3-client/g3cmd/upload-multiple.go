@@ -79,44 +79,13 @@ func init() {
 				log.Fatalf("Error when parsing file paths: " + err.Error())
 			}
 
-			for i, furObject := range furObjects {
-				if batch {
-					if len(batchFURObjects) < workers {
-						batchFURObjects = append(batchFURObjects, furObject)
-					} else {
-						batchUpload(gen3Interface, batchFURObjects, workers, respCh, errCh, bucketName)
-						batchFURObjects = make([]commonUtils.FileUploadRequestObject, 0)
-						batchFURObjects = append(batchFURObjects, furObject)
-					}
-					if i == len(furObjects)-1 { // upload remainders
-						batchUpload(gen3Interface, batchFURObjects, workers, respCh, errCh, bucketName)
-					}
-				} else {
-					file, err := os.Open(furObject.FilePath)
-					if err != nil {
-						log.Println("File open error: " + err.Error())
-						logs.AddToFailedLog(furObject.FilePath, furObject.Filename, commonUtils.FileMetadata{}, furObject.GUID, 0, false, true)
-						logs.IncrementScore(logs.ScoreBoardLen - 1)
-						continue
-					}
-					defer file.Close()
-
-					furObject, err := GenerateUploadRequest(gen3Interface, furObject, file)
-					if err != nil {
-						file.Close()
-						logs.AddToFailedLog(furObject.FilePath, furObject.Filename, commonUtils.FileMetadata{}, furObject.GUID, 0, false, true)
-						logs.IncrementScore(logs.ScoreBoardLen - 1)
-						log.Printf("Error occurred during request generation: %s", err.Error())
-						continue
-					}
-					err = uploadFile(furObject, 0)
-					if err != nil {
-						log.Println(err.Error())
-						logs.IncrementScore(logs.ScoreBoardLen - 1)
-					} else {
-						logs.IncrementScore(0)
-					}
-					file.Close()
+			filePaths := make([]string, 0)
+			for _, object := range objects {
+				// Here we are assuming the local filename will be the same as GUID
+				filePath, err := getFullFilePath(uploadPath, object.ObjectID)
+				if err != nil {
+					log.Println(err.Error())
+					continue
 				}
 				filePaths = append(filePaths, filePath)
 			}
@@ -167,7 +136,9 @@ func init() {
 	uploadMultipleCmd.MarkFlagRequired("upload-path") //nolint:errcheck
 	uploadMultipleCmd.Flags().BoolVar(&batch, "batch", true, "Upload in parallel")
 	uploadMultipleCmd.Flags().IntVar(&numParallel, "numparallel", 3, "Number of uploads to run in parallel")
-	uploadMultipleCmd.Flags().StringVar(&bucketName, "bucket", "", "The bucket to which files will be uploaded")
+	uploadMultipleCmd.Flags().StringVar(&bucketName, "bucket", "", "The bucket to which files will be uploaded. If not provided, defaults to Gen3's configured DATA_UPLOAD_BUCKET.")
+	uploadMultipleCmd.Flags().BoolVar(&forceMultipart, "force-multipart", false, "Force to use multipart upload when possible (file size >= 5MB)")
+	uploadMultipleCmd.Flags().BoolVar(&includeSubDirName, "include-subdirname", false, "Include subdirectory names in file name")
 	RootCmd.AddCommand(uploadMultipleCmd)
 }
 

@@ -537,37 +537,6 @@ func getFullFilePath(filePath string, filename string) (string, error) {
 	}
 }
 
-func validateObject(objects []ManifestObject, uploadPath string) []commonUtils.FileUploadRequestObject {
-	furObjects := make([]commonUtils.FileUploadRequestObject, 0)
-	for _, object := range objects {
-		guid := object.ObjectID
-		var fileName = ""
-
-		if object.Filename != "" {
-		    // conform to fence naming convention
-		    fileName = object.Filename
-		} else {
-			// Otherwise, here we are assuming the local filename will be the same as GUID
-			fileName = object.ObjectID
-		}
-
-		filePath, err := getFullFilePath(uploadPath, fileName)
-		if err != nil {
-			log.Println(err.Error())
-			continue
-		}
-
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			log.Printf("The file you specified \"%s\" does not exist locally.\n", filePath)
-			continue
-		}
-
-		furObject := commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: fileName, GUID: guid}
-		furObjects = append(furObjects, furObject)
-	}
-	return furObjects
-}
-
 func uploadFile(furObject commonUtils.FileUploadRequestObject, retryCount int) error {
 	log.Println("Uploading data ...")
 	furObject.Bar.Start()

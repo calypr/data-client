@@ -54,8 +54,9 @@ func initConfig() {
 	}
 
 	// version checker
-	if os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
-	gitversion != "" && gitversion != "N/A" {
+	// Temp. disabling version check message to reduce confusion
+	if false && os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
+		gitversion != "" && gitversion != "N/A" {
 		githubTag := &latest.GithubTag{
 			Owner:      "uc-cdis",
 			Repository: "cdis-data-client",
@@ -78,6 +79,7 @@ func initConfig() {
 				return true
 			},
 		}
+
 		res, err := latest.Check(githubTag, gitversion)
 		if err != nil {
 			log.Println("Error occurred when checking for latest version: " + err.Error())
