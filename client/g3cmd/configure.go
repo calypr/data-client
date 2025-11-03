@@ -28,19 +28,30 @@ func init() {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
 
-			err := jwt.UpdateConfig(
-				&jwt.Credential{
-					Profile:            profile,
-					APIEndpoint:        apiEndpoint,
-					AccessToken:        fenceToken,
-					UseShepherd:        useShepherd,
-					MinShepherdVersion: minShepherdVersion,
-				},
-			)
+			cred := &jwt.Credential{
+				Profile:            profile,
+				APIEndpoint:        apiEndpoint,
+				AccessToken:        fenceToken,
+				UseShepherd:        useShepherd,
+				MinShepherdVersion: minShepherdVersion,
+			}
+			if credFile != "" {
+				readCred, err := conf.ReadCredentials(credFile, "")
+				if err != nil {
+					log.Println(err.Error())
+				}
+				if readCred.APIKey != "" && readCred.KeyId != "" {
+					cred.APIKey = readCred.APIKey
+					cred.KeyId = readCred.KeyId
+				}
+				if readCred.APIEndpoint != "" {
+					cred.APIEndpoint = readCred.APIEndpoint
+				}
+			}
+			err := jwt.UpdateConfig(cred)
 			if err != nil {
 				log.Println(err.Error())
 			}
-
 		},
 	}
 
