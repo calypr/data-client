@@ -40,10 +40,6 @@ func init() {
 				if err != nil {
 					log.Println(err.Error())
 				}
-				if readCred.APIKey != "" && readCred.KeyId != "" {
-					cred.APIKey = readCred.APIKey
-					cred.KeyId = readCred.KeyId
-				}
 				if readCred.APIEndpoint != "" {
 					cred.APIEndpoint = readCred.APIEndpoint
 				}
@@ -52,6 +48,7 @@ func init() {
 			if err != nil {
 				log.Println(err.Error())
 			}
+			log.Println(`Profile '` + profile + `' has been configured successfully.`)
 		},
 	}
 
