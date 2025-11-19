@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,6 +131,8 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 						err = errors.New("No ETag found in header")
 						return
 					}
+					// Normalize ETag by trimming quotes (S3 returns quoted ETags)
+					eTag = strings.Trim(eTag, `"`)
 					return
 				})
 				if err != nil {
@@ -140,6 +143,7 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 
 				multipartUploadLock.Lock() // to avoid racing conditions
 				parts = append(parts, (MultipartPartObject{PartNumber: chunkIndex, ETag: eTag}))
+				log.Printf("Appended part %d with ETag %s\n", chunkIndex, eTag)
 				bar.Add(n)
 				multipartUploadLock.Unlock()
 			}
@@ -164,6 +168,12 @@ func multipartUpload(g3 Gen3Interface, fileInfo FileInfo, retryCount int, bucket
 	sort.Slice(parts, func(i, j int) bool {
 		return parts[i].PartNumber < parts[j].PartNumber // sort parts in ascending order
 	})
+
+	// Log part details before completing multipart upload for debugging
+	log.Printf("Completing multipart upload with %d parts for file %s\n", len(parts), fileInfo.Filename)
+	for _, part := range parts {
+		log.Printf("  Part %d: ETag=%s\n", part.PartNumber, part.ETag)
+	}
 
 	if err = CompleteMultipartUpload(g3, key, uploadID, parts, bucketName); err != nil {
 		logs.AddToFailedLog(fileInfo.FilePath, fileInfo.Filename, fileInfo.FileMetadata, guid, retryCount, true, true)
