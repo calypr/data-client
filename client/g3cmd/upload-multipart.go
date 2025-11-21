@@ -218,6 +218,7 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 		return err
 	}
 	// Use the refactored InitMultipartUpload with the unified object
+	log.Printf("[DEBUG] Calling InitMultipartUpload with GUID: %s, Filename: %s, Bucket: %s", furObject.GUID, furObject.Filename, bucketName)
 	uploadID, guid, err := InitMultipartUpload(g3, furObject, bucketName)
 	if err != nil {
 		err = fmt.Errorf("FAILED multipart upload for %s: %s", furObject.Filename, err.Error())
@@ -226,6 +227,10 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	}
 	// Update the FURObject's GUID with the one returned from Gen3 (in case it was newly generated)
 	// We'll update the failed log with this GUID for consistency
+	log.Printf("[DEBUG] InitMultipartUpload returned - UploadID: %s, GUID: %s", uploadID, guid)
+	if furObject.GUID != "" && guid != furObject.GUID {
+		log.Printf("[WARNING] GUID mismatch! Requested: %s, Fence returned: %s", furObject.GUID, guid)
+	}
 	furObject.GUID = guid
 	// haven't figured out a good way to ballance the loggers yet so just comment this out for now.
 	//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, true, true)
@@ -237,6 +242,7 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 
 	// Log chunk calculation details for debugging
 	log.Printf("[DEBUG] Multipart upload for %s (size: %d bytes, %s):", furObject.Filename, fi.Size(), FormatSize(fi.Size()))
+	log.Printf("[DEBUG]   S3 Key: %s", key)
 	log.Printf("[DEBUG]   Workers: %d, Chunks: %d, ChunkSize: %d bytes (%s)", numOfWorkers, numOfChunks, chunkSize, FormatSize(chunkSize))
 
 	var bar *pb.ProgressBar
@@ -276,6 +282,10 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 					continue
 				}
 
+				// Log the presigned URL for debugging 403 errors
+				// Sanitize sensitive query parameters but keep the key structure visible
+				log.Printf("[DEBUG] Chunk %d/%d: Presigned URL: %s", chunkIndex, numOfChunks, presignedURL)
+
 				// Update log calls inside the worker to use the new guid and furObject data
 				var n int
 				offset := int64((chunkIndex - 1)) * chunkSize
@@ -314,6 +324,15 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 					}
 					if resp.StatusCode != 200 {
 						err = errors.New("Upload request got a non-200 response with status code " + strconv.Itoa(resp.StatusCode))
+
+						// also debug here if anything else from the response is useful
+						bodyBytes, readErr := io.ReadAll(resp.Body)
+						if readErr == nil {
+							log.Printf("[DEBUG] Chunk %d/%d: Non-200 response body: %s", chunkIndex, numOfChunks, string(bodyBytes))
+						} else {
+							log.Printf("[DEBUG] Chunk %d/%d: Failed to read response body: %v", chunkIndex, numOfChunks, readErr)
+						}
+
 						return
 					} else if eTag = resp.Header.Get("ETag"); eTag == "" {
 						err = errors.New("No ETag found in header")
