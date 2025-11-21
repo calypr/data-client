@@ -249,7 +249,10 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	}
 	// Track failed chunks for better error reporting
 	var failedChunks []int
-	var failedChunksMutex sync.Mutex
+	var failedChunksMutex = struct {
+		sync.Mutex
+		reasons map[int]error
+	}{reasons: make(map[int]error)}
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < numOfWorkers; i++ {
@@ -267,6 +270,7 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 					log.Printf("[ERROR] Chunk %d/%d failed to get presigned URL after %d retries: %v", chunkIndex, numOfChunks, MaxRetryCount, err)
 					failedChunksMutex.Lock()
 					failedChunks = append(failedChunks, chunkIndex)
+					failedChunksMutex.reasons[chunkIndex] = err // record last error for that chunk
 					failedChunksMutex.Unlock()
 					//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, retryCount, true, true)
 					continue
@@ -356,6 +360,30 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	log.Printf("[DEBUG] Upload complete: received %d ETags, expected %d chunks", len(parts), numOfChunks)
 
 	if len(parts) != numOfChunks {
+		// build list of missing indices
+		got := make(map[int]bool)
+		for _, p := range parts {
+			got[p.PartNumber] = true
+		}
+		missing := []int{}
+		for i := 1; i <= numOfChunks; i++ {
+			if !got[i] {
+				missing = append(missing, i)
+			}
+		}
+		// build a combined error message with missing chunk numbers and reasons if present
+		var reasons []string
+		failedChunksMutex.Lock()
+		for _, idx := range missing {
+			if r, ok := failedChunksMutex.reasons[idx]; ok {
+				reasons = append(reasons, fmt.Sprintf("chunk %d: %v", idx, r))
+			} else {
+				reasons = append(reasons, fmt.Sprintf("chunk %d: unknown error", idx))
+			}
+		}
+		failedChunksMutex.Unlock()
+		return fmt.Errorf("FAILED multipart upload for %s: Total number of received ETags doesn't match the total number of chunks; missing chunks: %v; reasons: %s", furObject.Filename, missing, strings.Join(reasons, "; "))
+
 		// Log which parts we actually received
 		receivedParts := make([]int, len(parts))
 		for i, part := range parts {
