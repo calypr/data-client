@@ -119,10 +119,6 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string, g
 // This version allows specifying where logs should be written (e.g., os.Stderr, a file, or io.Discard).
 // Use this when calling from a process that reserves stdout for structured communication.
 func UploadSingleMultipartWithLogWriter(profile string, filePath string, bucketName string, guid string, logWriter io.Writer) error {
-	// Save the current log output and restore it when done
-	originalOutput := log.Writer()
-	defer log.SetOutput(originalOutput)
-
 	// Set log output to the specified writer
 	log.SetOutput(logWriter)
 
