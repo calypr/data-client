@@ -240,8 +240,10 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 
 	var bar *pb.ProgressBar
 	// Only use progress bar output if logger is not muted
+	// And redirect progress bar to the same output as logs (not stdout)
 	if log.Writer() != io.Discard {
 		bar = pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(furObject.Filename + " ")
+		bar.Output = log.Writer() // CRITICAL: Send progress bar to same writer as logs
 		bar.Start()
 	}
 	// Track failed chunks for better error reporting

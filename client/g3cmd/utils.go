@@ -377,6 +377,7 @@ func GenerateUploadRequest(g3 Gen3Interface, furObject commonUtils.FileUploadReq
 	}
 
 	bar := pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(furObject.Filename + " ")
+	bar.Output = log.Writer() // Send progress bar to same writer as logs, not stdout
 	pr, pw := io.Pipe()
 
 	go func() {
