@@ -96,7 +96,8 @@ func retryUpload(failedLogMap map[string]commonUtils.RetryObject) {
 
 		if ro.Multipart {
 			fileInfo := commonUtils.FileUploadRequestObject{FilePath: ro.FilePath, Filename: ro.Filename, GUID: ro.GUID}
-			err = multipartUpload(gen3Interface, fileInfo, ro.RetryCount, ro.Bucket)
+			// Enable progress bar for retry uploads (interactive CLI use)
+			err = multipartUpload(gen3Interface, fileInfo, ro.RetryCount, ro.Bucket, true)
 			if err != nil {
 				updateRetryObject(&ro, ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, true)
 				handleFailedRetry(ro, retryObjCh, err, true)

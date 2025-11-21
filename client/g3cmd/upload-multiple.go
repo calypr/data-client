@@ -238,7 +238,8 @@ func processMultipartUpload(gen3Interface Gen3Interface, multipartObjects []comm
 	for _, furObject := range multipartObjects {
 		// No more redundant ProcessFilename call!
 		// Pass the complete FileUploadRequestObject to the streamlined multipartUpload.
-		err = multipartUpload(gen3Interface, furObject, 0, bucketName)
+		// Enable progress bar for batch uploads (interactive CLI use)
+		err = multipartUpload(gen3Interface, furObject, 0, bucketName, true)
 
 		if err != nil {
 			log.Println(err.Error())

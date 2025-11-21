@@ -103,8 +103,8 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string, g
 
 	// Call the existing, robust multipartUpload function to perform the upload.
 	// This function handles all the complex logic of chunking, concurrency, API calls, and retries.
-	// We pass 0 for the initial retryCount.
-	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName)
+	// We pass 0 for the initial retryCount and true to show progress bar for interactive use.
+	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, true)
 	if err != nil {
 		// The underlying function will have already logged the specifics.
 		// We return a clean error to the caller.
@@ -118,6 +118,7 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string, g
 // UploadSingleMultipartWithLogWriter uploads a single file to Gen3 using the multipart upload strategy.
 // This version allows specifying where logs should be written (e.g., os.Stderr, a file, or io.Discard).
 // Use this when calling from a process that reserves stdout for structured communication.
+// Progress bars are disabled to keep logs clean and parseable.
 func UploadSingleMultipartWithLogWriter(profile string, filePath string, bucketName string, guid string, logWriter io.Writer) error {
 	// Set log output to the specified writer
 	log.SetOutput(logWriter)
@@ -160,8 +161,8 @@ func UploadSingleMultipartWithLogWriter(profile string, filePath string, bucketN
 
 	// Call the existing, robust multipartUpload function to perform the upload.
 	// This function handles all the complex logic of chunking, concurrency, API calls, and retries.
-	// We pass 0 for the initial retryCount.
-	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName)
+	// We pass 0 for the initial retryCount and FALSE to disable progress bar for clean logs.
+	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, false)
 	if err != nil {
 		// The underlying function will have already logged the specifics.
 		// We return a clean error to the caller.
@@ -190,7 +191,7 @@ func retry(attempts int, filePath string, guid string, f func() error) (err erro
 	return fmt.Errorf("After %d attempts, last error: %s", attempts, err)
 }
 
-func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, retryCount int, bucketName string) error {
+func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, retryCount int, bucketName string, showProgressBar bool) error {
 	// Use furObject.FilePath
 	file, err := os.Open(furObject.FilePath)
 	if err != nil {
@@ -239,11 +240,11 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	log.Printf("[DEBUG]   Workers: %d, Chunks: %d, ChunkSize: %d bytes (%s)", numOfWorkers, numOfChunks, chunkSize, FormatSize(chunkSize))
 
 	var bar *pb.ProgressBar
-	// Only use progress bar output if logger is not muted
-	// And redirect progress bar to the same output as logs (not stdout)
-	if log.Writer() != io.Discard {
+	// Only show progress bar if explicitly enabled (for interactive use)
+	// Progress bars with ANSI codes pollute log files with duplicate lines
+	if showProgressBar && log.Writer() != io.Discard {
 		bar = pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(furObject.Filename + " ")
-		bar.Output = log.Writer() // CRITICAL: Send progress bar to same writer as logs
+		bar.Output = log.Writer()
 		bar.Start()
 	}
 	// Track failed chunks for better error reporting
@@ -332,7 +333,7 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 				multipartUploadLock.Lock()
 				parts = append(parts, (MultipartPartObject{PartNumber: chunkIndex, ETag: eTag}))
 				log.Printf("[DEBUG] Chunk %d/%d: added to parts list (total parts now: %d)", chunkIndex, numOfChunks, len(parts))
-				if log.Writer() != io.Discard {
+				if bar != nil {
 					bar.Add(n)
 				}
 				multipartUploadLock.Unlock()
@@ -348,7 +349,7 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 	close(chunkIndexCh)
 
 	wg.Wait()
-	if log.Writer() != io.Discard {
+	if bar != nil {
 		bar.Finish()
 	}
 
