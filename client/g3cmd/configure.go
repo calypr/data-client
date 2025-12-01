@@ -38,11 +38,14 @@ func init() {
 			if credFile != "" {
 				readCred, err := conf.ReadCredentials(credFile, "")
 				if err != nil {
-					log.Println(err.Error())
+					log.Fatal(err) // or return proper error
 				}
+				cred.KeyId = readCred.KeyId
+				cred.APIKey = readCred.APIKey
 				if readCred.APIEndpoint != "" {
 					cred.APIEndpoint = readCred.APIEndpoint
 				}
+				cred.AccessToken = ""
 			}
 			err := jwt.UpdateConfig(cred)
 			if err != nil {
