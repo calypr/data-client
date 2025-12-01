@@ -158,6 +158,7 @@ func (conf *Configure) UpdateConfigFile(profileConfig Credential) error {
 		log.Println(errs.Error())
 		return errs
 	}
+
 	cfg.Section(profileConfig.Profile).Key("key_id").SetValue(profileConfig.KeyId)
 	cfg.Section(profileConfig.Profile).Key("api_key").SetValue(profileConfig.APIKey)
 	cfg.Section(profileConfig.Profile).Key("access_token").SetValue(profileConfig.AccessToken)
