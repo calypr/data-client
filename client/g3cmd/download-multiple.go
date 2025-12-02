@@ -298,7 +298,7 @@ func downloadFile(objects []ManifestObject, downloadPath string, filenameFormat 
 	}
 	filenameFormat = strings.ToLower(strings.TrimSpace(filenameFormat))
 	if (filenameFormat == "guid" || filenameFormat == "combined") && rename {
-		fmt.Println("NOTICE: flag \"rename\" only works if flag \"filename-format\" is \"original\"")
+		fmt.Fprintln(os.Stderr, "NOTICE: flag \"rename\" only works if flag \"filename-format\" is \"original\"")
 		rename = false
 	}
 	err = validateFilenameFormat(downloadPath, filenameFormat, rename, noPrompt)

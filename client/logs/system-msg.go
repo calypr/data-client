@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -13,7 +14,7 @@ var multiWriter io.Writer
 
 func InitMessageLog(profile string) {
 	var err error
-	messageLogFilename = MainLogPath + profile + "_message_log_" + time.Now().Format("20060102150405MST") + ".log"
+	messageLogFilename = MainLogPath + profile + "_message_log_" + time.Now().Format("20060102150405MST") + "_" + strconv.Itoa(os.Getpid()) + ".log"
 
 	messageLogFile, err = os.OpenFile(messageLogFilename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
 	if err != nil {

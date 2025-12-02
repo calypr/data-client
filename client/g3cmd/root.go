@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spf13/cobra"
-	latest "github.com/tcnksm/go-latest"
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/logs"
+	"github.com/spf13/cobra"
+	latest "github.com/tcnksm/go-latest"
 )
 
 var profile string
@@ -28,7 +28,7 @@ var RootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, "root cmd error:", err)
 		os.Exit(1)
 	}
 }
@@ -55,7 +55,7 @@ func initConfig() {
 
 	// version checker
 	if os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
-	gitversion != "" && gitversion != "N/A" {
+		gitversion != "" && gitversion != "N/A" {
 		githubTag := &latest.GithubTag{
 			Owner:      "uc-cdis",
 			Repository: "cdis-data-client",

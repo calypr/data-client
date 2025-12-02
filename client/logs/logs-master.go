@@ -40,7 +40,7 @@ func CloseAll() {
 	errorSlice = append(errorSlice, closeSucceededLog())
 	errorSlice = append(errorSlice, closeFailedLog())
 	errorSlice = append(errorSlice, CloseMessageLog())
-	SetToConsole()
+	// SetToConsole()
 	for _, err := range errorSlice {
 		if err != nil {
 			log.Println(err.Error())
