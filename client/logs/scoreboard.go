@@ -22,7 +22,7 @@ func InitScoreBoard(maxRetryCount int) {
 func PrintScoreBoard() {
 	if scoreBoard != nil && log.Writer() != io.Discard {
 		sum := 0
-		fmt.Fprintln(os.Stderr, "\n\nSubmission Results")
+		log.Println("\n\nSubmission Results")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 0, ' ', tabwriter.Debug)
 		for i, score := range scoreBoard {
 			if i == 1 {

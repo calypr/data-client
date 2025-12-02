@@ -1,7 +1,7 @@
 package g3cmd
 
 import (
-	"fmt"
+	// "fmt"
 	"log"
 	"os"
 	"strconv"
@@ -28,7 +28,7 @@ var RootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "root cmd error:", err)
+		log.Println("root cmd error:", err)
 		os.Exit(1)
 	}
 }

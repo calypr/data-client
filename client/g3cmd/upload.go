@@ -1,7 +1,6 @@
 package g3cmd
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -71,7 +70,7 @@ func init() {
 			}
 			uploadRequestObjects := make([]commonUtils.FileUploadRequestObject, 0, len(filePaths))
 
-			fmt.Fprintln(os.Stderr, "\nThe following file(s) has been found in path \""+uploadPath+"\" and will be uploaded:")
+			log.Println("\nThe following file(s) has been found in path \"" + uploadPath + "\" and will be uploaded:")
 			for _, filePath := range filePaths {
 				// Use ProcessFilename to create the unified object (GUID is empty here, as this command requests a new GUID)
 				// ProcessFilename signature: (uploadPath, filePath, objectId, includeSubDirName, includeMetadata)
@@ -88,13 +87,14 @@ func init() {
 				// Optional: Display file path before proceeding
 				file, _ := os.Open(filePath)
 				if fi, _ := file.Stat(); !fi.IsDir() {
-					fmt.Fprintln(os.Stderr, "\t"+filePath)
+					log.Println("\t" + filePath)
 				}
 				file.Close()
 
 				uploadRequestObjects = append(uploadRequestObjects, furObject)
 			}
-			fmt.Fprintln(os.Stderr)
+			// fmt.Fprintln(os.Stderr)
+			log.Println()
 
 			if len(uploadRequestObjects) == 0 {
 				log.Println("No valid file upload requests were created.")
