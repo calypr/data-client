@@ -47,7 +47,7 @@ func init() {
 				}
 				cred.AccessToken = ""
 			}
-			err := jwt.UpdateConfig(cred)
+			err := jwt.UpdateConfig(log.Default(), cred)
 			if err != nil {
 				log.Println(err.Error())
 			}

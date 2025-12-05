@@ -159,12 +159,22 @@ func (conf *Configure) UpdateConfigFile(profileConfig Credential) error {
 		return errs
 	}
 
-	cfg.Section(profileConfig.Profile).Key("key_id").SetValue(profileConfig.KeyId)
-	cfg.Section(profileConfig.Profile).Key("api_key").SetValue(profileConfig.APIKey)
-	cfg.Section(profileConfig.Profile).Key("access_token").SetValue(profileConfig.AccessToken)
-	cfg.Section(profileConfig.Profile).Key("api_endpoint").SetValue(profileConfig.APIEndpoint)
-	cfg.Section(profileConfig.Profile).Key("use_shepherd").SetValue(profileConfig.UseShepherd)
-	cfg.Section(profileConfig.Profile).Key("min_shepherd_version").SetValue(profileConfig.MinShepherdVersion)
+	section := cfg.Section(profileConfig.Profile)
+	if profileConfig.KeyId != "" {
+		section.Key("key_id").SetValue(profileConfig.KeyId)
+	}
+	if profileConfig.APIKey != "" {
+		section.Key("api_key").SetValue(profileConfig.APIKey)
+	}
+	if profileConfig.AccessToken != "" {
+		section.Key("access_token").SetValue(profileConfig.AccessToken)
+	}
+	if profileConfig.APIEndpoint != "" {
+		section.Key("api_endpoint").SetValue(profileConfig.APIEndpoint)
+	}
+
+	section.Key("use_shepherd").SetValue(profileConfig.UseShepherd)
+	section.Key("min_shepherd_version").SetValue(profileConfig.MinShepherdVersion)
 	err = cfg.SaveTo(configPath)
 	if err != nil {
 		errs := fmt.Errorf("error occurred when saving config file: %s", err.Error())

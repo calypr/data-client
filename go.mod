@@ -1,10 +1,9 @@
 module github.com/calypr/data-client
 
-go 1.21
-
-toolchain go1.24.2
+go 1.24.2
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/golang/mock v1.6.0
 	github.com/hashicorp/go-version v1.4.0
 	github.com/mitchellh/go-homedir v1.1.0
@@ -15,7 +14,6 @@ require (
 )
 
 require (
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
@@ -26,7 +24,3 @@ require (
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace gopkg.in/yaml.v2 => gopkg.in/yaml.v2 v2.4.0
-
-replace gopkg.in/yaml.v3 => gopkg.in/yaml.v3 v3.0.1
