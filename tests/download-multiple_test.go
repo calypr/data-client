@@ -18,9 +18,6 @@ import (
 func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	testFileName := "test-file"
 	testFileSize := int64(120)
 	mockCtrl := gomock.NewController(t)
@@ -47,11 +44,11 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(true, nil)
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
+		GetResponse(commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
 		Return("", &testResponse, nil)
 	// ----------
 
@@ -70,9 +67,6 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -81,11 +75,11 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(true, nil)
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
+		GetResponse(commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
 		Return("", nil, fmt.Errorf("Error getting metadata from Shepherd"))
 	// ----------
 
@@ -106,9 +100,6 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	testFileName := "test-file"
 	testFileSize := int64(120)
 	mockCtrl := gomock.NewController(t)
@@ -118,11 +109,11 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{FileName: testFileName, Size: testFileSize}, nil)
 	// ----------
 
@@ -141,9 +132,6 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -152,11 +140,11 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{}, fmt.Errorf("Error downloading file from Indexd"))
 	// ----------
 

@@ -10,9 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var conf jwt.Configure // Why is this a global variable?
-
 func init() {
+	var profile string
 	var credFile string
 	var fenceToken string
 	var apiEndpoint string
@@ -28,6 +27,7 @@ func init() {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
 
+			conf := jwt.Configure{}
 			cred := &jwt.Credential{
 				Profile:            profile,
 				APIEndpoint:        apiEndpoint,

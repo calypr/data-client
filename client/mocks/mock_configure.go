@@ -107,3 +107,16 @@ func (m *MockConfigureInterface) ValidateUrl(arg0 string) (*url.URL, error) {
 func (mr *MockConfigureInterfaceMockRecorder) ValidateUrl(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateUrl", reflect.TypeOf((*MockConfigureInterface)(nil).ValidateUrl), arg0)
 }
+
+// IsValidCredential mocks base method
+func (m *MockConfigureInterface) IsValidCredential(arg0 jwt.Credential) (bool, error) {
+	ret := m.ctrl.Call(m, "IsValidCredential", arg0)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsValidCredential indicates an expected call of IsValidCredential
+func (mr *MockConfigureInterfaceMockRecorder) IsValidCredential(arg0 interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsValidCredential", reflect.TypeOf((*MockConfigureInterface)(nil).IsValidCredential), arg0)
+}

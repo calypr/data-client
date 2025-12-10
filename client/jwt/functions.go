@@ -19,13 +19,20 @@ import (
 	"github.com/hashicorp/go-version"
 )
 
+func NewFunctions(config ConfigureInterface, request RequestInterface) FunctionInterface {
+	return &Functions{
+		Config:  config,
+		Request: request,
+	}
+}
+
 type Functions struct {
 	Request RequestInterface
 	Config  ConfigureInterface
 }
 
 type FunctionInterface interface {
-	CheckPrivileges(profileConfig *Credential) (string, map[string]interface{}, error)
+	CheckPrivileges(profileConfig *Credential) (string, map[string]any, error)
 	CheckForShepherdAPI(profileConfig *Credential) (bool, error)
 	GetResponse(profileConfig *Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error)
 	DoRequestWithSignedHeader(profileConfig *Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (JsonMessage, error)
@@ -277,12 +284,12 @@ func (f *Functions) DoRequestWithSignedHeader(profileConfig *Credential, endpoin
 	return msg, err
 }
 
-func (f *Functions) CheckPrivileges(profileConfig *Credential) (string, map[string]interface{}, error) {
+func (f *Functions) CheckPrivileges(profileConfig *Credential) (string, map[string]any, error) {
 	/*
 	   Return user privileges from specified profile
 	*/
 	var err error
-	var data map[string]interface{}
+	var data map[string]any
 
 	host, resp, err := f.GetResponse(profileConfig, commonUtils.FenceUserEndpoint, "GET", "", nil)
 	if err != nil {
@@ -296,11 +303,11 @@ func (f *Functions) CheckPrivileges(profileConfig *Credential) (string, map[stri
 		return "", nil, errors.New("Error occurred when unmarshalling response: " + err.Error())
 	}
 
-	resourceAccess, ok := data["authz"].(map[string]interface{})
+	resourceAccess, ok := data["authz"].(map[string]any)
 
 	// If the `authz` section (Arborist permissions) is empty or missing, try get `project_access` section (Fence permissions)
 	if len(resourceAccess) == 0 || !ok {
-		resourceAccess, ok = data["project_access"].(map[string]interface{})
+		resourceAccess, ok = data["project_access"].(map[string]any)
 		if !ok {
 			return "", nil, errors.New("Not possible to read access privileges of user")
 		}

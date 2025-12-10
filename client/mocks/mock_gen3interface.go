@@ -37,61 +37,61 @@ func (m *MockGen3Interface) EXPECT() *MockGen3InterfaceMockRecorder {
 }
 
 // CheckForShepherdAPI mocks base method
-func (m *MockGen3Interface) CheckForShepherdAPI(arg0 *jwt.Credential) (bool, error) {
-	ret := m.ctrl.Call(m, "CheckForShepherdAPI", arg0)
+func (m *MockGen3Interface) CheckForShepherdAPI() (bool, error) {
+	ret := m.ctrl.Call(m, "CheckForShepherdAPI")
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CheckForShepherdAPI indicates an expected call of CheckForShepherdAPI
-func (mr *MockGen3InterfaceMockRecorder) CheckForShepherdAPI(arg0 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckForShepherdAPI", reflect.TypeOf((*MockGen3Interface)(nil).CheckForShepherdAPI), arg0)
+func (mr *MockGen3InterfaceMockRecorder) CheckForShepherdAPI() *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckForShepherdAPI", reflect.TypeOf((*MockGen3Interface)(nil).CheckForShepherdAPI))
 }
 
 // CheckPrivileges mocks base method
-func (m *MockGen3Interface) CheckPrivileges(arg0 *jwt.Credential) (string, map[string]interface{}, error) {
-	ret := m.ctrl.Call(m, "CheckPrivileges", arg0)
+func (m *MockGen3Interface) CheckPrivileges() (string, map[string]any, error) {
+	ret := m.ctrl.Call(m, "CheckPrivileges")
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(map[string]interface{})
+	ret1, _ := ret[1].(map[string]any)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
 // CheckPrivileges indicates an expected call of CheckPrivileges
-func (mr *MockGen3InterfaceMockRecorder) CheckPrivileges(arg0 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPrivileges", reflect.TypeOf((*MockGen3Interface)(nil).CheckPrivileges), arg0)
+func (mr *MockGen3InterfaceMockRecorder) CheckPrivileges() *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPrivileges", reflect.TypeOf((*MockGen3Interface)(nil).CheckPrivileges))
 }
 
 // DoRequestWithSignedHeader mocks base method
-func (m *MockGen3Interface) DoRequestWithSignedHeader(arg0 *jwt.Credential, arg1, arg2 string, arg3 []byte) (jwt.JsonMessage, error) {
-	ret := m.ctrl.Call(m, "DoRequestWithSignedHeader", arg0, arg1, arg2, arg3)
+func (m *MockGen3Interface) DoRequestWithSignedHeader(arg1, arg2 string, arg3 []byte) (jwt.JsonMessage, error) {
+	ret := m.ctrl.Call(m, "DoRequestWithSignedHeader", arg1, arg2, arg3)
 	ret0, _ := ret[0].(jwt.JsonMessage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DoRequestWithSignedHeader indicates an expected call of DoRequestWithSignedHeader
-func (mr *MockGen3InterfaceMockRecorder) DoRequestWithSignedHeader(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoRequestWithSignedHeader", reflect.TypeOf((*MockGen3Interface)(nil).DoRequestWithSignedHeader), arg0, arg1, arg2, arg3)
+func (mr *MockGen3InterfaceMockRecorder) DoRequestWithSignedHeader(arg1, arg2, arg3 interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoRequestWithSignedHeader", reflect.TypeOf((*MockGen3Interface)(nil).DoRequestWithSignedHeader), arg1, arg2, arg3)
 }
 
 // GetHost mocks base method
-func (m *MockGen3Interface) GetHost(arg0 *jwt.Credential) (*url.URL, error) {
-	ret := m.ctrl.Call(m, "GetHost", arg0)
+func (m *MockGen3Interface) GetHost() (*url.URL, error) {
+	ret := m.ctrl.Call(m, "GetHost")
 	ret0, _ := ret[0].(*url.URL)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetHost indicates an expected call of GetHost
-func (mr *MockGen3InterfaceMockRecorder) GetHost(arg0 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHost", reflect.TypeOf((*MockGen3Interface)(nil).GetHost), arg0)
+func (mr *MockGen3InterfaceMockRecorder) GetHost() *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHost", reflect.TypeOf((*MockGen3Interface)(nil).GetHost))
 }
 
 // GetResponse mocks base method
-func (m *MockGen3Interface) GetResponse(arg0 *jwt.Credential, arg1, arg2, arg3 string, arg4 []byte) (string, *http.Response, error) {
-	ret := m.ctrl.Call(m, "GetResponse", arg0, arg1, arg2, arg3, arg4)
+func (m *MockGen3Interface) GetResponse(arg1, arg2, arg3 string, arg4 []byte) (string, *http.Response, error) {
+	ret := m.ctrl.Call(m, "GetResponse", arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(*http.Response)
 	ret2, _ := ret[2].(error)
@@ -99,8 +99,33 @@ func (m *MockGen3Interface) GetResponse(arg0 *jwt.Credential, arg1, arg2, arg3 s
 }
 
 // GetResponse indicates an expected call of GetResponse
-func (mr *MockGen3InterfaceMockRecorder) GetResponse(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResponse", reflect.TypeOf((*MockGen3Interface)(nil).GetResponse), arg0, arg1, arg2, arg3, arg4)
+func (mr *MockGen3InterfaceMockRecorder) GetResponse(arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResponse", reflect.TypeOf((*MockGen3Interface)(nil).GetResponse), arg1, arg2, arg3, arg4)
+}
+
+// GetCredential mocks base method
+func (m *MockGen3Interface) GetCredential() *jwt.Credential {
+	ret := m.ctrl.Call(m, "GetCredential")
+	ret0, _ := ret[0].(*jwt.Credential)
+	return ret0
+}
+
+// GetCredential indicates an expected call of GetCredential
+func (mr *MockGen3InterfaceMockRecorder) GetCredential() *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCredential", reflect.TypeOf((*MockGen3Interface)(nil).GetCredential))
+}
+
+// DeleteRecord mocks base method
+func (m *MockGen3Interface) DeleteRecord(arg0 string) (string, error) {
+	ret := m.ctrl.Call(m, "DeleteRecord", arg0)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteRecord indicates an expected call of DeleteRecord
+func (mr *MockGen3InterfaceMockRecorder) DeleteRecord(arg0 interface{}) *gomock.Call {
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecord", reflect.TypeOf((*MockGen3Interface)(nil).DeleteRecord), arg0)
 }
 
 // MakeARequest mocks base method

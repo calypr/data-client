@@ -14,7 +14,6 @@ import (
 )
 
 var profile string
-var profileConfig jwt.Credential
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -47,6 +46,7 @@ func initConfig() {
 	logs.InitMessageLog(profile)
 	logs.SetToBoth()
 
+	conf := jwt.Configure{}
 	// init local config file
 	err := conf.InitConfigFile()
 	if err != nil {
