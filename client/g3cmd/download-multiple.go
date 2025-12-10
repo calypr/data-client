@@ -28,14 +28,14 @@ func AskGen3ForFileInfo(gen3Interface Gen3Interface, guid string, protocol strin
 
 	// If the commons has the newer Shepherd API deployed, get the filename and file size from the Shepherd API.
 	// Otherwise, fall back on Indexd and Fence.
-	hasShepherd, err := gen3Interface.CheckForShepherdAPI(&profileConfig)
+	hasShepherd, err := gen3Interface.CheckForShepherdAPI()
 	if err != nil {
 		log.Println("Error occurred when checking for Shepherd API: " + err.Error())
 		log.Println("Falling back to Indexd...")
 	}
 	if hasShepherd {
 		endPointPostfix := commonUtils.ShepherdEndpoint + "/objects/" + guid
-		_, res, err := gen3Interface.GetResponse(&profileConfig, endPointPostfix, "GET", "", nil)
+		_, res, err := gen3Interface.GetResponse(endPointPostfix, "GET", "", nil)
 		if err != nil {
 			log.Println("Error occurred when querying filename from Shepherd: " + err.Error())
 			log.Println("Using GUID for filename instead.")
@@ -68,7 +68,7 @@ func AskGen3ForFileInfo(gen3Interface Gen3Interface, guid string, protocol strin
 	} else {
 		// Attempt to get the filename from Indexd
 		endPointPostfix := commonUtils.IndexdIndexEndpoint + "/" + guid
-		indexdMsg, err := gen3Interface.DoRequestWithSignedHeader(&profileConfig, endPointPostfix, "", nil)
+		indexdMsg, err := gen3Interface.DoRequestWithSignedHeader(endPointPostfix, "", nil)
 		if err != nil {
 			log.Println("Error occurred when querying filename from IndexD: " + err.Error())
 			log.Println("Using GUID for filename instead.")
@@ -284,7 +284,7 @@ func batchDownload(g3 Gen3Interface, batchFDRSlice []commonUtils.FileDownloadRes
 	return succeeded
 }
 
-func downloadFile(objects []ManifestObject, downloadPath string, filenameFormat string, rename bool, noPrompt bool, protocol string, numParallel int, skipCompleted bool) error {
+func downloadFile(g3i Gen3Interface, objects []ManifestObject, downloadPath string, filenameFormat string, rename bool, noPrompt bool, protocol string, numParallel int, skipCompleted bool) error {
 	if numParallel < 1 {
 		return fmt.Errorf("Invalid value for option \"numparallel\": must be a positive integer! Please check your input.")
 	}
@@ -320,8 +320,6 @@ func downloadFile(objects []ManifestObject, downloadPath string, filenameFormat 
 	skippedFiles := make([]RenamedOrSkippedFileInfo, 0)
 	fdrObjects := make([]commonUtils.FileDownloadResponseObject, 0)
 
-	gen3Interface := NewGen3Interface()
-
 	log.Printf("Total number of objects in manifest: %d", len(objects))
 	log.Println("Preparing file info for each file, please wait...")
 	fileInfoBar := pb.New(len(objects)).SetRefreshRate(time.Millisecond * 10)
@@ -336,7 +334,7 @@ func downloadFile(objects []ManifestObject, downloadPath string, filenameFormat 
 		filesize := obj.Filesize
 		// only queries Gen3 services if any of these 2 values doesn't exists in manifest
 		if filename == "" || filesize == 0 {
-			filename, filesize = AskGen3ForFileInfo(gen3Interface, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamedFiles)
+			filename, filesize = AskGen3ForFileInfo(g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamedFiles)
 		}
 		fdrObject = commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename}
 		if !rename {
@@ -362,12 +360,12 @@ func downloadFile(objects []ManifestObject, downloadPath string, filenameFormat 
 		if len(batchFDRSlice) < workers {
 			batchFDRSlice = append(batchFDRSlice, fdrObject)
 		} else {
-			totalCompeleted += batchDownload(gen3Interface, batchFDRSlice, protocolText, workers, errCh)
+			totalCompeleted += batchDownload(g3i, batchFDRSlice, protocolText, workers, errCh)
 			batchFDRSlice = make([]commonUtils.FileDownloadResponseObject, 0)
 			batchFDRSlice = append(batchFDRSlice, fdrObject)
 		}
 	}
-	totalCompeleted += batchDownload(gen3Interface, batchFDRSlice, protocolText, workers, errCh) // download remainders
+	totalCompeleted += batchDownload(g3i, batchFDRSlice, protocolText, workers, errCh) // download remainders
 
 	log.Printf("%d files downloaded.\n", totalCompeleted)
 
@@ -408,17 +406,10 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
-			var err error
-			profileConfig, err = conf.ParseConfig(profile)
+
+			g3I, err := NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
-			}
-
-			valid, err := conf.IsValidCredential(profileConfig)
-			if err != nil && valid {
-				log.Println(err)
-			} else if !valid {
-				log.Fatal(err)
 			}
 
 			manifestPath, _ = commonUtils.GetAbsolutePath(manifestPath)
@@ -450,7 +441,7 @@ func init() {
 				log.Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
 			}
 
-			err = downloadFile(objects, downloadPath, filenameFormat, rename, noPrompt, protocol, numParallel, skipCompleted)
+			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, numParallel, skipCompleted)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}

@@ -15,6 +15,7 @@ func init() {
 	var rename bool
 	var noPrompt bool
 	var skipCompleted bool
+	var profile string
 
 	var downloadSingleCmd = &cobra.Command{
 		Use:     "download-single",
@@ -24,24 +25,17 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
-			var err error
-			profileConfig, err = conf.ParseConfig(profile)
+			
+			g3I, err := NewGen3Interface(profile)
 			if err != nil {
-				log.Println(err.Error())
-			}
-
-			valid, err := conf.IsValidCredential(profileConfig)
-			if err != nil && valid {
-				log.Println(err)
-			} else if !valid {
-				log.Fatal(err)
+				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
 			obj := ManifestObject{
 				ObjectID: guid,
 			}
 			objects := []ManifestObject{obj}
-			err = downloadFile(objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
+			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
 			if err != nil {
 				log.Println(err.Error())
 			}

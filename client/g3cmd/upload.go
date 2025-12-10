@@ -37,23 +37,13 @@ func init() {
 			logs.InitScoreBoard(MaxRetryCount)
 
 			// Instantiate interface to Gen3
-			gen3Interface := NewGen3Interface()
-			var err error
-			profileConfig, err = conf.ParseConfig(profile)
+			gen3Interface, err := NewGen3Interface(profile)
 			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-
-			valid, err := conf.IsValidCredential(profileConfig)
-			if err != nil && valid {
-				log.Println(err)
-			} else if !valid {
-				log.Fatal(err)
+				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
 			if hasMetadata {
-				hasShepherd, err := gen3Interface.CheckForShepherdAPI(&profileConfig)
+				hasShepherd, err := gen3Interface.CheckForShepherdAPI()
 				if err != nil {
 					log.Printf("WARNING: Error when checking for Shepherd API: %v", err)
 				} else {
@@ -144,7 +134,7 @@ func init() {
 				}
 			}
 			if !logs.IsFailedLogMapEmpty() {
-				retryUpload(logs.GetFailedLogMap())
+				retryUpload(gen3Interface, logs.GetFailedLogMap())
 			}
 			logs.PrintScoreBoard()
 			logs.CloseAll()

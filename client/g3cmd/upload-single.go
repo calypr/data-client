@@ -52,18 +52,9 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	}
 
 	// Instantiate interface to Gen3
-	gen3Interface := NewGen3Interface()
-
-	// done so that profileConfig is written globally
-	var err error
-	profileConfig, err = conf.ParseConfig(profile)
+	gen3Interface, err := NewGen3Interface(profile)
 	if err != nil {
-		return err
-	}
-
-	valid, err := conf.IsValidCredential(profileConfig)
-	if err != nil && !valid {
-		return err
+		return fmt.Errorf("failed to parse config on profile %s: %w", profile, err)
 	}
 
 	filePaths, err := commonUtils.ParseFilePaths(filePath, false)

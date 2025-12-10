@@ -32,21 +32,12 @@ func init() {
 			fmt.Printf("Notice: this is the upload method which requires the user to provide GUIDs. In this method files will be uploaded to specified GUIDs.\nIf your intention is to upload files without pre-existing GUIDs, consider to use \"./data-client upload\" instead.\n\n")
 
 			// Instantiate interface to Gen3
-			gen3Interface := NewGen3Interface()
-			var err error
-			profileConfig, err = conf.ParseConfig(profile)
+			gen3Interface, err := NewGen3Interface(profile)
 			if err != nil {
-				log.Fatalln("Error occurred during parsing config file for hostname: " + err.Error())
+				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
-			valid, err := conf.IsValidCredential(profileConfig)
-			if err != nil && valid {
-				log.Println(err)
-			} else if !valid {
-				log.Fatal(err)
-			}
-
-			host, err := gen3Interface.GetHost(&profileConfig)
+			host, err := gen3Interface.GetHost()
 			if err != nil {
 				log.Fatalln("Error occurred during parsing config file for hostname: " + err.Error())
 			}
@@ -146,13 +137,13 @@ func init() {
 			}
 
 			if len(multipartObjects) > 0 {
-				err := processMultipartUpload(gen3Interface, multipartObjects, bucketName, includeSubDirName, absUploadPath) // Assuming updated
+				err := processMultipartUpload(gen3Interface, multipartObjects, bucketName, includeSubDirName, absUploadPath)
 				if err != nil {
 					log.Fatalln(err.Error())
 				}
 			}
 			if !logs.IsFailedLogMapEmpty() {
-				retryUpload(logs.GetFailedLogMap())
+				retryUpload(gen3Interface, logs.GetFailedLogMap())
 			}
 			logs.PrintScoreBoard()
 			logs.CloseAll()
@@ -224,14 +215,10 @@ func startSingleFileUpload(gen3Interface Gen3Interface, furObject commonUtils.Fi
 }
 
 func processMultipartUpload(gen3Interface Gen3Interface, multipartObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) error {
-	var err error
-	profileConfig, err = conf.ParseConfig(profile)
-	if err != nil {
-		return err
-	}
-	if profileConfig.UseShepherd == "true" ||
-		profileConfig.UseShepherd == "" && commonUtils.DefaultUseShepherd == true {
-		return fmt.Errorf("Error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again.\n", profile)
+	cred := gen3Interface.GetCredential()
+	if cred.UseShepherd == "true" ||
+		cred.UseShepherd == "" && commonUtils.DefaultUseShepherd == true {
+		return fmt.Errorf("Error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again.\n", cred.Profile)
 	}
 	log.Println("Multipart uploading....")
 
@@ -239,7 +226,7 @@ func processMultipartUpload(gen3Interface Gen3Interface, multipartObjects []comm
 		// No more redundant ProcessFilename call!
 		// Pass the complete FileUploadRequestObject to the streamlined multipartUpload.
 		// Enable progress bar for batch uploads (interactive CLI use)
-		err = multipartUpload(gen3Interface, furObject, 0, bucketName, true)
+		err := MultipartUpload(gen3Interface, furObject, 0, bucketName, true)
 
 		if err != nil {
 			log.Println(err.Error())

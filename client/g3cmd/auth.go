@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-
+	var profile string
 	var authCmd = &cobra.Command{
 		Use:     "auth",
 		Short:   "Return resource access privileges from profile",
@@ -19,21 +19,11 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
-			gen3Interface := NewGen3Interface()
-			profileConfig, err := conf.ParseConfig(profile)
+			gen3Interface, err := NewGen3Interface(profile)
 			if err != nil {
-				log.Fatalf("Fatal config parse error: %s\n", err)
+				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
-
-			valid, err := conf.IsValidCredential(profileConfig)
-			if err != nil && valid {
-				log.Println(err)
-			} else if !valid {
-				log.Fatal(err)
-			}
-
-			host, resourceAccess, err := gen3Interface.CheckPrivileges(&profileConfig)
-
+			host, resourceAccess, err := gen3Interface.CheckPrivileges()
 			if err != nil {
 				log.Fatalf("Fatal authentication error: %s\n", err)
 			} else {

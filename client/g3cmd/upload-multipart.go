@@ -60,23 +60,13 @@ var multipartUploadLock sync.Mutex
 // UploadSingleMultipart uploads a single file to Gen3 using the multipart upload strategy.
 // This is the preferred method for large files as it provides resilience through retries on a per-chunk basis.
 func UploadSingleMultipart(profile string, filePath string, bucketName string, guid string, enableLogs bool) error {
-	// Instantiate interface to Gen3
-	//
 	if !enableLogs {
 		log.SetOutput(io.Discard)
 	}
-	gen3Interface := NewGen3Interface()
-
-	// The profileConfig is used by underlying functions, so it must be parsed and set globally.
-	var err error
-	profileConfig, err = conf.ParseConfig(profile)
+	// Instantiate interface to Gen3
+	gen3Interface, err := NewGen3Interface(profile)
 	if err != nil {
 		return fmt.Errorf("error parsing profile config: %w", err)
-	}
-
-	valid, err := conf.IsValidCredential(profileConfig)
-	if err != nil && !valid {
-		return err
 	}
 
 	// Validate the file path to ensure it points to a single, existing file.
@@ -104,65 +94,7 @@ func UploadSingleMultipart(profile string, filePath string, bucketName string, g
 	// Call the existing, robust multipartUpload function to perform the upload.
 	// This function handles all the complex logic of chunking, concurrency, API calls, and retries.
 	// We pass 0 for the initial retryCount and true to show progress bar for interactive use.
-	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, true)
-	if err != nil {
-		// The underlying function will have already logged the specifics.
-		// We return a clean error to the caller.
-		return fmt.Errorf("multipart upload failed for %s: %w", absFilePath, err)
-	}
-
-	// The `multipartUpload` function prints its own success message upon completion.
-	return nil
-}
-
-// UploadSingleMultipartWithLogWriter uploads a single file to Gen3 using the multipart upload strategy.
-// This version allows specifying where logs should be written (e.g., os.Stderr, a file, or io.Discard).
-// Use this when calling from a process that reserves stdout for structured communication.
-// Progress bars are disabled to keep logs clean and parseable.
-func UploadSingleMultipartWithLogWriter(profile string, filePath string, bucketName string, guid string, logWriter io.Writer) error {
-	// Set log output to the specified writer
-	log.SetOutput(logWriter)
-
-	gen3Interface := NewGen3Interface()
-
-	// The profileConfig is used by underlying functions, so it must be parsed and set globally.
-	var err error
-	profileConfig, err = conf.ParseConfig(profile)
-	if err != nil {
-		return fmt.Errorf("error parsing profile config: %w", err)
-	}
-
-	valid, err := conf.IsValidCredential(profileConfig)
-	if err != nil && !valid {
-		return err
-	}
-
-	// Validate the file path to ensure it points to a single, existing file.
-	filePaths, err := commonUtils.ParseFilePaths(filePath, false)
-	if err != nil {
-		return fmt.Errorf("file path parsing error: %w", err)
-	}
-	if len(filePaths) != 1 {
-		return fmt.Errorf("path must resolve to a single file, but found %d", len(filePaths))
-	}
-
-	absFilePath := filePaths[0]
-	if _, err := os.Stat(absFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("the file specified \"%s\" does not exist", absFilePath)
-	}
-
-	// Create the FileUploadRequestObject struct required by the multipartUpload function.
-	fileInfo := commonUtils.FileUploadRequestObject{
-		FilePath:     absFilePath,
-		Filename:     filepath.Base(absFilePath),
-		FileMetadata: commonUtils.FileMetadata{},
-		GUID:         guid,
-	}
-
-	// Call the existing, robust multipartUpload function to perform the upload.
-	// This function handles all the complex logic of chunking, concurrency, API calls, and retries.
-	// We pass 0 for the initial retryCount and FALSE to disable progress bar for clean logs.
-	err = multipartUpload(gen3Interface, fileInfo, 0, bucketName, false)
+	err = MultipartUpload(gen3Interface, fileInfo, 0, bucketName, true)
 	if err != nil {
 		// The underlying function will have already logged the specifics.
 		// We return a clean error to the caller.
@@ -191,7 +123,7 @@ func retry(attempts int, filePath string, guid string, f func() error) (err erro
 	return fmt.Errorf("After %d attempts, last error: %s", attempts, err)
 }
 
-func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, retryCount int, bucketName string, showProgressBar bool) error {
+func MultipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, retryCount int, bucketName string, showProgressBar bool) error {
 	// Use furObject.FilePath
 	file, err := os.Open(furObject.FilePath)
 	if err != nil {
@@ -401,7 +333,7 @@ func multipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestOb
 			}
 		}
 		failedChunksMutex.Unlock()
-		return fmt.Errorf("FAILED multipart upload for %s: Total number of received ETags doesn't match the total number of chunks; missing chunks: %v; reasons: %s", furObject.Filename, missing, strings.Join(reasons, "; "))
+		log.Printf("FAILED multipart upload for %s: Total number of received ETags doesn't match the total number of chunks; missing chunks: %v; reasons: %s", furObject.Filename, missing, strings.Join(reasons, "; "))
 
 		// Log which parts we actually received
 		receivedParts := make([]int, len(parts))
