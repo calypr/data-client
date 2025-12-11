@@ -3,6 +3,7 @@ package g3cmd
 import (
 	"log"
 
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -25,8 +26,8 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
-			
-			g3I, err := NewGen3Interface(profile)
+
+			g3I, err := client.NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}

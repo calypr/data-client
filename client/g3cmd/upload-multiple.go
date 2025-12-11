@@ -2,6 +2,7 @@ package g3cmd
 
 // Deprecated: Use upload instead.
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +34,7 @@ func init() {
 			fmt.Printf("Notice: this is the upload method which requires the user to provide GUIDs. In this method files will be uploaded to specified GUIDs.\nIf your intention is to upload files without pre-existing GUIDs, consider to use \"./data-client upload\" instead.\n\n")
 
 			// Instantiate interface to Gen3
-			gen3Interface, err := NewGen3Interface(profile)
+			gen3Interface, err := client.NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -164,7 +166,7 @@ func init() {
 	RootCmd.AddCommand(uploadMultipleCmd)
 }
 
-func processSingleUploads(gen3Interface Gen3Interface, singleObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) {
+func processSingleUploads(gen3Interface client.Gen3Interface, singleObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) {
 	for _, furObject := range singleObjects {
 		filePath := furObject.FilePath
 		file, err := os.Open(filePath)
@@ -178,7 +180,7 @@ func processSingleUploads(gen3Interface Gen3Interface, singleObjects []commonUti
 	}
 }
 
-func startSingleFileUpload(gen3Interface Gen3Interface, furObject commonUtils.FileUploadRequestObject, file *os.File, bucketName string) {
+func startSingleFileUpload(gen3Interface client.Gen3Interface, furObject commonUtils.FileUploadRequestObject, file *os.File, bucketName string) {
 
 	fi, err := file.Stat()
 	if err != nil {
@@ -197,7 +199,7 @@ func startSingleFileUpload(gen3Interface Gen3Interface, furObject commonUtils.Fi
 	logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
 	furObject.PresignedURL = respURL
 
-	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file)
+	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file, nil)
 	if err != nil {
 		file.Close()
 		log.Printf("Error occurred during request generation: %s\n", err.Error())
@@ -214,11 +216,11 @@ func startSingleFileUpload(gen3Interface Gen3Interface, furObject commonUtils.Fi
 	file.Close()
 }
 
-func processMultipartUpload(gen3Interface Gen3Interface, multipartObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) error {
+func processMultipartUpload(gen3Interface client.Gen3Interface, multipartObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) error {
 	cred := gen3Interface.GetCredential()
 	if cred.UseShepherd == "true" ||
 		cred.UseShepherd == "" && commonUtils.DefaultUseShepherd == true {
-		return fmt.Errorf("Error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again.\n", cred.Profile)
+		return fmt.Errorf("error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again", cred.Profile)
 	}
 	log.Println("Multipart uploading....")
 
@@ -226,7 +228,7 @@ func processMultipartUpload(gen3Interface Gen3Interface, multipartObjects []comm
 		// No more redundant ProcessFilename call!
 		// Pass the complete FileUploadRequestObject to the streamlined multipartUpload.
 		// Enable progress bar for batch uploads (interactive CLI use)
-		err := MultipartUpload(gen3Interface, furObject, 0, bucketName, true)
+		err := MultipartUpload(context.Background(), gen3Interface, furObject, bucketName, true)
 
 		if err != nil {
 			log.Println(err.Error())

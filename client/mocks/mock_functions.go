@@ -5,11 +5,12 @@
 package mocks
 
 import (
-	gomock "github.com/golang/mock/gomock"
-	jwt "github.com/calypr/data-client/client/jwt"
 	http "net/http"
 	url "net/url"
 	reflect "reflect"
+
+	jwt "github.com/calypr/data-client/client/jwt"
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockFunctionInterface is a mock of FunctionInterface interface
@@ -44,21 +45,21 @@ func (m *MockFunctionInterface) CheckForShepherdAPI(arg0 *jwt.Credential) (bool,
 }
 
 // CheckForShepherdAPI indicates an expected call of CheckForShepherdAPI
-func (mr *MockFunctionInterfaceMockRecorder) CheckForShepherdAPI(arg0 interface{}) *gomock.Call {
+func (mr *MockFunctionInterfaceMockRecorder) CheckForShepherdAPI(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckForShepherdAPI", reflect.TypeOf((*MockFunctionInterface)(nil).CheckForShepherdAPI), arg0)
 }
 
 // CheckPrivileges mocks base method
-func (m *MockFunctionInterface) CheckPrivileges(arg0 *jwt.Credential) (string, map[string]interface{}, error) {
+func (m *MockFunctionInterface) CheckPrivileges(arg0 *jwt.Credential) (string, map[string]any, error) {
 	ret := m.ctrl.Call(m, "CheckPrivileges", arg0)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(map[string]interface{})
+	ret1, _ := ret[1].(map[string]any)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
 // CheckPrivileges indicates an expected call of CheckPrivileges
-func (mr *MockFunctionInterfaceMockRecorder) CheckPrivileges(arg0 interface{}) *gomock.Call {
+func (mr *MockFunctionInterfaceMockRecorder) CheckPrivileges(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPrivileges", reflect.TypeOf((*MockFunctionInterface)(nil).CheckPrivileges), arg0)
 }
 
@@ -71,7 +72,7 @@ func (m *MockFunctionInterface) DoRequestWithSignedHeader(arg0 *jwt.Credential, 
 }
 
 // DoRequestWithSignedHeader indicates an expected call of DoRequestWithSignedHeader
-func (mr *MockFunctionInterfaceMockRecorder) DoRequestWithSignedHeader(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockFunctionInterfaceMockRecorder) DoRequestWithSignedHeader(arg0, arg1, arg2, arg3 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoRequestWithSignedHeader", reflect.TypeOf((*MockFunctionInterface)(nil).DoRequestWithSignedHeader), arg0, arg1, arg2, arg3)
 }
 
@@ -84,7 +85,7 @@ func (m *MockFunctionInterface) GetHost(arg0 *jwt.Credential) (*url.URL, error) 
 }
 
 // GetHost indicates an expected call of GetHost
-func (mr *MockFunctionInterfaceMockRecorder) GetHost(arg0 interface{}) *gomock.Call {
+func (mr *MockFunctionInterfaceMockRecorder) GetHost(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHost", reflect.TypeOf((*MockFunctionInterface)(nil).GetHost), arg0)
 }
 
@@ -98,7 +99,7 @@ func (m *MockFunctionInterface) GetResponse(arg0 *jwt.Credential, arg1, arg2, ar
 }
 
 // GetResponse indicates an expected call of GetResponse
-func (mr *MockFunctionInterfaceMockRecorder) GetResponse(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockFunctionInterfaceMockRecorder) GetResponse(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResponse", reflect.TypeOf((*MockFunctionInterface)(nil).GetResponse), arg0, arg1, arg2, arg3, arg4)
 }
 
@@ -111,6 +112,6 @@ func (m *MockFunctionInterface) ParseFenceURLResponse(arg0 *http.Response) (jwt.
 }
 
 // ParseFenceURLResponse indicates an expected call of ParseFenceURLResponse
-func (mr *MockFunctionInterfaceMockRecorder) ParseFenceURLResponse(arg0 interface{}) *gomock.Call {
+func (mr *MockFunctionInterfaceMockRecorder) ParseFenceURLResponse(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseFenceURLResponse", reflect.TypeOf((*MockFunctionInterface)(nil).ParseFenceURLResponse), arg0)
 }

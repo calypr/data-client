@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -37,7 +38,7 @@ func init() {
 			logs.InitScoreBoard(MaxRetryCount)
 
 			// Instantiate interface to Gen3
-			gen3Interface, err := NewGen3Interface(profile)
+			gen3Interface, err := client.NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}

@@ -5,6 +5,7 @@ import (
 	"log"
 	"sort"
 
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +20,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
-			gen3Interface, err := NewGen3Interface(profile)
+			gen3Interface, err := client.NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
@@ -41,7 +42,7 @@ func init() {
 
 					for _, project := range resources {
 						// Sort by access name if permissions are from Fence
-						permissions := resourceAccess[project].([]interface{})
+						permissions := resourceAccess[project].([]any)
 						_, isFencePermission := permissions[0].(string)
 						if isFencePermission {
 							access := make([]string, 0, len(permissions))

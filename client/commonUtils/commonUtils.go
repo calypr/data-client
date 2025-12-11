@@ -12,7 +12,7 @@ import (
 	"time"
 
 	homedir "github.com/mitchellh/go-homedir"
-	pb "gopkg.in/cheggaaa/pb.v1"
+	"github.com/vbauerster/mpb/v8"
 )
 
 // DefaultUseShepherd sets whether gen3client will attempt to use the Shepherd / Object Management API
@@ -73,7 +73,8 @@ type FileUploadRequestObject struct {
 	GUID         string
 	PresignedURL string
 	Request      *http.Request
-	Bar          *pb.ProgressBar
+	Progress     *mpb.Progress
+	Bar          *mpb.Bar
 	Bucket       string `json:"bucket,omitempty"`
 }
 
@@ -95,7 +96,7 @@ type FileMetadata struct {
 	Authz   []string `json:"authz"`
 	Aliases []string `json:"aliases"`
 	// Metadata is an encoded JSON string of any arbitrary metadata the user wishes to upload.
-	Metadata map[string]interface{} `json:"metadata"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 // RetryObject defines a object for retry upload

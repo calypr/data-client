@@ -183,7 +183,7 @@ func TestGeneratePresignedURL_withShepherd(t *testing.T) {
 	testMetadata := commonUtils.FileMetadata{
 		Aliases:  []string{"test-alias-1", "test-alias-2"},
 		Authz:    []string{"authz-resource-1", "authz-resource-2"},
-		Metadata: map[string]interface{}{"arbitrary": "metadata"},
+		Metadata: map[string]any{"arbitrary": "metadata"},
 	}
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()

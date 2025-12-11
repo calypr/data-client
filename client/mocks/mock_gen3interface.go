@@ -6,11 +6,13 @@ package mocks
 
 import (
 	bytes "bytes"
-	gomock "github.com/golang/mock/gomock"
-	jwt "github.com/calypr/data-client/client/jwt"
 	http "net/http"
 	url "net/url"
 	reflect "reflect"
+
+	jwt "github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/logs"
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockGen3Interface is a mock of Gen3Interface interface
@@ -72,7 +74,7 @@ func (m *MockGen3Interface) DoRequestWithSignedHeader(arg1, arg2 string, arg3 []
 }
 
 // DoRequestWithSignedHeader indicates an expected call of DoRequestWithSignedHeader
-func (mr *MockGen3InterfaceMockRecorder) DoRequestWithSignedHeader(arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockGen3InterfaceMockRecorder) DoRequestWithSignedHeader(arg1, arg2, arg3 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoRequestWithSignedHeader", reflect.TypeOf((*MockGen3Interface)(nil).DoRequestWithSignedHeader), arg1, arg2, arg3)
 }
 
@@ -99,7 +101,7 @@ func (m *MockGen3Interface) GetResponse(arg1, arg2, arg3 string, arg4 []byte) (s
 }
 
 // GetResponse indicates an expected call of GetResponse
-func (mr *MockGen3InterfaceMockRecorder) GetResponse(arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockGen3InterfaceMockRecorder) GetResponse(arg1, arg2, arg3, arg4 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResponse", reflect.TypeOf((*MockGen3Interface)(nil).GetResponse), arg1, arg2, arg3, arg4)
 }
 
@@ -124,7 +126,7 @@ func (m *MockGen3Interface) DeleteRecord(arg0 string) (string, error) {
 }
 
 // DeleteRecord indicates an expected call of DeleteRecord
-func (mr *MockGen3InterfaceMockRecorder) DeleteRecord(arg0 interface{}) *gomock.Call {
+func (mr *MockGen3InterfaceMockRecorder) DeleteRecord(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecord", reflect.TypeOf((*MockGen3Interface)(nil).DeleteRecord), arg0)
 }
 
@@ -136,7 +138,11 @@ func (m *MockGen3Interface) MakeARequest(arg0, arg1, arg2, arg3 string, arg4 map
 	return ret0, ret1
 }
 
+func (m *MockGen3Interface) Logger() logs.Logger {
+	return logs.Default()
+}
+
 // MakeARequest indicates an expected call of MakeARequest
-func (mr *MockGen3InterfaceMockRecorder) MakeARequest(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
+func (mr *MockGen3InterfaceMockRecorder) MakeARequest(arg0, arg1, arg2, arg3, arg4, arg5, arg6 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MakeARequest", reflect.TypeOf((*MockGen3Interface)(nil).MakeARequest), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }

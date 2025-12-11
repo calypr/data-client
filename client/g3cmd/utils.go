@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 
-	"github.com/calypr/data-client/client/jwt"
-	pb "gopkg.in/cheggaaa/pb.v1"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 //go:generate mockgen -destination=./data-client/mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/g3cmd Gen3Interface
@@ -50,7 +51,7 @@ type ShepherdInitRequestObject struct {
 	} `json:"authz"`
 	Aliases []string `json:"aliases"`
 	// Metadata is an encoded JSON string of any arbitrary metadata the user wishes to upload.
-	Metadata map[string]interface{} `json:"metadata"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 // MultipartUploadRequestObject represents the payload that sends to FENCE for getting a presignedURL for a part
@@ -116,16 +117,14 @@ const FileSizeLimit = 5 * GB
 
 // MultipartFileSizeLimit is the maximun single file size for multipart upload (5TB)
 const MultipartFileSizeLimit = 5 * TB
-const maxMultipartNumber = 10000
 const minMultipartChunkSize = 5 * MB
-const defaultNumOfWorkers = 10
 
 // MaxRetryCount is the maximum retry number per record
 const MaxRetryCount = 5
 const maxWaitTime = 300
 
 // InitMultipartUpload helps sending requests to FENCE to init a multipart upload
-func InitMultipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, bucketName string) (string, string, error) {
+func InitMultipartUpload(g3 client.Gen3Interface, furObject commonUtils.FileUploadRequestObject, bucketName string) (string, string, error) {
 	// Use Filename and GUID directly from the unified request object
 	multipartInitObject := InitRequestObject{Filename: furObject.Filename, Bucket: bucketName, GUID: furObject.GUID}
 
@@ -143,13 +142,13 @@ func InitMultipartUpload(g3 Gen3Interface, furObject commonUtils.FileUploadReque
 		return "", "", errors.New("Error has occurred during multipart upload initialization, detailed error message: " + err.Error())
 	}
 	if msg.UploadID == "" || msg.GUID == "" {
-		return "", "", errors.New("Unknown error has occurred during multipart upload initialization. Please check logs from Gen3 services")
+		return "", "", errors.New("unknown error has occurred during multipart upload initialization. Please check logs from Gen3 services")
 	}
 	return msg.UploadID, msg.GUID, err
 }
 
 // GenerateMultipartPresignedURL helps sending requests to FENCE to get a presigned URL for a part during a multipart upload
-func GenerateMultipartPresignedURL(g3 Gen3Interface, key string, uploadID string, partNumber int, bucketName string) (string, error) {
+func GenerateMultipartPresignedURL(g3 client.Gen3Interface, key string, uploadID string, partNumber int, bucketName string) (string, error) {
 	multipartUploadObject := MultipartUploadRequestObject{Key: key, UploadID: uploadID, PartNumber: partNumber, Bucket: bucketName}
 	objectBytes, err := json.Marshal(multipartUploadObject)
 	if err != nil {
@@ -162,13 +161,13 @@ func GenerateMultipartPresignedURL(g3 Gen3Interface, key string, uploadID string
 		return "", errors.New("Error has occurred during multipart upload presigned url generation, detailed error message: " + err.Error())
 	}
 	if msg.PresignedURL == "" {
-		return "", errors.New("Unknown error has occurred during multipart upload presigned url generation. Please check logs from Gen3 services")
+		return "", errors.New("unknown error has occurred during multipart upload presigned url generation. Please check logs from Gen3 services")
 	}
 	return msg.PresignedURL, err
 }
 
 // CompleteMultipartUpload helps sending requests to FENCE to complete a multipart upload
-func CompleteMultipartUpload(g3 Gen3Interface, key string, uploadID string, parts []MultipartPartObject, bucketName string) error {
+func CompleteMultipartUpload(g3 client.Gen3Interface, key string, uploadID string, parts []MultipartPartObject, bucketName string) error {
 	multipartCompleteObject := MultipartCompleteRequestObject{Key: key, UploadID: uploadID, Parts: parts, Bucket: bucketName}
 	objectBytes, err := json.Marshal(multipartCompleteObject)
 	if err != nil {
@@ -183,7 +182,7 @@ func CompleteMultipartUpload(g3 Gen3Interface, key string, uploadID string, part
 }
 
 // GetDownloadResponse helps grabbing a response for downloading a file specified with GUID
-func GetDownloadResponse(g3 Gen3Interface, fdrObject *commonUtils.FileDownloadResponseObject, protocolText string) error {
+func GetDownloadResponse(g3 client.Gen3Interface, fdrObject *commonUtils.FileDownloadResponseObject, protocolText string) error {
 	// Attempt to get the file download URL from Shepherd if it's deployed in this commons,
 	// otherwise fall back to Fence.
 	var fileDownloadURL string
@@ -269,7 +268,7 @@ func sanitizeErrorMsg(errorMsg string, sensitiveURL string) string {
 }
 
 // GeneratePresignedURL helps sending requests to Shepherd/Fence and parsing the response in order to get presigned URL for the new upload flow
-func GeneratePresignedURL(g3 Gen3Interface, filename string, fileMetadata commonUtils.FileMetadata, bucketName string) (string, string, error) {
+func GeneratePresignedURL(g3 client.Gen3Interface, filename string, fileMetadata commonUtils.FileMetadata, bucketName string) (string, string, error) {
 	// Attempt to get the presigned URL of this file from Shepherd if it's deployed, otherwise fall back to Fence.
 	hasShepherd, err := g3.CheckForShepherdAPI()
 	if err != nil {
@@ -313,7 +312,7 @@ func GeneratePresignedURL(g3 Gen3Interface, filename string, fileMetadata common
 			return "", "", errors.New("Error occurred when creating upload URL for file " + filename + ": . Details: " + err.Error())
 		}
 		if res.URL == "" || res.GUID == "" {
-			return "", "", errors.New("Unknown error has occurred during presigned URL or GUID generation. Please check logs from Gen3 services")
+			return "", "", errors.New("unknown error has occurred during presigned URL or GUID generation. Please check logs from Gen3 services")
 		}
 		return res.URL, res.GUID, nil
 	}
@@ -330,13 +329,13 @@ func GeneratePresignedURL(g3 Gen3Interface, filename string, fileMetadata common
 		return "", "", errors.New("Something went wrong. Maybe you don't have permission to upload data or Fence is misconfigured. Detailed error message: " + err.Error())
 	}
 	if msg.URL == "" || msg.GUID == "" {
-		return "", "", errors.New("Unknown error has occurred during presigned URL or GUID generation. Please check logs from Gen3 services")
+		return "", "", errors.New("unknown error has occurred during presigned URL or GUID generation. Please check logs from Gen3 services")
 	}
 	return msg.URL, msg.GUID, err
 }
 
 // GenerateUploadRequest helps preparing the HTTP request for upload and the progress bar for single part upload
-func GenerateUploadRequest(g3 Gen3Interface, furObject commonUtils.FileUploadRequestObject, file *os.File) (commonUtils.FileUploadRequestObject, error) {
+func GenerateUploadRequest(g3 client.Gen3Interface, furObject commonUtils.FileUploadRequestObject, file *os.File, progress *mpb.Progress) (commonUtils.FileUploadRequestObject, error) {
 	if furObject.PresignedURL == "" {
 		endPointPostfix := commonUtils.FenceDataUploadEndpoint + "/" + furObject.GUID + "?file_name=" + url.QueryEscape(furObject.Filename)
 
@@ -363,8 +362,19 @@ func GenerateUploadRequest(g3 Gen3Interface, furObject commonUtils.FileUploadReq
 		return furObject, errors.New("The file size of file " + furObject.Filename + " exceeds the limit allowed and cannot be uploaded. The maximum allowed file size is " + FormatSize(FileSizeLimit) + ".\n")
 	}
 
-	bar := pb.New64(fi.Size()).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(furObject.Filename + " ")
-	bar.Output = log.Writer() // Send progress bar to same writer as logs, not stdout
+	if progress == nil {
+		progress = mpb.New(mpb.WithOutput(g3.Logger().Writer()))
+	}
+	bar := progress.AddBar(fi.Size(),
+		mpb.PrependDecorators(
+			decor.Name(furObject.Filename+" "),
+			decor.CountersKibiByte("% .1f / % .1f"),
+		),
+		mpb.AppendDecorators(
+			decor.Percentage(),
+			decor.AverageSpeed(decor.SizeB1024(0), " % .1f"),
+		),
+	)
 	pr, pw := io.Pipe()
 
 	go func() {
@@ -372,7 +382,7 @@ func GenerateUploadRequest(g3 Gen3Interface, furObject commonUtils.FileUploadReq
 		defer pw.Close()
 		defer file.Close()
 
-		writer = io.MultiWriter(pw, bar)
+		writer = bar.ProxyWriter(pw)
 		if _, err = io.Copy(writer, file); err != nil {
 			err = errors.New("io.Copy error: " + err.Error() + "\n")
 		}
@@ -388,13 +398,14 @@ func GenerateUploadRequest(g3 Gen3Interface, furObject commonUtils.FileUploadReq
 	req.ContentLength = fi.Size()
 
 	furObject.Request = req
+	furObject.Progress = progress
 	furObject.Bar = bar
 
 	return furObject, err
 }
 
 // DeleteRecord helps sending requests to FENCE to delete a record from INDEXD as well as its storage locations
-func DeleteRecord(g3 Gen3Interface, guid string) (string, error) {
+func DeleteRecord(g3 client.Gen3Interface, guid string) (string, error) {
 	return g3.DeleteRecord(guid)
 }
 
@@ -538,22 +549,20 @@ func getFullFilePath(filePath string, filename string) (string, error) {
 
 func uploadFile(furObject commonUtils.FileUploadRequestObject, retryCount int) error {
 	log.Println("Uploading data ...")
-	furObject.Bar.Output = io.Discard // Uncomment to suppress progress bar output
-	furObject.Bar.Start()
+	if furObject.Progress != nil {
+		defer furObject.Progress.Wait()
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(furObject.Request)
 	if err != nil {
 		//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
-		furObject.Bar.Finish()
 		return errors.New("Error occurred during upload: " + err.Error())
 	}
 	if resp.StatusCode != 200 {
 		//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
-		furObject.Bar.Finish()
 		return errors.New("Upload request got a non-200 response with status code " + strconv.Itoa(resp.StatusCode))
 	}
-	furObject.Bar.Finish()
 	//log.Printf("Successfully uploaded file \"%s\" to GUID %s.\n", furObject.FilePath, furObject.GUID)
 	//logs.DeleteFromFailedLog(furObject.FilePath, true)
 	//logs.WriteToSucceededLog(furObject.FilePath, furObject.GUID, false)
@@ -567,26 +576,6 @@ func getNumberOfWorkers(numParallel int, inputSliceLen int) int {
 	}
 	return workers
 }
-func calculateChunksAndWorkers(fileSize int64) (int, int, int64) {
-	maxChunkSize := int64(math.Ceil(float64(MultipartFileSizeLimit) / float64(maxMultipartNumber)))
-	var numOfChunks int
-	var numOfWorkers = defaultNumOfWorkers
-	var chunkSize int64
-	if fileSize >= maxChunkSize {
-		numOfWorkers = 1
-		chunkSize = maxChunkSize
-		numOfChunks = int(math.Ceil(float64(fileSize) / float64(maxChunkSize)))
-	} else if fileSize > minMultipartChunkSize*defaultNumOfWorkers && fileSize < maxChunkSize {
-		chunkSize = int64(math.Ceil(float64(fileSize) / float64(numOfWorkers)))
-		numOfChunks = numOfWorkers
-	} else {
-		chunkSize = minMultipartChunkSize
-		numOfWorkers = int(math.Ceil(float64(fileSize) / float64(minMultipartChunkSize)))
-		numOfChunks = numOfWorkers
-	}
-
-	return numOfWorkers, numOfChunks, chunkSize
-}
 
 func initBatchUploadChannels(numParallel int, inputSliceLen int) (int, chan *http.Response, chan error, []commonUtils.FileUploadRequestObject) {
 	workers := getNumberOfWorkers(numParallel, inputSliceLen)
@@ -596,8 +585,8 @@ func initBatchUploadChannels(numParallel int, inputSliceLen int) (int, chan *htt
 	return workers, respCh, errCh, batchFURSlice
 }
 
-func batchUpload(gen3Interface Gen3Interface, furObjects []commonUtils.FileUploadRequestObject, workers int, respCh chan *http.Response, errCh chan error, bucketName string) {
-	bars := make([]*pb.ProgressBar, 0)
+func batchUpload(gen3Interface client.Gen3Interface, furObjects []commonUtils.FileUploadRequestObject, workers int, respCh chan *http.Response, errCh chan error, bucketName string) {
+	progress := mpb.New(mpb.WithOutput(gen3Interface.Logger().Writer()))
 	respURL := ""
 	var err error
 	var guid string
@@ -626,26 +615,16 @@ func batchUpload(gen3Interface Gen3Interface, furObjects []commonUtils.FileUploa
 		}
 		defer file.Close()
 
-		furObjects[i], err = GenerateUploadRequest(gen3Interface, furObjects[i], file)
+		furObjects[i], err = GenerateUploadRequest(gen3Interface, furObjects[i], file, progress)
 		if err != nil {
 			file.Close()
 			logs.AddToFailedLog(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false, true)
 			errCh <- errors.New("Error occurred during request generation: " + err.Error())
 			continue
 		}
-		bars = append(bars, furObjects[i].Bar)
 	}
 
 	furObjectCh := make(chan commonUtils.FileUploadRequestObject, len(furObjects))
-
-	pool, err := pb.StartPool(bars...)
-	if err != nil {
-		for _, furObject := range furObjects {
-			logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
-		}
-		errCh <- errors.New("Error occurred during starting progress bar pool: " + err.Error())
-		return
-	}
 
 	client := &http.Client{}
 	wg := sync.WaitGroup{}
@@ -682,10 +661,7 @@ func batchUpload(gen3Interface Gen3Interface, furObjects []commonUtils.FileUploa
 	close(furObjectCh)
 
 	wg.Wait()
-	err = pool.Stop()
-	if err != nil {
-		errCh <- errors.New("Error occurred during stopping progress bar pool: " + err.Error())
-	}
+	progress.Wait()
 }
 
 // GetWaitTime calculates the wait time for the next retry based on retry count
@@ -711,102 +687,4 @@ func FormatSize(size int64) string {
 	}
 
 	return fmt.Sprintf("%.1f"+unitMap[unitSize], float64(size)/float64(unitSize))
-}
-
-// Gen3Interface contains methods used to make authorized http requests to Gen3 services.
-// The credential is embedded in the implementation, so it doesn't need to be passed to each method.
-type Gen3Interface interface {
-	CheckPrivileges() (string, map[string]any, error)
-	CheckForShepherdAPI() (bool, error)
-	GetResponse(endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error)
-	DoRequestWithSignedHeader(endpointPostPrefix string, contentType string, bodyBytes []byte) (jwt.JsonMessage, error)
-	MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error)
-	GetHost() (*url.URL, error)
-	GetCredential() *jwt.Credential
-	DeleteRecord(guid string) (string, error)
-}
-
-// Gen3Client wraps jwt.FunctionInterface and embeds the credential
-type Gen3Client struct {
-	jwt.FunctionInterface
-	credential *jwt.Credential
-}
-
-// CheckPrivileges wraps the underlying method with embedded credential
-func (g *Gen3Client) CheckPrivileges() (string, map[string]interface{}, error) {
-	return g.FunctionInterface.CheckPrivileges(g.credential)
-}
-
-// CheckForShepherdAPI wraps the underlying method with embedded credential
-func (g *Gen3Client) CheckForShepherdAPI() (bool, error) {
-	return g.FunctionInterface.CheckForShepherdAPI(g.credential)
-}
-
-// GetResponse wraps the underlying method with embedded credential
-func (g *Gen3Client) GetResponse(endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error) {
-	return g.FunctionInterface.GetResponse(g.credential, endpointPostPrefix, method, contentType, bodyBytes)
-}
-
-// DoRequestWithSignedHeader wraps the underlying method with embedded credential
-func (g *Gen3Client) DoRequestWithSignedHeader(endpointPostPrefix string, contentType string, bodyBytes []byte) (jwt.JsonMessage, error) {
-	return g.FunctionInterface.DoRequestWithSignedHeader(g.credential, endpointPostPrefix, contentType, bodyBytes)
-}
-
-// GetHost wraps the underlying method with embedded credential
-func (g *Gen3Client) GetHost() (*url.URL, error) {
-	return g.FunctionInterface.GetHost(g.credential)
-}
-
-// GetCredential returns the embedded credential
-func (g *Gen3Client) GetCredential() *jwt.Credential {
-	return g.credential
-}
-
-// MakeARequest wraps the underlying Request.MakeARequest method
-func (g *Gen3Client) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
-	// Access the underlying Request through the Functions struct
-	// We need to create a temporary Request instance since we can't access it directly
-	request := &jwt.Request{}
-	return request.MakeARequest(method, apiEndpoint, accessToken, contentType, headers, body, noTimeout)
-}
-
-// DeleteRecord deletes a record from INDEXD as well as its storage locations
-func (g *Gen3Client) DeleteRecord(guid string) (string, error) {
-	// Use the embedded credential
-	// Since DeleteRecord is not part of FunctionInterface, we need to access it via type assertion
-	// or create a new Functions instance. We'll use type assertion first.
-	if functions, ok := g.FunctionInterface.(*jwt.Functions); ok {
-		return functions.DeleteRecord(g.credential, guid)
-	}
-	// Fallback: create a new Functions instance if type assertion fails
-	config := &jwt.Configure{}
-	request := &jwt.Request{}
-	functionInterface := jwt.NewFunctions(config, request)
-	// Cast to *Functions to access DeleteRecord
-	if functions, ok := functionInterface.(*jwt.Functions); ok {
-		return functions.DeleteRecord(g.credential, guid)
-	}
-	// This should never happen, but handle it gracefully
-	return "", errors.New("unable to access DeleteRecord method")
-}
-
-// NewGen3Interface returns a Gen3Client that embeds the credential and implements Gen3Interface.
-// This eliminates the need to pass credentials around everywhere.
-func NewGen3Interface(profile string) (Gen3Interface, error) {
-	config := &jwt.Configure{}
-	request := &jwt.Request{}
-	client := jwt.NewFunctions(config, request)
-
-	cred, err := config.ParseConfig(profile)
-	if err != nil {
-		return nil, err
-	}
-	if valid, err := config.IsValidCredential(cred); !valid || err != nil {
-		return nil, fmt.Errorf("invalid credential: %v", err)
-	}
-
-	return &Gen3Client{
-		FunctionInterface: client,
-		credential:        &cred,
-	}, nil
 }

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -30,7 +31,7 @@ func init() {
 			logs.InitFailedLog(profile)
 			logs.SetToBoth()
 			logs.InitScoreBoard(0)
-			err := UploadSingle(profile, guid, filePath, bucketName, false)
+			err := UploadSingle(profile, guid, filePath, bucketName, true)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}
@@ -47,12 +48,12 @@ func init() {
 }
 
 func UploadSingle(profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
-	if !enableLogs {
+	if enableLogs == false {
 		log.SetOutput(io.Discard)
 	}
 
 	// Instantiate interface to Gen3
-	gen3Interface, err := NewGen3Interface(profile)
+	gen3Interface, err := client.NewGen3Interface(profile)
 	if err != nil {
 		return fmt.Errorf("failed to parse config on profile %s: %w", profile, err)
 	}
@@ -89,7 +90,7 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 
 	furObject := commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, GUID: guid, Bucket: bucketName}
 
-	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file)
+	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file, nil)
 	if err != nil {
 		file.Close()
 		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, commonUtils.FileMetadata{}, furObject.GUID, 0, false, true)

@@ -1,6 +1,7 @@
 package g3cmd
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +23,7 @@ func updateRetryObject(ro *commonUtils.RetryObject, filePath string, filename st
 	ro.Multipart = isMultipart
 }
 
-func handleFailedRetry(gen3Interface Gen3Interface, ro commonUtils.RetryObject, retryObjCh chan commonUtils.RetryObject, err error, isMuted bool) {
+func handleFailedRetry(gen3Interface client.Gen3Interface, ro commonUtils.RetryObject, retryObjCh chan commonUtils.RetryObject, err error, isMuted bool) {
 	logs.AddToFailedLog(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart, isMuted)
 	if err != nil {
 		log.Println(err.Error())
@@ -45,7 +47,7 @@ func handleFailedRetry(gen3Interface Gen3Interface, ro commonUtils.RetryObject, 
 	}
 }
 
-func retryUpload(gen3Interface Gen3Interface, failedLogMap map[string]commonUtils.RetryObject) {
+func retryUpload(gen3Interface client.Gen3Interface, failedLogMap map[string]commonUtils.RetryObject) {
 	var guid string
 	var presignedURL string
 	var err error
@@ -93,7 +95,7 @@ func retryUpload(gen3Interface Gen3Interface, failedLogMap map[string]commonUtil
 		if ro.Multipart {
 			fileInfo := commonUtils.FileUploadRequestObject{FilePath: ro.FilePath, Filename: ro.Filename, GUID: ro.GUID}
 			// Enable progress bar for retry uploads (interactive CLI use)
-			err = MultipartUpload(gen3Interface, fileInfo, ro.RetryCount, ro.Bucket, true)
+			err = MultipartUpload(context.Background(), gen3Interface, fileInfo, ro.Bucket, true)
 			if err != nil {
 				updateRetryObject(&ro, ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, true)
 				handleFailedRetry(gen3Interface, ro, retryObjCh, err, true)
@@ -128,13 +130,13 @@ func retryUpload(gen3Interface Gen3Interface, failedLogMap map[string]commonUtil
 			}
 			if fi.Size() > FileSizeLimit { // guard for files, always check file size during retry upload
 				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, ro.RetryCount, true)
-				err = fmt.Errorf("File size for %s is greater than the single part upload limit, will retry using multipart upload", furObject.Filename)
+				err = fmt.Errorf("file size for %s is greater than the single part upload limit, will retry using multipart upload", furObject.Filename)
 				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
 				file.Close()
 				continue
 			}
 
-			furObject, err = GenerateUploadRequest(gen3Interface, furObject, file)
+			furObject, err = GenerateUploadRequest(gen3Interface, furObject, file, nil)
 			if err != nil {
 				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, ro.RetryCount, false)
 				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
@@ -174,8 +176,8 @@ func init() {
 			logs.InitFailedLog(profile)
 			logs.SetToBoth()
 			logs.InitScoreBoard(MaxRetryCount)
-			
-			gen3Interface, err := NewGen3Interface(profile)
+
+			gen3Interface, err := client.NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}

@@ -35,7 +35,7 @@ func SetToConsole() {
 }
 
 func SetToBoth() {
-	//log.SetOutput(multiWriter)
+	log.SetOutput(multiWriter)
 }
 
 func CloseMessageLog() error {

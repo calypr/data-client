@@ -11,18 +11,19 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/calypr/data-client/client/commonUtils"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
-	pb "gopkg.in/cheggaaa/pb.v1"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 
 	"github.com/spf13/cobra"
 )
 
 // mockgen -destination=../mocks/mock_gen3interface.go -package=mocks . Gen3Interface
 
-func AskGen3ForFileInfo(gen3Interface Gen3Interface, guid string, protocol string, downloadPath string, filenameFormat string, rename bool, renamedFiles *[]RenamedOrSkippedFileInfo) (string, int64) {
+func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protocol string, downloadPath string, filenameFormat string, rename bool, renamedFiles *[]RenamedOrSkippedFileInfo) (string, int64) {
 	var fileName string
 	var fileSize int64
 
@@ -159,7 +160,7 @@ func processOriginalFilename(downloadPath string, actualFilename string) string 
 
 func validateFilenameFormat(downloadPath string, filenameFormat string, rename bool, noPrompt bool) error {
 	if filenameFormat != "original" && filenameFormat != "guid" && filenameFormat != "combined" {
-		return fmt.Errorf("Invalid option found! Option \"filename-format\" can either be \"original\", \"guid\" or \"combined\" only")
+		return fmt.Errorf("invalid option found! option \"filename-format\" can either be \"original\", \"guid\" or \"combined\" only")
 	}
 	if filenameFormat == "guid" || filenameFormat == "combined" {
 		fmt.Printf("WARNING: in \"guid\" or \"combined\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
@@ -206,8 +207,7 @@ func validateLocalFileStat(downloadPath string, filename string, filesize int64,
 	return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Range: localFilesize}
 }
 
-func batchDownload(g3 Gen3Interface, batchFDRSlice []commonUtils.FileDownloadResponseObject, protocolText string, workers int, errCh chan error) int {
-	bars := make([]*pb.ProgressBar, 0)
+func batchDownload(g3 client.Gen3Interface, progress *mpb.Progress, batchFDRSlice []commonUtils.FileDownloadResponseObject, protocolText string, workers int, errCh chan error) int {
 	fdrs := make([]commonUtils.FileDownloadResponseObject, 0)
 	for _, fdrObject := range batchFDRSlice {
 		err := GetDownloadResponse(g3, &fdrObject, protocolText)
@@ -236,26 +236,31 @@ func batchDownload(g3 Gen3Interface, batchFDRSlice []commonUtils.FileDownloadRes
 			errCh <- errors.New("Error occurred during opening local file: " + err.Error())
 			continue
 		}
-		bar := pb.New64(fdrObject.Response.ContentLength + fdrObject.Range).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10).Prefix(fdrObject.Filename + " ")
-		bar.Set64(fdrObject.Range)
-		writer := io.MultiWriter(file, bar)
-		bars = append(bars, bar)
+		total := fdrObject.Response.ContentLength + fdrObject.Range
+		bar := progress.AddBar(total,
+			mpb.PrependDecorators(
+				decor.Name(fdrObject.Filename+" "),
+				decor.CountersKibiByte("% .1f / % .1f"),
+			),
+			mpb.AppendDecorators(
+				decor.Percentage(),
+				decor.AverageSpeed(decor.SizeB1024(0), " % .1f"),
+			),
+		)
+		if fdrObject.Range > 0 {
+			bar.SetCurrent(fdrObject.Range)
+		}
+		writer := bar.ProxyWriter(file)
 		fdrObject.Writer = writer
 		fdrs = append(fdrs, fdrObject)
 		defer file.Close()
 		defer fdrObject.Response.Body.Close()
-		defer bar.Finish()
 	}
 
 	fdrCh := make(chan commonUtils.FileDownloadResponseObject, len(fdrs))
-	pool, err := pb.StartPool(bars...)
-	if err != nil {
-		errCh <- errors.New("Error occurred during initializing progress bars: " + err.Error())
-		return 0
-	}
-
 	wg := sync.WaitGroup{}
 	succeeded := 0
+	var err error
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
@@ -276,17 +281,12 @@ func batchDownload(g3 Gen3Interface, batchFDRSlice []commonUtils.FileDownloadRes
 	close(fdrCh)
 
 	wg.Wait()
-	err = pool.Stop()
-	if err != nil {
-		errCh <- errors.New("Error occurred during stopping progress bars: " + err.Error())
-		return succeeded
-	}
 	return succeeded
 }
 
-func downloadFile(g3i Gen3Interface, objects []ManifestObject, downloadPath string, filenameFormat string, rename bool, noPrompt bool, protocol string, numParallel int, skipCompleted bool) error {
+func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPath string, filenameFormat string, rename bool, noPrompt bool, protocol string, numParallel int, skipCompleted bool) error {
 	if numParallel < 1 {
-		return fmt.Errorf("Invalid value for option \"numparallel\": must be a positive integer! Please check your input.")
+		return fmt.Errorf("invalid value for option \"numparallel\": must be a positive integer! Please check your input")
 	}
 
 	downloadPath, err := commonUtils.ParseRootPath(downloadPath)
@@ -313,7 +313,7 @@ func downloadFile(g3i Gen3Interface, objects []ManifestObject, downloadPath stri
 
 	err = os.MkdirAll(downloadPath, 0766)
 	if err != nil {
-		return fmt.Errorf("Cannot create folder %s", downloadPath)
+		return fmt.Errorf("cannot create folder %s", downloadPath)
 	}
 
 	renamedFiles := make([]RenamedOrSkippedFileInfo, 0)
@@ -322,8 +322,14 @@ func downloadFile(g3i Gen3Interface, objects []ManifestObject, downloadPath stri
 
 	log.Printf("Total number of objects in manifest: %d", len(objects))
 	log.Println("Preparing file info for each file, please wait...")
-	fileInfoBar := pb.New(len(objects)).SetRefreshRate(time.Millisecond * 10)
-	fileInfoBar.Start()
+	fileInfoProgress := mpb.New(mpb.WithOutput(g3i.Logger().Writer()))
+	fileInfoBar := fileInfoProgress.AddBar(int64(len(objects)),
+		mpb.PrependDecorators(
+			decor.Name("Preparing files "),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.AppendDecorators(decor.Percentage()),
+	)
 	for _, obj := range objects {
 		if obj.ObjectID == "" {
 			log.Println("Found empty object_id (GUID), skipping this entry")
@@ -344,11 +350,12 @@ func downloadFile(g3i Gen3Interface, objects []ManifestObject, downloadPath stri
 		fdrObjects = append(fdrObjects, fdrObject)
 		fileInfoBar.Increment()
 	}
-	fileInfoBar.Finish()
+	fileInfoProgress.Wait()
 	log.Println("File info prepared successfully")
 
 	totalCompeleted := 0
 	workers, _, errCh, _ := initBatchUploadChannels(numParallel, len(fdrObjects))
+	downloadProgress := mpb.New(mpb.WithOutput(g3i.Logger().Writer()))
 	batchFDRSlice := make([]commonUtils.FileDownloadResponseObject, 0)
 	for _, fdrObject := range fdrObjects {
 		if fdrObject.Skip {
@@ -360,12 +367,13 @@ func downloadFile(g3i Gen3Interface, objects []ManifestObject, downloadPath stri
 		if len(batchFDRSlice) < workers {
 			batchFDRSlice = append(batchFDRSlice, fdrObject)
 		} else {
-			totalCompeleted += batchDownload(g3i, batchFDRSlice, protocolText, workers, errCh)
+			totalCompeleted += batchDownload(g3i, downloadProgress, batchFDRSlice, protocolText, workers, errCh)
 			batchFDRSlice = make([]commonUtils.FileDownloadResponseObject, 0)
 			batchFDRSlice = append(batchFDRSlice, fdrObject)
 		}
 	}
-	totalCompeleted += batchDownload(g3i, batchFDRSlice, protocolText, workers, errCh) // download remainders
+	totalCompeleted += batchDownload(g3i, downloadProgress, batchFDRSlice, protocolText, workers, errCh) // download remainders
+	downloadProgress.Wait()
 
 	log.Printf("%d files downloaded.\n", totalCompeleted)
 
@@ -407,7 +415,7 @@ func init() {
 			// don't initialize transmission logs for non-uploading related commands
 			logs.SetToBoth()
 
-			g3I, err := NewGen3Interface(profile)
+			g3I, err := client.NewGen3Interface(profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -424,16 +432,22 @@ func init() {
 			}
 			log.Println("Reading manifest...")
 			manifestFileSize := manifestFileStat.Size()
-			manifestFileBar := pb.New(int(manifestFileSize)).SetUnits(pb.U_BYTES).SetRefreshRate(time.Millisecond * 10)
-			manifestFileBar.Start()
+			manifestProgress := mpb.New(mpb.WithOutput(g3I.Logger().Writer()))
+			manifestFileBar := manifestProgress.AddBar(manifestFileSize,
+				mpb.PrependDecorators(
+					decor.Name("Manifest "),
+					decor.CountersKibiByte("% .1f / % .1f"),
+				),
+				mpb.AppendDecorators(decor.Percentage()),
+			)
 
-			manifestFileReader := manifestFileBar.NewProxyReader(manifestFile)
+			manifestFileReader := manifestFileBar.ProxyReader(manifestFile)
 
 			manifestBytes, err := io.ReadAll(manifestFileReader)
 			if err != nil {
 				log.Fatalf("Failed reading manifest %s, %v\n", manifestPath, err)
 			}
-			manifestFileBar.Finish()
+			manifestProgress.Wait()
 
 			var objects []ManifestObject
 			err = json.Unmarshal(manifestBytes, &objects)

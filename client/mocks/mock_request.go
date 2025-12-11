@@ -6,10 +6,11 @@ package mocks
 
 import (
 	bytes "bytes"
-	gomock "github.com/golang/mock/gomock"
-	jwt "github.com/calypr/data-client/client/jwt"
 	http "net/http"
 	reflect "reflect"
+
+	jwt "github.com/calypr/data-client/client/jwt"
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockRequestInterface is a mock of RequestInterface interface
@@ -44,7 +45,7 @@ func (m *MockRequestInterface) MakeARequest(arg0, arg1, arg2, arg3 string, arg4 
 }
 
 // MakeARequest indicates an expected call of MakeARequest
-func (mr *MockRequestInterfaceMockRecorder) MakeARequest(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
+func (mr *MockRequestInterfaceMockRecorder) MakeARequest(arg0, arg1, arg2, arg3, arg4, arg5, arg6 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MakeARequest", reflect.TypeOf((*MockRequestInterface)(nil).MakeARequest), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
@@ -56,6 +57,6 @@ func (m *MockRequestInterface) RequestNewAccessToken(arg0 string, arg1 *jwt.Cred
 }
 
 // RequestNewAccessToken indicates an expected call of RequestNewAccessToken
-func (mr *MockRequestInterfaceMockRecorder) RequestNewAccessToken(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockRequestInterfaceMockRecorder) RequestNewAccessToken(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestNewAccessToken", reflect.TypeOf((*MockRequestInterface)(nil).RequestNewAccessToken), arg0, arg1)
 }

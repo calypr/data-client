@@ -5,10 +5,11 @@
 package mocks
 
 import (
-	gomock "github.com/golang/mock/gomock"
-	jwt "github.com/calypr/data-client/client/jwt"
 	url "net/url"
 	reflect "reflect"
+
+	jwt "github.com/calypr/data-client/client/jwt"
+	gomock "github.com/golang/mock/gomock"
 )
 
 // MockConfigureInterface is a mock of ConfigureInterface interface
@@ -55,7 +56,7 @@ func (m *MockConfigureInterface) ParseConfig(arg0 string) (jwt.Credential, error
 }
 
 // ParseConfig indicates an expected call of ParseConfig
-func (mr *MockConfigureInterfaceMockRecorder) ParseConfig(arg0 interface{}) *gomock.Call {
+func (mr *MockConfigureInterfaceMockRecorder) ParseConfig(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseConfig", reflect.TypeOf((*MockConfigureInterface)(nil).ParseConfig), arg0)
 }
 
@@ -68,7 +69,7 @@ func (m *MockConfigureInterface) ParseKeyValue(arg0, arg1 string) (string, error
 }
 
 // ParseKeyValue indicates an expected call of ParseKeyValue
-func (mr *MockConfigureInterfaceMockRecorder) ParseKeyValue(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockConfigureInterfaceMockRecorder) ParseKeyValue(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseKeyValue", reflect.TypeOf((*MockConfigureInterface)(nil).ParseKeyValue), arg0, arg1)
 }
 
@@ -80,7 +81,7 @@ func (m *MockConfigureInterface) ReadFile(arg0, arg1 string) string {
 }
 
 // ReadFile indicates an expected call of ReadFile
-func (mr *MockConfigureInterfaceMockRecorder) ReadFile(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockConfigureInterfaceMockRecorder) ReadFile(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockConfigureInterface)(nil).ReadFile), arg0, arg1)
 }
 
@@ -91,7 +92,7 @@ func (m *MockConfigureInterface) UpdateConfigFile(arg0 jwt.Credential) error {
 }
 
 // UpdateConfigFile indicates an expected call of UpdateConfigFile
-func (mr *MockConfigureInterfaceMockRecorder) UpdateConfigFile(arg0 interface{}) *gomock.Call {
+func (mr *MockConfigureInterfaceMockRecorder) UpdateConfigFile(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateConfigFile", reflect.TypeOf((*MockConfigureInterface)(nil).UpdateConfigFile), arg0)
 }
 
@@ -104,7 +105,7 @@ func (m *MockConfigureInterface) ValidateUrl(arg0 string) (*url.URL, error) {
 }
 
 // ValidateUrl indicates an expected call of ValidateUrl
-func (mr *MockConfigureInterfaceMockRecorder) ValidateUrl(arg0 interface{}) *gomock.Call {
+func (mr *MockConfigureInterfaceMockRecorder) ValidateUrl(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateUrl", reflect.TypeOf((*MockConfigureInterface)(nil).ValidateUrl), arg0)
 }
 
@@ -117,6 +118,6 @@ func (m *MockConfigureInterface) IsValidCredential(arg0 jwt.Credential) (bool, e
 }
 
 // IsValidCredential indicates an expected call of IsValidCredential
-func (mr *MockConfigureInterfaceMockRecorder) IsValidCredential(arg0 interface{}) *gomock.Call {
+func (mr *MockConfigureInterfaceMockRecorder) IsValidCredential(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsValidCredential", reflect.TypeOf((*MockConfigureInterface)(nil).IsValidCredential), arg0)
 }
