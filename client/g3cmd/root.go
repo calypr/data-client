@@ -1,16 +1,17 @@
 package g3cmd
 
 import (
-	// "fmt"
-	"log"
+	"encoding/json"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
-	latest "github.com/tcnksm/go-latest"
+	"golang.org/x/mod/semver"
 )
 
 var profile string
@@ -27,7 +28,7 @@ var RootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
-		log.Println("root cmd error:", err)
+		os.Stderr.WriteString("Error: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 }
@@ -40,51 +41,66 @@ func init() {
 	_ = RootCmd.MarkFlagRequired("profile")
 }
 
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+}
+
 func initConfig() {
 
-	logs.Init()
-	logs.InitMessageLog(profile)
-	logs.SetToBoth()
+	log := logs.New(profile,
+		logs.WithConsole(),
+		logs.WithMessageFile(),
+		logs.WithFailedLog(),
+		logs.WithSucceededLog(),
+	)
 
 	conf := jwt.Configure{}
 	// init local config file
 	err := conf.InitConfigFile()
 	if err != nil {
-		log.Fatalln("Error occurred when trying to init config file: " + err.Error())
+		log.Fatal("Error occurred when trying to init config file: " + err.Error())
 	}
 
 	// version checker
 	if os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
 		gitversion != "" && gitversion != "N/A" {
-		githubTag := &latest.GithubTag{
-			Owner:      "uc-cdis",
-			Repository: "cdis-data-client",
-			TagFilterFunc: func(versionTag string) bool {
-				// only assume a version tag to be valid version tag if it has either 2 or 3 "." in it
-				// so tags like "whatever" or "new.123.release" won't interfere
-				gitversionSlice := strings.Split(gitversion, ".")
-				versionTagSlice := strings.Split(versionTag, ".")
-				// if gitversion is sematic version number, ignore tags that don't have 3 "."
-				// if gitversion is monthly release version number, ignore tags that don't have 2 "."
-				if (len(gitversionSlice) == 3 && len(versionTagSlice) != 3) || (len(gitversionSlice) == 2 && len(versionTagSlice) != 2) {
-					return false
-				}
-				for _, s := range versionTagSlice {
-					_, err := strconv.Atoi(s)
-					if err != nil {
-						return false
-					}
-				}
-				return true
-			},
-		}
-		res, err := latest.Check(githubTag, gitversion)
+
+		const (
+			owner      = "uc-cdis"
+			repository = "cdis-data-client"
+			// The official GitHub API endpoint for the latest release
+			apiURL = "https://api.github.com/repos/" + owner + "/" + repository + "/releases/latest"
+		)
+
+		// 1. Fetch the latest release information
+		client := http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get(apiURL)
 		if err != nil {
-			log.Println("Error occurred when checking for latest version: " + err.Error())
-		} else if res.Outdated {
-			log.Println("A new version of data-client is available! The latest version is " + res.Current + ". You are using version " + gitversion)
+			log.Println("Error occurred when fetching latest version (HTTP request failed): " + err.Error())
+			// Continue execution, as version check failure is non-fatal
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Println("Error occurred when fetching latest version (GitHub API returned status " + strconv.Itoa(resp.StatusCode) + ")")
+			return
+		}
+
+		// 2. Decode the response body
+		var release GitHubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+			log.Println("Error occurred when decoding latest version response: " + err.Error())
+			return
+		}
+
+		latestVersionTag := release.TagName
+		current := strings.TrimPrefix(gitversion, "v")
+		latest := strings.TrimPrefix(latestVersionTag, "v")
+
+		if semver.Compare("v"+current, "v"+latest) < 0 {
+			log.Println("A new version of data-client is available! The latest version is " + latestVersionTag + ". You are using version " + gitversion)
 			log.Println("Please download the latest data-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
 		}
 	}
-	logs.SetToMessageLog()
 }

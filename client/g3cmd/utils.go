@@ -17,9 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
-	"github.com/calypr/data-client/client/logs"
 
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -80,7 +79,7 @@ type MultipartPartObject struct {
 type FileInfo struct {
 	FilePath     string
 	Filename     string
-	FileMetadata commonUtils.FileMetadata
+	FileMetadata common.FileMetadata
 	ObjectId     string
 }
 
@@ -124,7 +123,7 @@ const MaxRetryCount = 5
 const maxWaitTime = 300
 
 // InitMultipartUpload helps sending requests to FENCE to init a multipart upload
-func InitMultipartUpload(g3 client.Gen3Interface, furObject commonUtils.FileUploadRequestObject, bucketName string) (string, string, error) {
+func InitMultipartUpload(g3 client.Gen3Interface, furObject common.FileUploadRequestObject, bucketName string) (string, string, error) {
 	// Use Filename and GUID directly from the unified request object
 	multipartInitObject := InitRequestObject{Filename: furObject.Filename, Bucket: bucketName, GUID: furObject.GUID}
 
@@ -133,7 +132,7 @@ func InitMultipartUpload(g3 client.Gen3Interface, furObject commonUtils.FileUplo
 		return "", "", errors.New("Error has occurred during marshalling data for multipart upload initialization, detailed error message: " + err.Error())
 	}
 
-	msg, err := g3.DoRequestWithSignedHeader(commonUtils.FenceDataMultipartInitEndpoint, "application/json", objectBytes)
+	msg, err := g3.DoRequestWithSignedHeader(common.FenceDataMultipartInitEndpoint, "application/json", objectBytes)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {
@@ -155,7 +154,7 @@ func GenerateMultipartPresignedURL(g3 client.Gen3Interface, key string, uploadID
 		return "", errors.New("Error has occurred during marshalling data for multipart upload presigned url generation, detailed error message: " + err.Error())
 	}
 
-	msg, err := g3.DoRequestWithSignedHeader(commonUtils.FenceDataMultipartUploadEndpoint, "application/json", objectBytes)
+	msg, err := g3.DoRequestWithSignedHeader(common.FenceDataMultipartUploadEndpoint, "application/json", objectBytes)
 
 	if err != nil {
 		return "", errors.New("Error has occurred during multipart upload presigned url generation, detailed error message: " + err.Error())
@@ -174,7 +173,7 @@ func CompleteMultipartUpload(g3 client.Gen3Interface, key string, uploadID strin
 		return errors.New("Error has occurred during marshalling data for multipart upload, detailed error message: " + err.Error())
 	}
 
-	_, err = g3.DoRequestWithSignedHeader(commonUtils.FenceDataMultipartCompleteEndpoint, "application/json", objectBytes)
+	_, err = g3.DoRequestWithSignedHeader(common.FenceDataMultipartCompleteEndpoint, "application/json", objectBytes)
 	if err != nil {
 		return errors.New("Error has occurred during completing multipart upload, detailed error message: " + err.Error())
 	}
@@ -182,7 +181,7 @@ func CompleteMultipartUpload(g3 client.Gen3Interface, key string, uploadID strin
 }
 
 // GetDownloadResponse helps grabbing a response for downloading a file specified with GUID
-func GetDownloadResponse(g3 client.Gen3Interface, fdrObject *commonUtils.FileDownloadResponseObject, protocolText string) error {
+func GetDownloadResponse(g3 client.Gen3Interface, fdrObject *common.FileDownloadResponseObject, protocolText string) error {
 	// Attempt to get the file download URL from Shepherd if it's deployed in this commons,
 	// otherwise fall back to Fence.
 	var fileDownloadURL string
@@ -191,7 +190,7 @@ func GetDownloadResponse(g3 client.Gen3Interface, fdrObject *commonUtils.FileDow
 		log.Println("Error occurred when checking for Shepherd API: " + err.Error())
 		log.Println("Falling back to Indexd...")
 	} else if hasShepherd {
-		endPointPostfix := commonUtils.ShepherdEndpoint + "/objects/" + fdrObject.GUID + "/download"
+		endPointPostfix := common.ShepherdEndpoint + "/objects/" + fdrObject.GUID + "/download"
 		_, r, err := g3.GetResponse(endPointPostfix, "GET", "", nil)
 		if err != nil {
 			return errors.New("Error occurred when getting download URL for object " + fdrObject.GUID + " from endpoint " + endPointPostfix + " . Details: " + err.Error())
@@ -216,7 +215,7 @@ func GetDownloadResponse(g3 client.Gen3Interface, fdrObject *commonUtils.FileDow
 			return errors.New("Unknown error occurred when getting download URL for object " + fdrObject.GUID + " from endpoint " + endPointPostfix + " : No URL found in response body. Check the Shepherd logs")
 		}
 	} else {
-		endPointPostfix := commonUtils.FenceDataDownloadEndpoint + "/" + fdrObject.GUID + protocolText
+		endPointPostfix := common.FenceDataDownloadEndpoint + "/" + fdrObject.GUID + protocolText
 		msg, err := g3.DoRequestWithSignedHeader(endPointPostfix, "", nil)
 
 		if err != nil || msg.URL == "" {
@@ -268,7 +267,7 @@ func sanitizeErrorMsg(errorMsg string, sensitiveURL string) string {
 }
 
 // GeneratePresignedURL helps sending requests to Shepherd/Fence and parsing the response in order to get presigned URL for the new upload flow
-func GeneratePresignedURL(g3 client.Gen3Interface, filename string, fileMetadata commonUtils.FileMetadata, bucketName string) (string, string, error) {
+func GeneratePresignedURL(g3 client.Gen3Interface, filename string, fileMetadata common.FileMetadata, bucketName string) (string, string, error) {
 	// Attempt to get the presigned URL of this file from Shepherd if it's deployed, otherwise fall back to Fence.
 	hasShepherd, err := g3.CheckForShepherdAPI()
 	if err != nil {
@@ -291,7 +290,7 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, fileMetadata
 		if err != nil {
 			return "", "", errors.New("Error occurred when creating upload request for file " + filename + ". Details: " + err.Error())
 		}
-		endPointPostfix := commonUtils.ShepherdEndpoint + "/objects"
+		endPointPostfix := common.ShepherdEndpoint + "/objects"
 		_, r, err := g3.GetResponse(endPointPostfix, "POST", "", objectBytes)
 		if err != nil {
 			return "", "", errors.New("Error occurred when requesting upload URL from " + endPointPostfix + " for file " + filename + ". Details: " + err.Error())
@@ -323,7 +322,7 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, fileMetadata
 	if err != nil {
 		return "", "", errors.New("Error occurred when marshalling object: " + err.Error())
 	}
-	msg, err := g3.DoRequestWithSignedHeader(commonUtils.FenceDataUploadEndpoint, "application/json", objectBytes)
+	msg, err := g3.DoRequestWithSignedHeader(common.FenceDataUploadEndpoint, "application/json", objectBytes)
 
 	if err != nil {
 		return "", "", errors.New("Something went wrong. Maybe you don't have permission to upload data or Fence is misconfigured. Detailed error message: " + err.Error())
@@ -335,9 +334,9 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, fileMetadata
 }
 
 // GenerateUploadRequest helps preparing the HTTP request for upload and the progress bar for single part upload
-func GenerateUploadRequest(g3 client.Gen3Interface, furObject commonUtils.FileUploadRequestObject, file *os.File, progress *mpb.Progress) (commonUtils.FileUploadRequestObject, error) {
+func GenerateUploadRequest(g3 client.Gen3Interface, furObject common.FileUploadRequestObject, file *os.File, progress *mpb.Progress) (common.FileUploadRequestObject, error) {
 	if furObject.PresignedURL == "" {
-		endPointPostfix := commonUtils.FenceDataUploadEndpoint + "/" + furObject.GUID + "?file_name=" + url.QueryEscape(furObject.Filename)
+		endPointPostfix := common.FenceDataUploadEndpoint + "/" + furObject.GUID + "?file_name=" + url.QueryEscape(furObject.Filename)
 
 		// ensure bucket is set
 		if furObject.Bucket != "" {
@@ -409,55 +408,56 @@ func DeleteRecord(g3 client.Gen3Interface, guid string) (string, error) {
 	return g3.DeleteRecord(guid)
 }
 
-func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestObject, forceMultipart bool) ([]commonUtils.FileUploadRequestObject, []commonUtils.FileUploadRequestObject) {
+func separateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []common.FileUploadRequestObject, forceMultipart bool) ([]common.FileUploadRequestObject, []common.FileUploadRequestObject) {
 	fileSizeLimit := FileSizeLimit // 5GB
 	if forceMultipart {
 		fileSizeLimit = minMultipartChunkSize // 5MB
 	}
-	singlepartObjects := make([]commonUtils.FileUploadRequestObject, 0)
-	multipartObjects := make([]commonUtils.FileUploadRequestObject, 0)
+	singlepartObjects := make([]common.FileUploadRequestObject, 0)
+	multipartObjects := make([]common.FileUploadRequestObject, 0)
 
 	for _, object := range objects {
 		filePath := object.FilePath
 
 		// Check if file exists locally
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			//log.Printf("The file you specified \"%s\" does not exist locally", filePath)
-			//logs.AddToFailedLog(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false, true)
+			g3i.Logger().Printf("The file you specified \"%s\" does not exist locally", filePath)
+			g3i.Logger().Failed(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false)
 			continue
 		}
 
 		// Use a closure to handle file operations and cleanup
-		func(obj commonUtils.FileUploadRequestObject) {
+		func(obj common.FileUploadRequestObject) {
 			file, err := os.Open(filePath)
 			if err != nil {
-				//log.Println("File open error occurred when validating file path: " + err.Error())
-				//logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
+				log.Println("File open error occurred when validating file path: " + err.Error())
+				g3i.Logger().Failed(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false)
 				return
 			}
 			defer file.Close()
 
 			fi, err := file.Stat()
 			if err != nil {
-				//log.Println("File stat error occurred when validating file path: " + err.Error())
-				//logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
+				g3i.Logger().Println("File stat error occurred when validating file path: " + err.Error())
+				g3i.Logger().Failed(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false)
 				return
 			}
 			if fi.IsDir() {
 				return
 			}
 
-			if logs.ExistsInSucceededLog(filePath) {
-				//log.Println("File \"" + filePath + "\" has been found in local submission history and has been skipped to prevent duplicated submissions.")
+			_, ok := g3i.Logger().GetSucceededLogMap()[filePath]
+			if ok {
+				g3i.Logger().Println("File \"" + filePath + "\" has been found in local submission history and has been skipped to prevent duplicated submissions.")
 				return
 			}
 
 			// Add to failed log initially, it will be removed on success
 			// This is an existing pattern, keeping it here.
-			//logs.AddToFailedLog(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false, true)
+			g3i.Logger().Failed(obj.FilePath, obj.Filename, obj.FileMetadata, obj.GUID, 0, false)
 
 			if fi.Size() > MultipartFileSizeLimit {
-				//log.Printf("The file size of %s has exceeded the limit allowed and cannot be uploaded. The maximum allowed file size is %s\n", fi.Name(), FormatSize(MultipartFileSizeLimit))
+				g3i.Logger().Printf("The file size of %s has exceeded the limit allowed and cannot be uploaded. The maximum allowed file size is %s\n", fi.Name(), FormatSize(MultipartFileSizeLimit))
 			} else if fi.Size() > int64(fileSizeLimit) {
 				multipartObjects = append(multipartObjects, obj)
 			} else {
@@ -469,34 +469,34 @@ func separateSingleAndMultipartUploads(objects []commonUtils.FileUploadRequestOb
 }
 
 // ProcessFilename returns an FileInfo object which has the information about the path and name to be used for upload of a file
-func ProcessFilename(uploadPath string, filePath string, objectId string, includeSubDirName bool, includeMetadata bool) (commonUtils.FileUploadRequestObject, error) {
+func ProcessFilename(uploadPath string, filePath string, objectId string, includeSubDirName bool, includeMetadata bool) (common.FileUploadRequestObject, error) {
 	var err error
-	filePath, err = commonUtils.GetAbsolutePath(filePath)
+	filePath, err = common.GetAbsolutePath(filePath)
 	if err != nil {
-		return commonUtils.FileUploadRequestObject{}, err
+		return common.FileUploadRequestObject{}, err
 	}
 
 	filename := filepath.Base(filePath) // Default to base filename
 
-	var metadata commonUtils.FileMetadata
+	var metadata common.FileMetadata
 	if includeSubDirName {
-		absUploadPath, err := commonUtils.GetAbsolutePath(uploadPath)
+		absUploadPath, err := common.GetAbsolutePath(uploadPath)
 		if err != nil {
-			return commonUtils.FileUploadRequestObject{}, err
+			return common.FileUploadRequestObject{}, err
 		}
 
 		// Ensure absUploadPath is a directory path for relative calculation
 		// Trim the optional wildcard if present
-		uploadDir := strings.TrimSuffix(absUploadPath, commonUtils.PathSeparator+"*")
+		uploadDir := strings.TrimSuffix(absUploadPath, common.PathSeparator+"*")
 		fileInfo, err := os.Stat(uploadDir)
 		if err != nil {
-			return commonUtils.FileUploadRequestObject{}, err
+			return common.FileUploadRequestObject{}, err
 		}
 		if fileInfo.IsDir() {
 			// Calculate the path of the file relative to the upload directory
 			relPath, err := filepath.Rel(uploadDir, filePath)
 			if err != nil {
-				return commonUtils.FileUploadRequestObject{}, err
+				return common.FileUploadRequestObject{}, err
 			}
 			filename = relPath
 		}
@@ -509,22 +509,22 @@ func ProcessFilename(uploadPath string, filePath string, objectId string, includ
 		if _, err := os.Stat(metadataFilePath); err == nil {
 			metadataFileBytes, err = os.ReadFile(metadataFilePath)
 			if err != nil {
-				return commonUtils.FileUploadRequestObject{}, errors.New("Error reading metadata file " + metadataFilePath + ": " + err.Error())
+				return common.FileUploadRequestObject{}, errors.New("Error reading metadata file " + metadataFilePath + ": " + err.Error())
 			}
 			err := json.Unmarshal(metadataFileBytes, &metadata)
 			if err != nil {
-				return commonUtils.FileUploadRequestObject{}, errors.New("Error parsing metadata file " + metadataFilePath + ": " + err.Error())
+				return common.FileUploadRequestObject{}, errors.New("Error parsing metadata file " + metadataFilePath + ": " + err.Error())
 			}
 		} else {
 			// No metadata file was found for this file -- proceed, but warn the user.
 			//log.Printf("WARNING: File metadata is enabled, but could not find the metadata file %v for file %v. Execute `data-client upload --help` for more info on file metadata.\n", metadataFilePath, filePath)
 		}
 	}
-	return commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, nil
+	return common.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, nil
 }
 
 func getFullFilePath(filePath string, filename string) (string, error) {
-	filePath, err := commonUtils.GetAbsolutePath(filePath)
+	filePath, err := common.GetAbsolutePath(filePath)
 	if err != nil {
 		log.Println(err)
 		return "", err
@@ -547,7 +547,7 @@ func getFullFilePath(filePath string, filename string) (string, error) {
 	}
 }
 
-func uploadFile(furObject commonUtils.FileUploadRequestObject, retryCount int) error {
+func uploadFile(g3i client.Gen3Interface, furObject common.FileUploadRequestObject, retryCount int) error {
 	log.Println("Uploading data ...")
 	if furObject.Progress != nil {
 		defer furObject.Progress.Wait()
@@ -556,16 +556,16 @@ func uploadFile(furObject commonUtils.FileUploadRequestObject, retryCount int) e
 	client := &http.Client{}
 	resp, err := client.Do(furObject.Request)
 	if err != nil {
-		//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
+		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false)
 		return errors.New("Error occurred during upload: " + err.Error())
 	}
 	if resp.StatusCode != 200 {
-		//logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false, true)
+		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, retryCount, false)
 		return errors.New("Upload request got a non-200 response with status code " + strconv.Itoa(resp.StatusCode))
 	}
-	//log.Printf("Successfully uploaded file \"%s\" to GUID %s.\n", furObject.FilePath, furObject.GUID)
-	//logs.DeleteFromFailedLog(furObject.FilePath, true)
-	//logs.WriteToSucceededLog(furObject.FilePath, furObject.GUID, false)
+	log.Printf("Successfully uploaded file \"%s\" to GUID %s.\n", furObject.FilePath, furObject.GUID)
+	g3i.Logger().DeleteFromFailedLog(furObject.FilePath)
+	g3i.Logger().Succeeded(furObject.FilePath, furObject.GUID)
 	return nil
 }
 
@@ -577,16 +577,16 @@ func getNumberOfWorkers(numParallel int, inputSliceLen int) int {
 	return workers
 }
 
-func initBatchUploadChannels(numParallel int, inputSliceLen int) (int, chan *http.Response, chan error, []commonUtils.FileUploadRequestObject) {
+func initBatchUploadChannels(numParallel int, inputSliceLen int) (int, chan *http.Response, chan error, []common.FileUploadRequestObject) {
 	workers := getNumberOfWorkers(numParallel, inputSliceLen)
 	respCh := make(chan *http.Response, inputSliceLen)
 	errCh := make(chan error, inputSliceLen)
-	batchFURSlice := make([]commonUtils.FileUploadRequestObject, 0)
+	batchFURSlice := make([]common.FileUploadRequestObject, 0)
 	return workers, respCh, errCh, batchFURSlice
 }
 
-func batchUpload(gen3Interface client.Gen3Interface, furObjects []commonUtils.FileUploadRequestObject, workers int, respCh chan *http.Response, errCh chan error, bucketName string) {
-	progress := mpb.New(mpb.WithOutput(gen3Interface.Logger().Writer()))
+func batchUpload(g3i client.Gen3Interface, furObjects []common.FileUploadRequestObject, workers int, respCh chan *http.Response, errCh chan error, bucketName string) {
+	progress := mpb.New(mpb.WithOutput(g3i.Logger().Writer()))
 	respURL := ""
 	var err error
 	var guid string
@@ -596,59 +596,59 @@ func batchUpload(gen3Interface client.Gen3Interface, furObjects []commonUtils.Fi
 			furObjects[i].Bucket = bucketName
 		}
 		if furObjects[i].GUID == "" {
-			respURL, guid, err = GeneratePresignedURL(gen3Interface, furObjects[i].Filename, furObjects[i].FileMetadata, bucketName)
+			respURL, guid, err = GeneratePresignedURL(g3i, furObjects[i].Filename, furObjects[i].FileMetadata, bucketName)
 			if err != nil {
-				logs.AddToFailedLog(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, guid, 0, false, true)
+				g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, guid, 0, false)
 				errCh <- err
 				continue
 			}
 			furObjects[i].PresignedURL = respURL
 			furObjects[i].GUID = guid
 			// update failed log with new guid
-			logs.AddToFailedLog(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, guid, 0, false, true)
+			g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, guid, 0, false)
 		}
 		file, err := os.Open(furObjects[i].FilePath)
 		if err != nil {
-			logs.AddToFailedLog(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false, true)
+			g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false)
 			errCh <- errors.New("File open error: " + err.Error())
 			continue
 		}
 		defer file.Close()
 
-		furObjects[i], err = GenerateUploadRequest(gen3Interface, furObjects[i], file, progress)
+		furObjects[i], err = GenerateUploadRequest(g3i, furObjects[i], file, progress)
 		if err != nil {
 			file.Close()
-			logs.AddToFailedLog(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false, true)
+			g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false)
 			errCh <- errors.New("Error occurred during request generation: " + err.Error())
 			continue
 		}
 	}
 
-	furObjectCh := make(chan commonUtils.FileUploadRequestObject, len(furObjects))
+	furObjectCh := make(chan common.FileUploadRequestObject, len(furObjects))
 
 	client := &http.Client{}
 	wg := sync.WaitGroup{}
-	for i := 0; i < workers; i++ {
+	for range workers {
 		wg.Add(1)
 		go func() {
 			for furObject := range furObjectCh {
 				if furObject.Request != nil {
 					resp, err := client.Do(furObject.Request)
 					if err != nil {
-						logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
+						g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
 						errCh <- err
 					} else {
 						if resp.StatusCode != 200 {
-							logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
-						} else { // Succeeded
+							g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						} else {
 							respCh <- resp
-							logs.DeleteFromFailedLog(furObject.FilePath, true)
-							logs.WriteToSucceededLog(furObject.FilePath, furObject.GUID, true)
-							logs.IncrementScore(0)
+							g3i.Logger().DeleteFromFailedLog(furObject.FilePath)
+							g3i.Logger().Succeeded(furObject.FilePath, furObject.GUID)
+							g3i.Logger().Scoreboard().IncrementSB(0)
 						}
 					}
 				} else if furObject.FilePath != "" {
-					logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
+					g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
 				}
 			}
 			wg.Done()

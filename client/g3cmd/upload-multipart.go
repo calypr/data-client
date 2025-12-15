@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
@@ -29,12 +28,6 @@ const (
 	maxConcurrentUploads = 10
 	maxRetries           = 5
 )
-
-type multipartUploader struct {
-	profile      string
-	bucket       string
-	showProgress bool
-}
 
 func NewUploadMultipartCmd() *cobra.Command {
 	var (
@@ -53,22 +46,7 @@ This method is resilient to network interruptions and supports resume capability
 		RunE: func(cmd *cobra.Command, args []string) error {
 			profile, _ := cmd.Flags().GetString("profile")
 
-			logs.InitSucceededLog(profile)
-			logs.InitFailedLog(profile)
-			logs.SetToBoth()
-			logs.InitScoreBoard(maxRetries)
-			defer func() {
-				logs.PrintScoreBoard()
-				logs.CloseAll()
-			}()
-
-			uploader := &multipartUploader{
-				profile:      profile,
-				bucket:       bucketName,
-				showProgress: true,
-			}
-
-			return uploader.UploadSingleFile(filePath, guid)
+			return UploadSingleFile(profile, bucketName, filePath, guid)
 		},
 	}
 
@@ -82,33 +60,34 @@ This method is resilient to network interruptions and supports resume capability
 	return cmd
 }
 
-func (u *multipartUploader) UploadSingleFile(filePath, guid string) error {
-	if !u.showProgress {
-		log.SetOutput(io.Discard)
-	}
+func UploadSingleFile(profile, bucket, filePath, guid string) error {
 
-	g3, err := client.NewGen3Interface(u.profile)
+	g3, err := client.NewGen3InterfaceWithLogger(
+		context.Background(),
+		profile,
+		logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard()),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Gen3 interface: %w", err)
 	}
 
-	absPath, err := commonUtils.GetAbsolutePath(filePath)
+	absPath, err := common.GetAbsolutePath(filePath)
 	if err != nil {
 		return fmt.Errorf("invalid file path: %w", err)
 	}
 
-	fileInfo := commonUtils.FileUploadRequestObject{
+	fileInfo := common.FileUploadRequestObject{
 		FilePath:     absPath,
 		Filename:     filepath.Base(absPath),
 		GUID:         guid,
-		FileMetadata: commonUtils.FileMetadata{},
+		FileMetadata: common.FileMetadata{},
 	}
 
-	return MultipartUpload(context.TODO(), g3, fileInfo, u.bucket, u.showProgress)
+	return MultipartUpload(context.TODO(), g3, fileInfo, bucket, true)
 }
 
 // MultipartUpload is now clean, context-aware, and uses modern progress bars
-func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req commonUtils.FileUploadRequestObject, bucketName string, showProgress bool) error {
+func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, bucketName string, showProgress bool) error {
 	g3.Logger().Printf("File Upload Request: %#v\n", req)
 
 	file, err := os.Open(req.FilePath)

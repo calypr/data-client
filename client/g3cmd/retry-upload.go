@@ -3,200 +3,204 @@ package g3cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
+
 	"github.com/spf13/cobra"
 )
 
-func updateRetryObject(ro *commonUtils.RetryObject, filePath string, filename string, fileMetadata commonUtils.FileMetadata, guid string, retryCount int, isMultipart bool) {
-	ro.FilePath = filePath
-	ro.Filename = filename
-	ro.FileMetadata = fileMetadata
-	ro.GUID = guid
-	ro.RetryCount = retryCount
-	ro.Multipart = isMultipart
-}
+func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObjCh chan common.RetryObject, err error) {
+	log := g3i.Logger()
 
-func handleFailedRetry(gen3Interface client.Gen3Interface, ro commonUtils.RetryObject, retryObjCh chan commonUtils.RetryObject, err error, isMuted bool) {
-	logs.AddToFailedLog(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart, isMuted)
+	// Record failure in JSON log
+	log.Failed(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart)
+
 	if err != nil {
-		log.Println(err.Error())
+		log.Println("Error:", err)
 	}
-	if ro.RetryCount < MaxRetryCount { // try another time
+
+	if ro.RetryCount < MaxRetryCount {
 		retryObjCh <- ro
-	} else {
-		if ro.GUID != "" {
-			msg, err := DeleteRecord(gen3Interface, ro.GUID)
-			if err == nil {
-				log.Println(msg)
-			} else {
-				log.Println(err.Error())
-			}
-		}
-		logs.IncrementScore(logs.ScoreBoardLen - 1) // inevitable failure
-		if (len(retryObjCh)) == 0 {
-			close(retryObjCh)
-			log.Println("Retry channel has been closed")
-		}
-	}
-}
-
-func retryUpload(gen3Interface client.Gen3Interface, failedLogMap map[string]commonUtils.RetryObject) {
-	var guid string
-	var presignedURL string
-	var err error
-
-	if len(failedLogMap) == 0 {
-		log.Println("No failed file in log, no need to retry upload.")
 		return
 	}
 
-	log.Println("Retry upload has started...")
-	retryObjCh := make(chan commonUtils.RetryObject, len(failedLogMap))
-	for _, v := range failedLogMap {
-		if logs.ExistsInSucceededLog(v.FilePath) {
-			log.Println("File \"" + v.FilePath + "\" has been found in local submission history and has been skipped to prevent duplicated submissions.")
+	// Max retries reached — clean up
+	if ro.GUID != "" {
+		if msg, err := DeleteRecord(g3i, ro.GUID); err == nil {
+			log.Println(msg)
+		} else {
+			log.Println("Cleanup failed:", err)
+		}
+	}
+
+	// Final failure
+	logs.FromSBContext(context.Background()).IncrementSB(MaxRetryCount + 1)
+
+	if len(retryObjCh) == 0 {
+		close(retryObjCh)
+		log.Println("Retry channel closed — all done")
+	}
+}
+
+func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryObject) {
+	log := g3i.Logger()
+	sb := logs.FromSBContext(context.Background())
+
+	if len(failedLogMap) == 0 {
+		log.Println("No failed files to retry.")
+		return
+	}
+
+	log.Println("Starting retry-upload...")
+	retryObjCh := make(chan common.RetryObject, len(failedLogMap))
+
+	// Load failed entries (skip already succeeded ones)
+	for _, ro := range failedLogMap {
+		// Simple check: if succeeded log exists and contains this path, skip
+		if logs.AlreadySucceededFromFile(ro.FilePath) {
+			log.Printf("Already uploaded: %s — skipping\n", ro.FilePath)
 			continue
 		}
-		retryObjCh <- v
+		retryObjCh <- ro
 	}
-	log.Printf("%d records has been sent to the retry channel\n\n", len(retryObjCh))
+
 	if len(retryObjCh) == 0 {
+		log.Println("All failed files were already successfully uploaded in a previous run.")
 		return
 	}
 
 	for ro := range retryObjCh {
 		ro.RetryCount++
-		log.Printf("#%d retry of record %s\n", ro.RetryCount, ro.FilePath)
-		log.Printf("Sleep for %.0f seconds\n", GetWaitTime(ro.RetryCount).Seconds())
-		time.Sleep(GetWaitTime(ro.RetryCount)) // exponential wait for retry
+		log.Printf("#%d retry — %s\n", ro.RetryCount, ro.FilePath)
+		log.Printf("Waiting %.0f seconds...\n", GetWaitTime(ro.RetryCount).Seconds())
+		time.Sleep(GetWaitTime(ro.RetryCount))
 
+		// Optional: delete old record
 		if ro.GUID != "" {
-			msg, err := DeleteRecord(gen3Interface, ro.GUID)
-			if err == nil {
+			if msg, err := DeleteRecord(g3i, ro.GUID); err == nil {
 				log.Println(msg)
-			} else {
-				log.Println(err.Error())
 			}
 		}
 
+		// Fix missing filename if needed
 		if ro.Filename == "" {
-			filePath, _ := commonUtils.GetAbsolutePath(ro.FilePath)
-			filename := filepath.Base(filePath)
-			updateRetryObject(&ro, filePath, filename, ro.FileMetadata, ro.GUID, ro.RetryCount, true)
+			absPath, _ := common.GetAbsolutePath(ro.FilePath)
+			ro.Filename = filepath.Base(absPath)
 		}
 
+		var err error
 		if ro.Multipart {
-			fileInfo := commonUtils.FileUploadRequestObject{FilePath: ro.FilePath, Filename: ro.Filename, GUID: ro.GUID}
-			// Enable progress bar for retry uploads (interactive CLI use)
-			err = MultipartUpload(context.Background(), gen3Interface, fileInfo, ro.Bucket, true)
-			if err != nil {
-				updateRetryObject(&ro, ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, true)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, true)
+			// Multipart retry
+			req := common.FileUploadRequestObject{
+				FilePath: ro.FilePath,
+				Filename: ro.Filename,
+				GUID:     ro.GUID,
+			}
+			err = MultipartUpload(context.Background(), g3i, req, ro.Bucket, true)
+			if err == nil {
+				log.Succeeded(ro.FilePath, req.GUID)
+				sb.IncrementSB(ro.RetryCount - 1) // success on this retry
 				continue
-			} else { // succeeded
-				logs.IncrementScore(ro.RetryCount)
-				if (len(retryObjCh)) == 0 {
-					close(retryObjCh)
-					log.Println("Retry channel has been closed")
-				}
 			}
 		} else {
-			presignedURL, guid, err = GeneratePresignedURL(gen3Interface, ro.Filename, ro.FileMetadata, ro.Bucket)
+			// Single-part retry
+			var presignedURL, guid string
+			presignedURL, guid, err = GeneratePresignedURL(g3i, ro.Filename, ro.FileMetadata, ro.Bucket)
 			if err != nil {
-				updateRetryObject(&ro, ro.FilePath, ro.Filename, ro.FileMetadata, guid, ro.RetryCount, false)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, true)
+				handleFailedRetry(g3i, ro, retryObjCh, err)
 				continue
 			}
-			furObject := commonUtils.FileUploadRequestObject{FilePath: ro.FilePath, Filename: ro.Filename, FileMetadata: ro.FileMetadata, GUID: guid, PresignedURL: presignedURL}
+
 			file, err := os.Open(ro.FilePath)
 			if err != nil {
-				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, ro.GUID, ro.RetryCount, false)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
+				handleFailedRetry(g3i, ro, retryObjCh, err)
 				continue
 			}
-			fi, err := file.Stat()
-			if err != nil {
-				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, ro.GUID, ro.RetryCount, false)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
-				file.Close()
-				continue
-			}
-			if fi.Size() > FileSizeLimit { // guard for files, always check file size during retry upload
-				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, ro.RetryCount, true)
-				err = fmt.Errorf("file size for %s is greater than the single part upload limit, will retry using multipart upload", furObject.Filename)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
-				file.Close()
-				continue
-			}
-
-			furObject, err = GenerateUploadRequest(gen3Interface, furObject, file, nil)
-			if err != nil {
-				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, ro.RetryCount, false)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
-				file.Close()
-				continue
-			}
-
-			err = uploadFile(furObject, ro.RetryCount)
-			if err != nil {
-				updateRetryObject(&ro, furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, ro.RetryCount, false)
-				handleFailedRetry(gen3Interface, ro, retryObjCh, err, false)
-				file.Close()
-				continue
-			}
-			logs.DeleteFromFailedLog(furObject.FilePath, true)
-			logs.IncrementScore(ro.RetryCount)
+			stat, _ := file.Stat()
 			file.Close()
-			if (len(retryObjCh)) == 0 {
-				close(retryObjCh)
-				log.Println("Retry channel has been closed")
+
+			if stat.Size() > FileSizeLimit {
+				ro.Multipart = true
+				retryObjCh <- ro
+				continue
 			}
+
+			fur := common.FileUploadRequestObject{
+				FilePath:     ro.FilePath,
+				Filename:     ro.Filename,
+				FileMetadata: ro.FileMetadata,
+				GUID:         guid,
+				PresignedURL: presignedURL,
+			}
+
+			fur, err = GenerateUploadRequest(g3i, fur, nil, nil)
+			if err != nil {
+				handleFailedRetry(g3i, ro, retryObjCh, err)
+				continue
+			}
+
+			err = uploadFile(g3i, fur, ro.RetryCount)
+			if err != nil {
+				handleFailedRetry(g3i, ro, retryObjCh, err)
+				continue
+			}
+
+			// SUCCESS!
+			log.Succeeded(ro.FilePath, fur.GUID)
+			sb.IncrementSB(ro.RetryCount - 1)
+		}
+
+		if len(retryObjCh) == 0 {
+			close(retryObjCh)
 		}
 	}
 }
 
 func init() {
-	var failedLogPath string
-	var profile string
+	var failedLogPath, profile string
+
 	var retryUploadCmd = &cobra.Command{
 		Use:     "retry-upload",
-		Short:   "Retry upload file(s) to object storage.",
-		Long:    `Re-submit files found in a given failed log by using sequential (non-batching) uploading and exponential backoff.`,
-		Example: "For retrying file upload:\n./data-client retry-upload --profile=<profile-name> --failed-log-path=<path-to-failed-log>\n",
+		Short:   "Retry failed uploads from a failed_log.json",
+		Long:    `Re-uploads files listed in a failed log using exponential backoff and progress bars.`,
+		Example: `./data-client retry-upload --profile=myprofile --failed-log-path=/path/to/failed_log.json`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// initialize transmission logs
-			logs.InitSucceededLog(profile)
-			logs.InitFailedLog(profile)
-			logs.SetToBoth()
-			logs.InitScoreBoard(MaxRetryCount)
-
-			gen3Interface, err := client.NewGen3Interface(profile)
+			g3, err := client.NewGen3InterfaceWithLogger(context.Background(), profile, logs.New(profile,
+				logs.WithConsole(),
+				logs.WithMessageFile(),
+				logs.WithFailedLog(),
+				logs.WithSucceededLog(),
+			))
 			if err != nil {
-				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+				os.Stdout.Write(fmt.Appendf(nil, "Failed to initialize client: %v", err))
 			}
 
-			failedLogPath, err = commonUtils.ParseRootPath(failedLogPath)
+			log := g3.Logger()
+
+			// Create scoreboard with our logger injected
+			sb := logs.NewSB(MaxRetryCount, log)
+
+			// Load failed log
+			failedMap, err := logs.LoadFailedLog(failedLogPath)
 			if err != nil {
-				log.Println(err.Error())
-				return
+				log.Fatalf("Cannot read failed log: %v", err)
 			}
-			logs.LoadFailedLogFile(failedLogPath)
-			retryUpload(gen3Interface, logs.GetFailedLogMap())
-			logs.PrintScoreBoard()
-			logs.CloseAll()
+
+			retryUpload(g3, failedMap)
+			sb.PrintSB()
 		},
 	}
 
-	retryUploadCmd.Flags().StringVar(&profile, "profile", "", "Specify profile to use")
-	retryUploadCmd.MarkFlagRequired("profile") //nolint:errcheck
-	retryUploadCmd.Flags().StringVar(&failedLogPath, "failed-log-path", "", "The path to the failed log file.")
-	retryUploadCmd.MarkFlagRequired("failed-log-path") //nolint:errcheck
+	retryUploadCmd.Flags().StringVar(&profile, "profile", "", "Profile to use")
+	retryUploadCmd.MarkFlagRequired("profile")
+
+	retryUploadCmd.Flags().StringVar(&failedLogPath, "failed-log-path", "", "Path to failed_log.json")
+	retryUploadCmd.MarkFlagRequired("failed-log-path")
+
 	RootCmd.AddCommand(retryUploadCmd)
 }

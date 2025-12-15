@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/mocks"
@@ -48,7 +48,7 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 		Return(true, nil)
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
+		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
 		Return("", &testResponse, nil)
 	// ----------
 
@@ -79,7 +79,7 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		Return(true, nil)
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
+		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
 		Return("", nil, fmt.Errorf("Error getting metadata from Shepherd"))
 	// ----------
 
@@ -113,7 +113,7 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{FileName: testFileName, Size: testFileSize}, nil)
 	// ----------
 
@@ -144,7 +144,7 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{}, fmt.Errorf("Error downloading file from Indexd"))
 	// ----------
 

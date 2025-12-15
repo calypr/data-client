@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/mocks"
@@ -44,7 +44,7 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 	}
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(commonUtils.ShepherdEndpoint+"/objects/"+testGUID+"/download", "GET", "", nil).
+		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID+"/download", "GET", "", nil).
 		Return("", &mockDownloadURLResponse, nil)
 
 	// Mock the request for the file at mockDownloadURL.
@@ -58,7 +58,7 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		Return(&mockFileResponse, nil)
 	// ----------
 
-	mockFDRObj := commonUtils.FileDownloadResponseObject{
+	mockFDRObj := common.FileDownloadResponseObject{
 		Filename: testFilename,
 		GUID:     testGUID,
 		Range:    0,
@@ -100,7 +100,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 	}
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(commonUtils.FenceDataDownloadEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(common.FenceDataDownloadEndpoint+"/"+testGUID, "", nil).
 		Return(mockDownloadURLResponse, nil)
 
 	// Mock the request for the file at mockDownloadURL.
@@ -114,7 +114,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		Return(&mockFileResponse, nil)
 	// ----------
 
-	mockFDRObj := commonUtils.FileDownloadResponseObject{
+	mockFDRObj := common.FileDownloadResponseObject{
 		Filename: testFilename,
 		GUID:     testGUID,
 		Range:    0,
@@ -157,11 +157,11 @@ func TestGeneratePresignedURL_noShepherd(t *testing.T) {
 	}
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(commonUtils.FenceDataUploadEndpoint, "application/json", expectedReqBody).
+		DoRequestWithSignedHeader(common.FenceDataUploadEndpoint, "application/json", expectedReqBody).
 		Return(mockUploadURLResponse, nil)
 	// ----------
 
-	url, guid, err := g3cmd.GeneratePresignedURL(mockGen3Interface, testFilename, commonUtils.FileMetadata{}, testBucketname)
+	url, guid, err := g3cmd.GeneratePresignedURL(mockGen3Interface, testFilename, common.FileMetadata{}, testBucketname)
 	if err != nil {
 		t.Error(err)
 	}
@@ -180,7 +180,7 @@ func TestGeneratePresignedURL_withShepherd(t *testing.T) {
 	// -- SETUP --
 	testFilename := "test-file"
 	testBucketname := "test-bucket"
-	testMetadata := commonUtils.FileMetadata{
+	testMetadata := common.FileMetadata{
 		Aliases:  []string{"test-alias-1", "test-alias-2"},
 		Authz:    []string{"authz-resource-1", "authz-resource-2"},
 		Metadata: map[string]any{"arbitrary": "metadata"},
@@ -224,7 +224,7 @@ func TestGeneratePresignedURL_withShepherd(t *testing.T) {
 	}
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(commonUtils.ShepherdEndpoint+"/objects", "POST", "", expectedReqBody).
+		GetResponse(common.ShepherdEndpoint+"/objects", "POST", "", expectedReqBody).
 		Return("", &mockUploadURLResponse, nil)
 	// ----------
 

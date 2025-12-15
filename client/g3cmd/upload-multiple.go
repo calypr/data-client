@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
@@ -34,25 +34,19 @@ func init() {
 			fmt.Printf("Notice: this is the upload method which requires the user to provide GUIDs. In this method files will be uploaded to specified GUIDs.\nIf your intention is to upload files without pre-existing GUIDs, consider to use \"./data-client upload\" instead.\n\n")
 
 			// Instantiate interface to Gen3
-			gen3Interface, err := client.NewGen3Interface(profile)
+			g3i, err := client.NewGen3InterfaceWithLogger(context.Background(), profile,
+				logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard()))
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
-			host, err := gen3Interface.GetHost()
+			host, err := g3i.GetHost()
 			if err != nil {
 				log.Fatalln("Error occurred during parsing config file for hostname: " + err.Error())
 			}
 			dataExplorerURL := host.Scheme + "://" + host.Host + "/explorer"
 
 			var objects []ManifestObject
-
-			// initialize transmission logs
-			logs.InitSucceededLog(profile)
-			logs.InitFailedLog(profile)
-			logs.SetToBoth()
-			logs.InitScoreBoard(MaxRetryCount)
-			logs.InitScoreBoard(0)
 
 			manifestFile, err := os.Open(manifestPath)
 			if err != nil {
@@ -76,13 +70,13 @@ func init() {
 				log.Fatalln("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
 			}
 
-			absUploadPath, err := commonUtils.GetAbsolutePath(uploadPath)
+			absUploadPath, err := common.GetAbsolutePath(uploadPath)
 			if err != nil {
 				log.Fatalf("Error when parsing file paths: %s", err.Error())
 			}
 
 			// Create unified upload request objects
-			uploadRequestObjects := make([]commonUtils.FileUploadRequestObject, 0, len(objects))
+			uploadRequestObjects := make([]common.FileUploadRequestObject, 0, len(objects))
 
 			for _, object := range objects {
 				var localFilePath string
@@ -102,13 +96,13 @@ func init() {
 
 				fileInfo, err := ProcessFilename(absUploadPath, localFilePath, object.ObjectID, includeSubDirName, false)
 				if err != nil {
-					logs.AddToFailedLog(localFilePath, filepath.Base(localFilePath), commonUtils.FileMetadata{}, object.ObjectID, 0, false, true)
+					g3i.Logger().Failed(localFilePath, filepath.Base(localFilePath), common.FileMetadata{}, object.ObjectID, 0, false)
 					log.Println("Process filename error: " + err.Error())
 					continue
 				}
 
-				// Convert FileInfo to the unified commonUtils.FileUploadRequestObject
-				furObject := commonUtils.FileUploadRequestObject{
+				// Convert FileInfo to the unified common.FileUploadRequestObject
+				furObject := common.FileUploadRequestObject{
 					FilePath:     fileInfo.FilePath,
 					Filename:     fileInfo.Filename,
 					FileMetadata: fileInfo.FileMetadata,
@@ -118,7 +112,7 @@ func init() {
 			}
 
 			// Separate into single-part and multipart objects
-			singlePartObjects, multipartObjects := separateSingleAndMultipartUploads(uploadRequestObjects, forceMultipart)
+			singlePartObjects, multipartObjects := separateSingleAndMultipartUploads(g3i, uploadRequestObjects, forceMultipart)
 			// Pass the unified objects to the upload handlers
 			if batch {
 				workers, respCh, errCh, batchFURObjects := initBatchUploadChannels(numParallel, len(singlePartObjects))
@@ -127,28 +121,29 @@ func init() {
 					if len(batchFURObjects) < workers {
 						batchFURObjects = append(batchFURObjects, furObject)
 					} else {
-						batchUpload(gen3Interface, batchFURObjects, workers, respCh, errCh, bucketName)
-						batchFURObjects = []commonUtils.FileUploadRequestObject{furObject}
+						batchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
 					if !forceMultipart && i == len(singlePartObjects)-1 && len(batchFURObjects) > 0 { // upload remainders
-						batchUpload(gen3Interface, batchFURObjects, workers, respCh, errCh, bucketName)
+						batchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 					}
 				}
 			} else {
-				processSingleUploads(gen3Interface, singlePartObjects, bucketName, includeSubDirName, absUploadPath) // Assuming updated
+				processSingleUploads(g3i, singlePartObjects, bucketName, includeSubDirName, absUploadPath) // Assuming updated
 			}
 
 			if len(multipartObjects) > 0 {
-				err := processMultipartUpload(gen3Interface, multipartObjects, bucketName, includeSubDirName, absUploadPath)
+				err := processMultipartUpload(g3i, multipartObjects, bucketName, includeSubDirName, absUploadPath)
 				if err != nil {
 					log.Fatalln(err.Error())
 				}
 			}
-			if !logs.IsFailedLogMapEmpty() {
-				retryUpload(gen3Interface, logs.GetFailedLogMap())
+
+			if len(g3i.Logger().GetSucceededLogMap()) == 0 {
+				retryUpload(g3i, g3i.Logger().GetFailedLogMap())
 			}
-			logs.PrintScoreBoard()
-			logs.CloseAll()
+
+			g3i.Logger().Scoreboard().PrintSB()
 		},
 	}
 
@@ -166,74 +161,74 @@ func init() {
 	RootCmd.AddCommand(uploadMultipleCmd)
 }
 
-func processSingleUploads(gen3Interface client.Gen3Interface, singleObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) {
+func processSingleUploads(g3i client.Gen3Interface, singleObjects []common.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) {
 	for _, furObject := range singleObjects {
 		filePath := furObject.FilePath
 		file, err := os.Open(filePath)
 		if err != nil {
-			logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
+			g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
 			log.Println("File open error: " + err.Error())
 			continue
 		}
-		startSingleFileUpload(gen3Interface, furObject, file, bucketName)
+		startSingleFileUpload(g3i, furObject, file, bucketName)
 		file.Close()
 	}
 }
 
-func startSingleFileUpload(gen3Interface client.Gen3Interface, furObject commonUtils.FileUploadRequestObject, file *os.File, bucketName string) {
+func startSingleFileUpload(g3i client.Gen3Interface, furObject common.FileUploadRequestObject, file *os.File, bucketName string) {
 
 	fi, err := file.Stat()
 	if err != nil {
-		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
-		log.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
+		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+		g3i.Logger().Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
 		return
 	}
 
-	respURL, guid, err := GeneratePresignedURL(gen3Interface, furObject.Filename, furObject.FileMetadata, bucketName)
+	respURL, guid, err := GeneratePresignedURL(g3i, furObject.Filename, furObject.FileMetadata, bucketName)
 	if err != nil {
-		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, 0, false, true)
+		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, 0, false)
 		log.Println(err.Error())
 		return
 	}
 	furObject.GUID = guid
-	logs.AddToFailedLog(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false, true)
+	g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
 	furObject.PresignedURL = respURL
 
-	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file, nil)
+	furObject, err = GenerateUploadRequest(g3i, furObject, file, nil)
 	if err != nil {
 		file.Close()
 		log.Printf("Error occurred during request generation: %s\n", err.Error())
 		return
 	}
 
-	err = uploadFile(furObject, 0)
+	err = uploadFile(g3i, furObject, 0)
 	if err != nil {
 		log.Println(err.Error())
 	} else {
-		logs.IncrementScore(0)
+		g3i.Logger().Scoreboard().IncrementSB(0)
 	}
 
 	file.Close()
 }
 
-func processMultipartUpload(gen3Interface client.Gen3Interface, multipartObjects []commonUtils.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) error {
-	cred := gen3Interface.GetCredential()
+func processMultipartUpload(g3i client.Gen3Interface, multipartObjects []common.FileUploadRequestObject, bucketName string, includeSubDirName bool, uploadPath string) error {
+	cred := g3i.GetCredential()
 	if cred.UseShepherd == "true" ||
-		cred.UseShepherd == "" && commonUtils.DefaultUseShepherd == true {
+		cred.UseShepherd == "" && common.DefaultUseShepherd == true {
 		return fmt.Errorf("error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again", cred.Profile)
 	}
-	log.Println("Multipart uploading....")
+	g3i.Logger().Println("Multipart uploading...")
 
 	for _, furObject := range multipartObjects {
 		// No more redundant ProcessFilename call!
 		// Pass the complete FileUploadRequestObject to the streamlined multipartUpload.
 		// Enable progress bar for batch uploads (interactive CLI use)
-		err := MultipartUpload(context.Background(), gen3Interface, furObject, bucketName, true)
+		err := MultipartUpload(context.Background(), g3i, furObject, bucketName, true)
 
 		if err != nil {
-			log.Println(err.Error())
+			g3i.Logger().Println(err.Error())
 		} else {
-			logs.IncrementScore(0)
+			g3i.Logger().Scoreboard().IncrementSB(0)
 		}
 	}
 	return nil

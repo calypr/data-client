@@ -1,12 +1,12 @@
 package g3cmd
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sort"
 
 	client "github.com/calypr/data-client/client/gen3Client"
-	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -19,8 +19,7 @@ func init() {
 		Example: `./data-client auth --profile=<profile-name>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			logs.SetToBoth()
-			gen3Interface, err := client.NewGen3Interface(profile)
+			gen3Interface, err := client.NewGen3Interface(context.Background(), profile)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
@@ -61,10 +60,6 @@ func init() {
 						}
 					}
 				}
-			}
-			err = logs.CloseMessageLog()
-			if err != nil {
-				log.Println(err.Error())
 			}
 		},
 	}

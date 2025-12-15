@@ -1,19 +1,19 @@
 package jwt
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"strings"
 
-	"github.com/calypr/data-client/client/commonUtils"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/client/common"
 	"github.com/hashicorp/go-version"
 )
 
 func UpdateConfig(logger *log.Logger, cred *Credential) error {
 	var conf Configure
-	var req Request
+	var req Request = Request{Ctx: context.Background()}
 
 	if cred.Profile == "" {
 		return fmt.Errorf("profile name is required")
@@ -46,7 +46,7 @@ func UpdateConfig(logger *log.Logger, cred *Credential) error {
 
 	if cred.APIKey != "" {
 		// Always refresh the access token — ignore any old one that might be in the struct
-		err = req.RequestNewAccessToken(fenceBase+commonUtils.FenceAccessTokenEndpoint, cred)
+		err = req.RequestNewAccessToken(fenceBase+common.FenceAccessTokenEndpoint, cred)
 		if err != nil {
 			if strings.Contains(err.Error(), "401") {
 				return fmt.Errorf("authentication failed (401) for %s — your API key is invalid, revoked, or expired", fenceBase)
@@ -72,9 +72,6 @@ func UpdateConfig(logger *log.Logger, cred *Credential) error {
 
 	if err := conf.UpdateConfigFile(*cred); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
-	}
-	if err := logs.CloseMessageLog(); err != nil {
-		logger.Println("Warning: failed to close log:", err)
 	}
 
 	return nil

@@ -1,10 +1,10 @@
 package g3cmd
 
 import (
+	"context"
 	"log"
 
 	client "github.com/calypr/data-client/client/gen3Client"
-	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -25,9 +25,8 @@ func init() {
 		Example: `./data-client download-single --profile=<profile-name> --guid=206dfaa6-bcf1-4bc9-b2d0-77179f0f48fc`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			logs.SetToBoth()
 
-			g3I, err := client.NewGen3Interface(profile)
+			g3I, err := client.NewGen3Interface(context.Background(), profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -37,10 +36,6 @@ func init() {
 			}
 			objects := []ManifestObject{obj}
 			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
-			if err != nil {
-				log.Println(err.Error())
-			}
-			err = logs.CloseMessageLog()
 			if err != nil {
 				log.Println(err.Error())
 			}

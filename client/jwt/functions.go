@@ -5,6 +5,7 @@ package jwt
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,18 +16,20 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	"github.com/hashicorp/go-version"
 )
 
-func NewFunctions(config ConfigureInterface, request RequestInterface) FunctionInterface {
+func NewFunctions(ctx context.Context, config ConfigureInterface, request RequestInterface) FunctionInterface {
 	return &Functions{
+		Context: ctx,
 		Config:  config,
 		Request: request,
 	}
 }
 
 type Functions struct {
+	Context context.Context
 	Request RequestInterface
 	Config  ConfigureInterface
 }
@@ -41,6 +44,7 @@ type FunctionInterface interface {
 }
 
 type Request struct {
+	Ctx context.Context
 }
 
 type RequestInterface interface {
@@ -50,7 +54,7 @@ type RequestInterface interface {
 
 func (r *Request) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
 	/*
-		Make http request with header and body
+	   Make http request with header and body
 	*/
 	if headers == nil {
 		headers = make(map[string]string)
@@ -65,14 +69,14 @@ func (r *Request) MakeARequest(method string, apiEndpoint string, accessToken st
 	if noTimeout {
 		client = &http.Client{}
 	} else {
-		client = &http.Client{Timeout: commonUtils.DefaultTimeout}
+		client = &http.Client{Timeout: common.DefaultTimeout}
 	}
 	var req *http.Request
 	var err error
 	if body == nil {
-		req, err = http.NewRequest(method, apiEndpoint, nil)
+		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, nil)
 	} else {
-		req, err = http.NewRequest(method, apiEndpoint, body)
+		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, body)
 	}
 
 	if err != nil {
@@ -165,19 +169,19 @@ func (f *Functions) CheckForShepherdAPI(profileConfig *Credential) (bool, error)
 	if profileConfig.UseShepherd == "false" {
 		return false, nil
 	}
-	if profileConfig.UseShepherd != "true" && commonUtils.DefaultUseShepherd == false {
+	if profileConfig.UseShepherd != "true" && common.DefaultUseShepherd == false {
 		return false, nil
 	}
 	// If Shepherd is enabled, make sure that the commons has a compatible version of Shepherd deployed.
 	// Compare the version returned from the Shepherd version endpoint with the minimum acceptable Shepherd version.
 	var minShepherdVersion string
 	if profileConfig.MinShepherdVersion == "" {
-		minShepherdVersion = commonUtils.DefaultMinShepherdVersion
+		minShepherdVersion = common.DefaultMinShepherdVersion
 	} else {
 		minShepherdVersion = profileConfig.MinShepherdVersion
 	}
 
-	_, res, err := f.GetResponse(profileConfig, commonUtils.ShepherdVersionEndpoint, "GET", "", nil)
+	_, res, err := f.GetResponse(profileConfig, common.ShepherdVersionEndpoint, "GET", "", nil)
 	if err != nil {
 		return false, errors.New("Error occurred during generating HTTP request: " + err.Error())
 	}
@@ -236,7 +240,7 @@ func (f *Functions) GetResponse(profileConfig *Credential, endpointPostPrefix st
 		}
 	}
 	if profileConfig.AccessToken == "" || isExpiredToken {
-		err := f.Request.RequestNewAccessToken(prefixEndPoint+commonUtils.FenceAccessTokenEndpoint, profileConfig)
+		err := f.Request.RequestNewAccessToken(prefixEndPoint+common.FenceAccessTokenEndpoint, profileConfig)
 		if err != nil {
 			return prefixEndPoint, resp, err
 		}
@@ -291,7 +295,7 @@ func (f *Functions) CheckPrivileges(profileConfig *Credential) (string, map[stri
 	var err error
 	var data map[string]any
 
-	host, resp, err := f.GetResponse(profileConfig, commonUtils.FenceUserEndpoint, "GET", "", nil)
+	host, resp, err := f.GetResponse(profileConfig, common.FenceUserEndpoint, "GET", "", nil)
 	if err != nil {
 		return "", nil, errors.New("Error occurred when getting response from remote: " + err.Error())
 	}
@@ -324,7 +328,7 @@ func (f *Functions) DeleteRecord(profileConfig *Credential, guid string) (string
 	if err != nil {
 		log.Printf("WARNING: Error while checking for Shepherd API: %v. Falling back to Fence to delete record.\n", err)
 	} else if hasShepherd {
-		endPointPostfix := commonUtils.ShepherdEndpoint + "/objects/" + guid
+		endPointPostfix := common.ShepherdEndpoint + "/objects/" + guid
 		_, resp, err := f.GetResponse(profileConfig, endPointPostfix, "DELETE", "", nil)
 		if err != nil {
 			return "", err
@@ -338,7 +342,7 @@ func (f *Functions) DeleteRecord(profileConfig *Credential, guid string) (string
 		return msg, err
 	}
 
-	endPointPostfix := commonUtils.FenceDataEndpoint + "/" + guid
+	endPointPostfix := common.FenceDataEndpoint + "/" + guid
 
 	_, resp, err := f.GetResponse(profileConfig, endPointPostfix, "DELETE", "", nil)
 	if err != nil {

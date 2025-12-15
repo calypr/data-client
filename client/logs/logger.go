@@ -2,8 +2,8 @@ package logs
 
 import (
 	"io"
-	"log"
-	"os"
+
+	"github.com/calypr/data-client/client/common"
 )
 
 type Logger interface {
@@ -12,16 +12,36 @@ type Logger interface {
 	Fatalf(format string, v ...any)
 	Fatal(v ...any)
 	Writer() io.Writer
+
+	Failed(filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool)
+	Succeeded(filePath, guid string)
+	Scoreboard() *Scoreboard
+	GetSucceededLogMap() map[string]string
+	GetFailedLogMap() map[string]common.RetryObject
+	DeleteFromFailedLog(filePath string)
 }
 
-type defaultLogger struct{}
+type Option func(*config)
 
-func (defaultLogger) Printf(format string, v ...any) { log.Printf(format, v...) }
-func (defaultLogger) Println(v ...any)               { log.Println(v...) }
-func (defaultLogger) Fatalf(format string, v ...any) { log.Fatalf(format, v...) }
-func (defaultLogger) Fatal(v ...any)                 { log.Fatal(v...) }
-func (defaultLogger) Writer() io.Writer              { return os.Stdout }
+type config struct {
+	console          bool
+	messageFile      bool
+	failedLog        bool
+	succeededLog     bool
+	enableScoreboard bool
+}
 
-func Default() Logger {
-	return defaultLogger{}
+func WithConsole() Option      { return func(c *config) { c.console = true } }
+func WithMessageFile() Option  { return func(c *config) { c.messageFile = true } }
+func WithFailedLog() Option    { return func(c *config) { c.failedLog = true } }
+func WithSucceededLog() Option { return func(c *config) { c.succeededLog = true } }
+func WithScoreboard() Option   { return func(c *config) { c.enableScoreboard = true } }
+
+func defaults() *config {
+	return &config{
+		console:      true,
+		messageFile:  true,
+		failedLog:    true,
+		succeededLog: true,
+	}
 }

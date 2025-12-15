@@ -1,6 +1,7 @@
 package g3cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
-	"github.com/calypr/data-client/client/logs"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -35,7 +35,7 @@ func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protoco
 		log.Println("Falling back to Indexd...")
 	}
 	if hasShepherd {
-		endPointPostfix := commonUtils.ShepherdEndpoint + "/objects/" + guid
+		endPointPostfix := common.ShepherdEndpoint + "/objects/" + guid
 		_, res, err := gen3Interface.GetResponse(endPointPostfix, "GET", "", nil)
 		if err != nil {
 			log.Println("Error occurred when querying filename from Shepherd: " + err.Error())
@@ -68,7 +68,7 @@ func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protoco
 
 	} else {
 		// Attempt to get the filename from Indexd
-		endPointPostfix := commonUtils.IndexdIndexEndpoint + "/" + guid
+		endPointPostfix := common.IndexdIndexEndpoint + "/" + guid
 		indexdMsg, err := gen3Interface.DoRequestWithSignedHeader(endPointPostfix, "", nil)
 		if err != nil {
 			log.Println("Error occurred when querying filename from IndexD: " + err.Error())
@@ -164,13 +164,13 @@ func validateFilenameFormat(downloadPath string, filenameFormat string, rename b
 	}
 	if filenameFormat == "guid" || filenameFormat == "combined" {
 		fmt.Printf("WARNING: in \"guid\" or \"combined\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
-		if !noPrompt && !commonUtils.AskForConfirmation("Proceed?") {
+		if !noPrompt && !common.AskForConfirmation("Proceed?") {
 			log.Println("Aborted by user")
 			os.Exit(0)
 		}
 	} else if !rename {
 		fmt.Printf("WARNING: flag \"rename\" was set to false in \"original\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
-		if !noPrompt && !commonUtils.AskForConfirmation("Proceed?") {
+		if !noPrompt && !common.AskForConfirmation("Proceed?") {
 			log.Println("Aborted by user")
 			os.Exit(0)
 		}
@@ -180,35 +180,35 @@ func validateFilenameFormat(downloadPath string, filenameFormat string, rename b
 	return nil
 }
 
-func validateLocalFileStat(downloadPath string, filename string, filesize int64, skipCompleted bool) commonUtils.FileDownloadResponseObject {
+func validateLocalFileStat(downloadPath string, filename string, filesize int64, skipCompleted bool) common.FileDownloadResponseObject {
 	fi, err := os.Stat(downloadPath + filename) // check filename for local existence
 	if err != nil {
 		if os.IsNotExist(err) {
-			return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // no local file, normal full length download
+			return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // no local file, normal full length download
 		}
 		log.Printf("Error occurred when getting information for file \"%s\": %s\n", downloadPath+filename, err.Error())
 		log.Println("Will try to download the whole file")
-		return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // errorred when trying to get local FI, normal full length download
+		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // errorred when trying to get local FI, normal full length download
 	}
 
 	// have existing local file and may want to skip, check more conditions
 	if !skipCompleted {
-		return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Overwrite: true} // not skipping any local files, normal full length download
+		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Overwrite: true} // not skipping any local files, normal full length download
 	}
 
 	localFilesize := fi.Size()
 	if localFilesize == filesize {
-		return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Skip: true} // both filename and filesize matches, consider as completed
+		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Skip: true} // both filename and filesize matches, consider as completed
 	}
 	if localFilesize > filesize {
-		return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Overwrite: true} // local filesize is greater than INDEXD record, overwrite local existing
+		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Overwrite: true} // local filesize is greater than INDEXD record, overwrite local existing
 	}
 	// local filesize is less than INDEXD record, try ranged download
-	return commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Range: localFilesize}
+	return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Range: localFilesize}
 }
 
-func batchDownload(g3 client.Gen3Interface, progress *mpb.Progress, batchFDRSlice []commonUtils.FileDownloadResponseObject, protocolText string, workers int, errCh chan error) int {
-	fdrs := make([]commonUtils.FileDownloadResponseObject, 0)
+func batchDownload(g3 client.Gen3Interface, progress *mpb.Progress, batchFDRSlice []common.FileDownloadResponseObject, protocolText string, workers int, errCh chan error) int {
+	fdrs := make([]common.FileDownloadResponseObject, 0)
 	for _, fdrObject := range batchFDRSlice {
 		err := GetDownloadResponse(g3, &fdrObject, protocolText)
 		if err != nil {
@@ -257,7 +257,7 @@ func batchDownload(g3 client.Gen3Interface, progress *mpb.Progress, batchFDRSlic
 		defer fdrObject.Response.Body.Close()
 	}
 
-	fdrCh := make(chan commonUtils.FileDownloadResponseObject, len(fdrs))
+	fdrCh := make(chan common.FileDownloadResponseObject, len(fdrs))
 	wg := sync.WaitGroup{}
 	succeeded := 0
 	var err error
@@ -289,7 +289,7 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 		return fmt.Errorf("invalid value for option \"numparallel\": must be a positive integer! Please check your input")
 	}
 
-	downloadPath, err := commonUtils.ParseRootPath(downloadPath)
+	downloadPath, err := common.ParseRootPath(downloadPath)
 	if err != nil {
 		return fmt.Errorf("downloadFile Error: %s", err.Error())
 	}
@@ -318,7 +318,7 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 
 	renamedFiles := make([]RenamedOrSkippedFileInfo, 0)
 	skippedFiles := make([]RenamedOrSkippedFileInfo, 0)
-	fdrObjects := make([]commonUtils.FileDownloadResponseObject, 0)
+	fdrObjects := make([]common.FileDownloadResponseObject, 0)
 
 	log.Printf("Total number of objects in manifest: %d", len(objects))
 	log.Println("Preparing file info for each file, please wait...")
@@ -335,14 +335,14 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 			log.Println("Found empty object_id (GUID), skipping this entry")
 			continue
 		}
-		var fdrObject commonUtils.FileDownloadResponseObject
+		var fdrObject common.FileDownloadResponseObject
 		filename := obj.Filename
 		filesize := obj.Filesize
 		// only queries Gen3 services if any of these 2 values doesn't exists in manifest
 		if filename == "" || filesize == 0 {
 			filename, filesize = AskGen3ForFileInfo(g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamedFiles)
 		}
-		fdrObject = commonUtils.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename}
+		fdrObject = common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename}
 		if !rename {
 			fdrObject = validateLocalFileStat(downloadPath, filename, filesize, skipCompleted)
 		}
@@ -356,7 +356,7 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 	totalCompeleted := 0
 	workers, _, errCh, _ := initBatchUploadChannels(numParallel, len(fdrObjects))
 	downloadProgress := mpb.New(mpb.WithOutput(g3i.Logger().Writer()))
-	batchFDRSlice := make([]commonUtils.FileDownloadResponseObject, 0)
+	batchFDRSlice := make([]common.FileDownloadResponseObject, 0)
 	for _, fdrObject := range fdrObjects {
 		if fdrObject.Skip {
 			log.Printf("File \"%s\" (GUID: %s) has been skipped because there is a complete local copy\n", fdrObject.Filename, fdrObject.GUID)
@@ -368,7 +368,7 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 			batchFDRSlice = append(batchFDRSlice, fdrObject)
 		} else {
 			totalCompeleted += batchDownload(g3i, downloadProgress, batchFDRSlice, protocolText, workers, errCh)
-			batchFDRSlice = make([]commonUtils.FileDownloadResponseObject, 0)
+			batchFDRSlice = make([]common.FileDownloadResponseObject, 0)
 			batchFDRSlice = append(batchFDRSlice, fdrObject)
 		}
 	}
@@ -413,14 +413,13 @@ func init() {
 		Example: `./data-client download-multiple --profile=<profile-name> --manifest=<path-to-manifest/manifest.json> --download-path=<path-to-file-dir/>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			logs.SetToBoth()
 
-			g3I, err := client.NewGen3Interface(profile)
+			g3I, err := client.NewGen3Interface(context.Background(), profile)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
-			manifestPath, _ = commonUtils.GetAbsolutePath(manifestPath)
+			manifestPath, _ = common.GetAbsolutePath(manifestPath)
 			manifestFile, err := os.Open(manifestPath)
 			if err != nil {
 				log.Fatalf("Failed to open manifest file %s, %v\n", manifestPath, err)
@@ -456,10 +455,6 @@ func init() {
 			}
 
 			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, numParallel, skipCompleted)
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-			err = logs.CloseMessageLog()
 			if err != nil {
 				log.Fatalln(err.Error())
 			}

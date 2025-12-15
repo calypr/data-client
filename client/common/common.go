@@ -1,4 +1,4 @@
-package commonUtils
+package common
 
 import (
 	"bufio"
@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/vbauerster/mpb/v8"
 )
 
@@ -113,7 +112,7 @@ type RetryObject struct {
 // ParseRootPath parses dirname that has "~" in the beginning
 func ParseRootPath(filePath string) (string, error) {
 	if filePath != "" && filePath[0] == '~' {
-		homeDir, err := homedir.Dir()
+		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}

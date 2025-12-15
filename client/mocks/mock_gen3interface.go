@@ -139,7 +139,7 @@ func (m *MockGen3Interface) MakeARequest(arg0, arg1, arg2, arg3 string, arg4 map
 }
 
 func (m *MockGen3Interface) Logger() logs.Logger {
-	return logs.Default()
+	return logs.New("test")
 }
 
 // MakeARequest indicates an expected call of MakeARequest

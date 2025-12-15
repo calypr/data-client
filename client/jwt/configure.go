@@ -14,9 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	"github.com/golang-jwt/jwt/v5"
-	homedir "github.com/mitchellh/go-homedir"
 	"gopkg.in/ini.v1"
 )
 
@@ -46,7 +45,7 @@ type ConfigureInterface interface {
 
 func (conf *Configure) ReadFile(filePath string, fileType string) string {
 	//Look in config file
-	fullFilePath, err := commonUtils.GetAbsolutePath(filePath)
+	fullFilePath, err := common.GetAbsolutePath(filePath)
 	if err != nil {
 		log.Println("error occurred when parsing config file path: " + err.Error())
 		return ""
@@ -100,11 +99,11 @@ func (conf *Configure) ReadCredentials(filePath string, fenceToken string) (*Cre
 }
 
 func (conf *Configure) GetConfigPath() (string, error) {
-	homeDir, err := homedir.Dir()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	configPath := path.Join(homeDir + commonUtils.PathSeparator + ".gen3" + commonUtils.PathSeparator + "gen3_client_config.ini")
+	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
 	return configPath, nil
 }
 
@@ -225,12 +224,12 @@ func (conf *Configure) ParseConfig(profile string) (Credential, error) {
 			An instance of Credential
 	*/
 
-	homeDir, err := homedir.Dir()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		errs := fmt.Errorf("Error occurred when getting home directory: %s", err.Error())
 		return Credential{}, errs
 	}
-	configPath := path.Join(homeDir + commonUtils.PathSeparator + ".gen3" + commonUtils.PathSeparator + "gen3_client_config.ini")
+	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
 	profileConfig := Credential{
 		Profile:     profile,
 		KeyId:       "",
