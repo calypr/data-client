@@ -12,7 +12,7 @@ import (
 	"github.com/calypr/data-client/client/logs"
 )
 
-//go:generate mockgen -destination=../../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/gen3Client Gen3Interface
+//go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/gen3Client Gen3Interface
 
 // Gen3Interface contains methods used to make authorized http requests to Gen3 services.
 // The credential is embedded in the implementation, so it doesn't need to be passed to each method.
@@ -94,13 +94,9 @@ func (g *Gen3Client) DeleteRecord(guid string) (string, error) {
 	return "", errors.New("unable to access DeleteRecord method")
 }
 
-func NewGen3Interface(ctx context.Context, profile string) (Gen3Interface, error) {
-	return NewGen3InterfaceWithLogger(ctx, profile, nil)
-}
-
 // NewGen3Interface returns a Gen3Client that embeds the credential and implements Gen3Interface.
 // This eliminates the need to pass credentials around everywhere.
-func NewGen3InterfaceWithLogger(ctx context.Context, profile string, logger logs.Logger) (Gen3Interface, error) {
+func NewGen3Interface(ctx context.Context, profile string, logger logs.Logger) (Gen3Interface, error) {
 	config := &jwt.Configure{}
 	request := &jwt.Request{Ctx: ctx, Logs: logger}
 	client := jwt.NewFunctions(ctx, config, request)
@@ -111,10 +107,6 @@ func NewGen3InterfaceWithLogger(ctx context.Context, profile string, logger logs
 	}
 	if valid, err := config.IsValidCredential(cred); !valid {
 		return nil, fmt.Errorf("invalid credential: %v", err)
-	}
-
-	if logger == nil {
-		logger = logs.New(profile)
 	}
 
 	return &Gen3Client{

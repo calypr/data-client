@@ -2,7 +2,6 @@ package g3cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -39,7 +38,11 @@ func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObj
 	}
 
 	// Final failure
-	logs.FromSBContext(context.Background()).IncrementSB(MaxRetryCount + 1)
+	sb, err := logs.FromSBContext(context.Background())
+	if err != nil {
+		logger.Println(err)
+	}
+	sb.IncrementSB(MaxRetryCount + 1)
 
 	if len(retryObjCh) == 0 {
 		close(retryObjCh)
@@ -49,7 +52,10 @@ func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObj
 
 func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryObject) {
 	logger := g3i.Logger()
-	sb := logs.FromSBContext(context.Background())
+	sb, err := logs.FromSBContext(context.Background())
+	if err != nil {
+		logger.Println(err)
+	}
 
 	if len(failedLogMap) == 0 {
 		logger.Println("No failed files to retry.")
@@ -170,14 +176,17 @@ func init() {
 		Long:    `Re-uploads files listed in a failed log using exponential backoff and progress bars.`,
 		Example: `./data-client retry-upload --profile=myprofile --failed-log-path=/path/to/failed_log.json`,
 		Run: func(cmd *cobra.Command, args []string) {
-			g3, err := client.NewGen3InterfaceWithLogger(context.Background(), profile, logs.New(profile,
+			Logger, closer := logs.New(profile,
 				logs.WithConsole(),
 				logs.WithMessageFile(),
 				logs.WithFailedLog(),
 				logs.WithSucceededLog(),
-			))
+			)
+			defer closer()
+
+			g3, err := client.NewGen3Interface(context.Background(), profile, Logger)
 			if err != nil {
-				os.Stdout.Write(fmt.Appendf(nil, "Failed to initialize client: %v", err))
+				Logger.Fatalf("Failed to initialize client: %v", err)
 			}
 
 			logger := g3.Logger()

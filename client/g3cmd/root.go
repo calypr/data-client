@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/calypr/data-client/client/jwt"
@@ -15,6 +14,13 @@ import (
 )
 
 var profile string
+
+// Package-level variable to hold the closer function
+// (Assuming logs.Closer is a type that can hold a function, like func() error)
+var logCloser func()
+
+// Or just:
+// var logCloser io.Closer // if closer implements io.Closer
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -27,6 +33,12 @@ var RootCmd = &cobra.Command{
 // Execute adds all child commands to the root command sets flags appropriately
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	if logCloser != nil {
+		defer func() {
+			logCloser()
+		}()
+	}
+
 	if err := RootCmd.Execute(); err != nil {
 		os.Stderr.WriteString("Error: " + err.Error() + "\n")
 		os.Exit(1)
@@ -46,13 +58,21 @@ type GitHubRelease struct {
 }
 
 func initConfig() {
-
-	logger := logs.New(profile,
+	// The logger is needed throughout the application, so we don't store it here,
+	// but the closer must be stored.
+	logger, closer := logs.New(profile,
 		logs.WithConsole(),
 		logs.WithMessageFile(),
 		logs.WithFailedLog(),
 		logs.WithSucceededLog(),
 	)
+
+	// 2. ASSIGN CLOSER TO PACKAGE VARIABLE
+	logCloser = closer
+
+	// The rest of the function remains the same, except for removing the 'defer resp.Body.Close()'
+	// from the initConfig body, as that was unrelated to the logs closer.
+	// The rest of your original logic follows...
 
 	conf := jwt.Configure{}
 	// init local config file
@@ -79,6 +99,8 @@ func initConfig() {
 			// Continue execution, as version check failure is non-fatal
 			return
 		}
+
+		// This defer is correct and should remain, as it cleans up the HTTP response body
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
@@ -93,10 +115,8 @@ func initConfig() {
 		}
 
 		latestVersionTag := release.TagName
-		current := strings.TrimPrefix(gitversion, "v")
-		latest := strings.TrimPrefix(latestVersionTag, "v")
 
-		if semver.Compare("v"+current, "v"+latest) < 0 {
+		if semver.Compare(gitversion, latestVersionTag) < 0 {
 			logger.Println("A new version of data-client is available! The latest version is " + latestVersionTag + ". You are using version " + gitversion)
 			logger.Println("Please download the latest data-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
 		}

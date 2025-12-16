@@ -32,9 +32,11 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("Notice: this is the upload method which requires the user to provide GUIDs. In this method files will be uploaded to specified GUIDs.\nIf your intention is to upload files without pre-existing GUIDs, consider to use \"./data-client upload\" instead.\n\n")
 
+			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
+			defer closer()
+
 			// Instantiate interface to Gen3
-			g3i, err := client.NewGen3InterfaceWithLogger(context.Background(), profile,
-				logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard()))
+			g3i, err := client.NewGen3Interface(context.Background(), profile, logger)
 			if err != nil {
 				g3i.Logger().Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}

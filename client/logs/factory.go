@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func New(profile string, opts ...Option) Logger {
+func New(profile string, opts ...Option) (Logger, func()) {
 	cfg := defaults()
 	for _, o := range opts {
 		o(cfg)
@@ -41,24 +41,29 @@ func New(profile string, opts ...Option) Logger {
 		}
 	}
 
-	// Create the one true logger
-	l := &teeLogger{
-		writers: writers,
-	}
-
+	t := NewTeeLogger(logDir, profile, writers...)
 	if cfg.enableScoreboard {
-		sb := NewSB(5, l)
-		l.scoreboard = sb
+		t.scoreboard = NewSB(5, t)
 	}
 
-	// Optional: close message log file at end of program (CLI safe)
-	if messageFile != nil {
-		go func(f *os.File) {
-			// Wait long enough for any operation to finish
-			time.Sleep(60 * time.Second)
-			f.Close()
-		}(messageFile)
+	if cfg.failedLog {
+		// Only set the path if failedLog is enabled
+		t.failedPath = filepath.Join(logDir, profile+"_failed_log.json")
+		loadJSON(t.failedPath, &t.FailedMap) // Loads only if enabled
+	}
+	if cfg.succeededLog {
+		// Only set the path if succeededLog is enabled
+		t.succeededPath = filepath.Join(logDir, profile+"_succeeded_log.json")
+		loadJSON(t.succeededPath, &t.succeededMap) // Loads only if enabled
 	}
 
-	return l
+	cleanup := func() {
+		if messageFile != nil {
+			fmt.Fprintf(messageFile, "[%s] Message log stopped\n", time.Now().Format(time.RFC3339))
+			messageFile.Close()
+		}
+	}
+
+	return t, cleanup
+
 }

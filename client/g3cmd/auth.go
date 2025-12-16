@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	client "github.com/calypr/data-client/client/gen3Client"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,11 @@ func init() {
 		Example: `./data-client auth --profile=<profile-name>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			g3i, err := client.NewGen3Interface(context.Background(), profile)
+
+			logger, logCloser := logs.New(profile, logs.WithConsole())
+			defer logCloser()
+
+			g3i, err := client.NewGen3Interface(context.Background(), profile, logger)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}

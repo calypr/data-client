@@ -31,7 +31,9 @@ func init() {
 				UseShepherd:        useShepherd,
 				MinShepherdVersion: minShepherdVersion,
 			}
-			logger := logs.New(profile, logs.WithConsole())
+			logger, logCloser := logs.New(profile, logs.WithConsole())
+			defer logCloser()
+
 			conf := jwt.Configure{Logs: logger}
 
 			if credFile != "" {

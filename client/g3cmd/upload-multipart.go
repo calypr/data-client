@@ -62,10 +62,12 @@ This method is resilient to network interruptions and supports resume capability
 
 func UploadSingleFile(profile, bucket, filePath, guid string) error {
 
-	g3, err := client.NewGen3InterfaceWithLogger(
+	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
+	defer closer()
+	g3, err := client.NewGen3Interface(
 		context.Background(),
 		profile,
-		logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard()),
+		logger,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Gen3 interface: %w", err)

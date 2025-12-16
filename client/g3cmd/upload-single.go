@@ -45,9 +45,9 @@ func init() {
 
 func UploadSingle(profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
 
-	var logger logs.Logger = logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
+	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
 	if enableLogs {
-		logger = logs.New(
+		logger, closer = logs.New(
 			profile,
 			logs.WithSucceededLog(),
 			logs.WithFailedLog(),
@@ -55,8 +55,10 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 			logs.WithConsole(),
 		)
 	}
+	defer closer()
+
 	// Instantiate interface to Gen3
-	g3i, err := client.NewGen3InterfaceWithLogger(
+	g3i, err := client.NewGen3Interface(
 		context.Background(),
 		profile,
 		logger,

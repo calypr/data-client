@@ -4,15 +4,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/calypr/data-client/client/common"
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
 	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/calypr/data-client/client/mocks"
 	"go.uber.org/mock/gomock"
 )
+
+// Add all other methods required by your logs.Logger interface!
 
 // If Shepherd is deployed, attempt to get the filename from the Shepherd API.
 func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
@@ -83,6 +87,12 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		Return("", nil, fmt.Errorf("Error getting metadata from Shepherd"))
 	// ----------
 
+	mockGen3Interface.
+		EXPECT().
+		Logger().
+		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
+		AnyTimes()
+
 	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
 	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
 	fileName, _ := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
@@ -117,6 +127,12 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 		Return(jwt.JsonMessage{FileName: testFileName, Size: testFileSize}, nil)
 	// ----------
 
+	mockGen3Interface.
+		EXPECT().
+		Logger().
+		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
+		AnyTimes()
+
 	// Expect AskGen3ForFileInfo to return the correct filename and filesize from indexd.
 	fileName, fileSize := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]g3cmd.RenamedOrSkippedFileInfo{})
 	if fileName != testFileName {
@@ -147,6 +163,11 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{}, fmt.Errorf("Error downloading file from Indexd"))
 	// ----------
+	mockGen3Interface.
+		EXPECT().
+		Logger().
+		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
+		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
 	skipped := []g3cmd.RenamedOrSkippedFileInfo{}

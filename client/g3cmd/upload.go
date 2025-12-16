@@ -33,9 +33,10 @@ func init() {
 			"For the format of the metadata files, see the README.",
 		Run: func(cmd *cobra.Command, args []string) {
 
+			Logger, logCloser := logs.New(profile, logs.WithSucceededLog(), logs.WithScoreboard(), logs.WithFailedLog())
+			defer logCloser()
 			// Instantiate interface to Gen3
-			g3i, err := client.NewGen3InterfaceWithLogger(context.Background(), profile,
-				logs.New(profile, logs.WithSucceededLog(), logs.WithScoreboard(), logs.WithFailedLog()))
+			g3i, err := client.NewGen3Interface(context.Background(), profile, Logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}

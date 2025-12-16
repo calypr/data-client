@@ -80,10 +80,9 @@ func NewSBContext(parent context.Context, sb *Scoreboard) context.Context {
 	return context.WithValue(parent, scoreboardKey, sb)
 }
 
-func FromSBContext(ctx context.Context) *Scoreboard {
+func FromSBContext(ctx context.Context) (*Scoreboard, error) {
 	if sb, ok := ctx.Value(scoreboardKey).(*Scoreboard); ok {
-		return sb
+		return sb, nil
 	}
-	// Fallback — should never happen if you use NewContext
-	return &Scoreboard{Counts: make([]int, 10)}
+	return nil, fmt.Errorf("Scoreboard is not of type Scoreboard")
 }
