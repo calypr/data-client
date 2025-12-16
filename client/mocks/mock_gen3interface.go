@@ -13,7 +13,7 @@ import (
 
 	jwt "github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/logs"
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockGen3Interface is a mock of Gen3Interface interface

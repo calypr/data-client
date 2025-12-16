@@ -11,7 +11,7 @@ import (
 
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/mocks"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 func TestDoRequestWithSignedHeaderNoProfile(t *testing.T) {

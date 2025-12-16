@@ -1,7 +1,7 @@
 package jwt
 
-//go:generate mockgen -destination=./data-client/mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/jwt FunctionInterface
-//go:generate mockgen -destination=./data-client/mocks/mock_request.go -package=mocks github.com/calypr/data-client/client/jwt RequestInterface
+//go:generate mockgen -destination=../mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/jwt FunctionInterface
+//go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/data-client/client/jwt RequestInterface
 
 import (
 	"bytes"

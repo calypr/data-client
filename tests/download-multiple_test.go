@@ -11,7 +11,7 @@ import (
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/mocks"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 // If Shepherd is deployed, attempt to get the filename from the Shepherd API.

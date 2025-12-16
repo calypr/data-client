@@ -12,6 +12,8 @@ import (
 	"github.com/calypr/data-client/client/logs"
 )
 
+//go:generate mockgen -destination=../../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/gen3Client Gen3Interface
+
 // Gen3Interface contains methods used to make authorized http requests to Gen3 services.
 // The credential is embedded in the implementation, so it doesn't need to be passed to each method.
 type Gen3Interface interface {

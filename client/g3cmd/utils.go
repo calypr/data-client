@@ -24,8 +24,6 @@ import (
 	"github.com/vbauerster/mpb/v8/decor"
 )
 
-//go:generate mockgen -destination=./data-client/mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/g3cmd Gen3Interface
-
 // ManifestObject represents an object from manifest that downloaded from windmill / data-portal
 type ManifestObject struct {
 	ObjectID  string `json:"object_id"`
