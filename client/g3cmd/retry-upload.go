@@ -15,13 +15,13 @@ import (
 )
 
 func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObjCh chan common.RetryObject, err error) {
-	log := g3i.Logger()
+	logger := g3i.Logger()
 
 	// Record failure in JSON log
-	log.Failed(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart)
+	logger.Failed(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart)
 
 	if err != nil {
-		log.Println("Error:", err)
+		logger.Println("Error:", err)
 	}
 
 	if ro.RetryCount < MaxRetryCount {
@@ -32,9 +32,9 @@ func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObj
 	// Max retries reached — clean up
 	if ro.GUID != "" {
 		if msg, err := DeleteRecord(g3i, ro.GUID); err == nil {
-			log.Println(msg)
+			logger.Println(msg)
 		} else {
-			log.Println("Cleanup failed:", err)
+			logger.Println("Cleanup failed:", err)
 		}
 	}
 
@@ -43,47 +43,47 @@ func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObj
 
 	if len(retryObjCh) == 0 {
 		close(retryObjCh)
-		log.Println("Retry channel closed — all done")
+		logger.Println("Retry channel closed — all done")
 	}
 }
 
 func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryObject) {
-	log := g3i.Logger()
+	logger := g3i.Logger()
 	sb := logs.FromSBContext(context.Background())
 
 	if len(failedLogMap) == 0 {
-		log.Println("No failed files to retry.")
+		logger.Println("No failed files to retry.")
 		return
 	}
 
-	log.Println("Starting retry-upload...")
+	logger.Println("Starting retry-upload...")
 	retryObjCh := make(chan common.RetryObject, len(failedLogMap))
 
 	// Load failed entries (skip already succeeded ones)
 	for _, ro := range failedLogMap {
 		// Simple check: if succeeded log exists and contains this path, skip
-		if logs.AlreadySucceededFromFile(ro.FilePath) {
-			log.Printf("Already uploaded: %s — skipping\n", ro.FilePath)
+		if common.AlreadySucceededFromFile(ro.FilePath) {
+			logger.Printf("Already uploaded: %s — skipping\n", ro.FilePath)
 			continue
 		}
 		retryObjCh <- ro
 	}
 
 	if len(retryObjCh) == 0 {
-		log.Println("All failed files were already successfully uploaded in a previous run.")
+		logger.Println("All failed files were already successfully uploaded in a previous run.")
 		return
 	}
 
 	for ro := range retryObjCh {
 		ro.RetryCount++
-		log.Printf("#%d retry — %s\n", ro.RetryCount, ro.FilePath)
-		log.Printf("Waiting %.0f seconds...\n", GetWaitTime(ro.RetryCount).Seconds())
+		logger.Printf("#%d retry — %s\n", ro.RetryCount, ro.FilePath)
+		logger.Printf("Waiting %.0f seconds...\n", GetWaitTime(ro.RetryCount).Seconds())
 		time.Sleep(GetWaitTime(ro.RetryCount))
 
 		// Optional: delete old record
 		if ro.GUID != "" {
 			if msg, err := DeleteRecord(g3i, ro.GUID); err == nil {
-				log.Println(msg)
+				logger.Println(msg)
 			}
 		}
 
@@ -103,7 +103,7 @@ func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryO
 			}
 			err = MultipartUpload(context.Background(), g3i, req, ro.Bucket, true)
 			if err == nil {
-				log.Succeeded(ro.FilePath, req.GUID)
+				logger.Succeeded(ro.FilePath, req.GUID)
 				sb.IncrementSB(ro.RetryCount - 1) // success on this retry
 				continue
 			}
@@ -151,7 +151,7 @@ func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryO
 			}
 
 			// SUCCESS!
-			log.Succeeded(ro.FilePath, fur.GUID)
+			logger.Succeeded(ro.FilePath, fur.GUID)
 			sb.IncrementSB(ro.RetryCount - 1)
 		}
 
@@ -180,15 +180,15 @@ func init() {
 				os.Stdout.Write(fmt.Appendf(nil, "Failed to initialize client: %v", err))
 			}
 
-			log := g3.Logger()
+			logger := g3.Logger()
 
 			// Create scoreboard with our logger injected
-			sb := logs.NewSB(MaxRetryCount, log)
+			sb := logs.NewSB(MaxRetryCount, logger)
 
 			// Load failed log
-			failedMap, err := logs.LoadFailedLog(failedLogPath)
+			failedMap, err := common.LoadFailedLog(failedLogPath)
 			if err != nil {
-				log.Fatalf("Cannot read failed log: %v", err)
+				logger.Fatalf("Cannot read failed log: %v", err)
 			}
 
 			retryUpload(g3, failedMap)

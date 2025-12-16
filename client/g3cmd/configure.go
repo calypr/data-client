@@ -2,10 +2,10 @@ package g3cmd
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +24,6 @@ func init() {
 		Example: `./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			conf := jwt.Configure{}
 			cred := &jwt.Credential{
 				Profile:            profile,
 				APIEndpoint:        apiEndpoint,
@@ -32,10 +31,13 @@ func init() {
 				UseShepherd:        useShepherd,
 				MinShepherdVersion: minShepherdVersion,
 			}
+			logger := logs.New(profile, logs.WithConsole())
+			conf := jwt.Configure{Logs: logger}
+
 			if credFile != "" {
 				readCred, err := conf.ReadCredentials(credFile, "")
 				if err != nil {
-					log.Fatal(err) // or return proper error
+					logger.Fatal(err) // or return proper error
 				}
 				cred.KeyId = readCred.KeyId
 				cred.APIKey = readCred.APIKey
@@ -44,11 +46,11 @@ func init() {
 				}
 				cred.AccessToken = ""
 			}
-			err := jwt.UpdateConfig(log.Default(), cred)
+			err := jwt.UpdateConfig(logger, cred)
 			if err != nil {
-				log.Println(err.Error())
+				logger.Println(err.Error())
 			}
-			log.Println(`Profile '` + profile + `' has been configured successfully.`)
+			logger.Println(`Profile '` + profile + `' has been configured successfully.`)
 		},
 	}
 

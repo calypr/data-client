@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/golang-jwt/jwt/v5"
 	"gopkg.in/ini.v1"
 )
@@ -31,7 +31,9 @@ type Credential struct {
 	MinShepherdVersion string
 }
 
-type Configure struct{}
+type Configure struct {
+	Logs logs.Logger
+}
 
 type ConfigureInterface interface {
 	ReadFile(string, string) string
@@ -47,24 +49,24 @@ func (conf *Configure) ReadFile(filePath string, fileType string) string {
 	//Look in config file
 	fullFilePath, err := common.GetAbsolutePath(filePath)
 	if err != nil {
-		log.Println("error occurred when parsing config file path: " + err.Error())
+		conf.Logs.Println("error occurred when parsing config file path: " + err.Error())
 		return ""
 	}
 	if _, err := os.Stat(fullFilePath); err != nil {
-		log.Println("File specified at " + fullFilePath + " not found")
+		conf.Logs.Println("File specified at " + fullFilePath + " not found")
 		return ""
 	}
 
 	content, err := os.ReadFile(fullFilePath)
 	if err != nil {
-		log.Println("error occurred when reading file: " + err.Error())
+		conf.Logs.Println("error occurred when reading file: " + err.Error())
 		return ""
 	}
 
 	contentStr := string(content[:])
 
 	if fileType == "json" {
-		contentStr = strings.Replace(contentStr, "\n", "", -1)
+		contentStr = strings.ReplaceAll(contentStr, "\n", "")
 	}
 	return contentStr
 }
@@ -84,12 +86,12 @@ func (conf *Configure) ReadCredentials(filePath string, fenceToken string) (*Cre
 	var profileConfig Credential
 	if filePath != "" {
 		jsonContent := conf.ReadFile(filePath, "json")
-		jsonContent = strings.Replace(jsonContent, "key_id", "KeyId", -1)
-		jsonContent = strings.Replace(jsonContent, "api_key", "APIKey", -1)
+		jsonContent = strings.ReplaceAll(jsonContent, "key_id", "KeyId")
+		jsonContent = strings.ReplaceAll(jsonContent, "api_key", "APIKey")
 		err := json.Unmarshal([]byte(jsonContent), &profileConfig)
 		if err != nil {
 			errs := fmt.Errorf("Cannot read json file: %s", err.Error())
-			log.Println(errs.Error())
+			conf.Logs.Println(errs.Error())
 			return nil, errs
 		}
 	} else if fenceToken != "" {
@@ -148,13 +150,13 @@ func (conf *Configure) UpdateConfigFile(profileConfig Credential) error {
 	configPath, err := conf.GetConfigPath()
 	if err != nil {
 		errs := fmt.Errorf("error occurred when getting config path: %s", err.Error())
-		log.Println(errs.Error())
+		conf.Logs.Println(errs.Error())
 		return errs
 	}
 	cfg, err := ini.Load(configPath)
 	if err != nil {
 		errs := fmt.Errorf("error occurred when loading config file: %s", err.Error())
-		log.Println(errs.Error())
+		conf.Logs.Println(errs.Error())
 		return errs
 	}
 

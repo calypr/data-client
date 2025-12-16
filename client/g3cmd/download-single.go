@@ -5,6 +5,7 @@ import (
 	"log"
 
 	client "github.com/calypr/data-client/client/gen3Client"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +27,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 
-			g3I, err := client.NewGen3Interface(context.Background(), profile)
+			g3I, err := client.NewGen3InterfaceWithLogger(context.Background(), profile, logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithSucceededLog(), logs.WithScoreboard()))
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -37,7 +38,7 @@ func init() {
 			objects := []ManifestObject{obj}
 			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
 			if err != nil {
-				log.Println(err.Error())
+				g3I.Logger().Println(err.Error())
 			}
 		},
 	}

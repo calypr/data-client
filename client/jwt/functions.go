@@ -10,26 +10,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/hashicorp/go-version"
 )
 
 func NewFunctions(ctx context.Context, config ConfigureInterface, request RequestInterface) FunctionInterface {
 	return &Functions{
-		Context: ctx,
 		Config:  config,
 		Request: request,
 	}
 }
 
 type Functions struct {
-	Context context.Context
 	Request RequestInterface
 	Config  ConfigureInterface
 }
@@ -44,12 +42,18 @@ type FunctionInterface interface {
 }
 
 type Request struct {
-	Ctx context.Context
+	Logs logs.Logger
+	Ctx  context.Context
 }
 
 type RequestInterface interface {
 	MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error)
 	RequestNewAccessToken(accessTokenEndpoint string, profileConfig *Credential) error
+	Logger() logs.Logger
+}
+
+func (r *Request) Logger() logs.Logger {
+	return r.Logs
 }
 
 func (r *Request) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
@@ -78,7 +82,6 @@ func (r *Request) MakeARequest(method string, apiEndpoint string, accessToken st
 	} else {
 		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, body)
 	}
-
 	if err != nil {
 		return nil, errors.New("Error occurred during generating HTTP request: " + err.Error())
 	}
@@ -326,7 +329,7 @@ func (f *Functions) DeleteRecord(profileConfig *Credential, guid string) (string
 
 	hasShepherd, err := f.CheckForShepherdAPI(profileConfig)
 	if err != nil {
-		log.Printf("WARNING: Error while checking for Shepherd API: %v. Falling back to Fence to delete record.\n", err)
+		f.Request.Logger().Printf("WARNING: Error while checking for Shepherd API: %v. Falling back to Fence to delete record.\n", err)
 	} else if hasShepherd {
 		endPointPostfix := common.ShepherdEndpoint + "/objects/" + guid
 		_, resp, err := f.GetResponse(profileConfig, endPointPostfix, "DELETE", "", nil)

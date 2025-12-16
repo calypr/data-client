@@ -1,18 +1,16 @@
-package logs
+package common
 
 import (
 	"encoding/json"
 	"os"
-
-	"github.com/calypr/data-client/client/common"
 )
 
-func LoadFailedLog(path string) (map[string]common.RetryObject, error) {
+func LoadFailedLog(path string) (map[string]RetryObject, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var m map[string]common.RetryObject
+	var m map[string]RetryObject
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ package mocks
 
 import (
 	bytes "bytes"
+	"context"
 	http "net/http"
 	url "net/url"
 	reflect "reflect"
@@ -36,6 +37,13 @@ func NewMockGen3Interface(ctrl *gomock.Controller) *MockGen3Interface {
 // EXPECT returns an object that allows the caller to indicate expected use
 func (m *MockGen3Interface) EXPECT() *MockGen3InterfaceMockRecorder {
 	return m.recorder
+}
+
+func (m *MockConfigureInterface) GetContext() (context.Context, error) {
+	ret := m.ctrl.Call(m, "GetContext")
+	ret0, _ := ret[0].(context.Context)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // CheckForShepherdAPI mocks base method

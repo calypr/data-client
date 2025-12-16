@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,12 +36,12 @@ func init() {
 			g3i, err := client.NewGen3InterfaceWithLogger(context.Background(), profile,
 				logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard()))
 			if err != nil {
-				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+				g3i.Logger().Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
 			host, err := g3i.GetHost()
 			if err != nil {
-				log.Fatalln("Error occurred during parsing config file for hostname: " + err.Error())
+				g3i.Logger().Fatal("Error occurred during parsing config file for hostname: " + err.Error())
 			}
 			dataExplorerURL := host.Scheme + "://" + host.Host + "/explorer"
 
@@ -50,29 +49,29 @@ func init() {
 
 			manifestFile, err := os.Open(manifestPath)
 			if err != nil {
-				log.Println("Failed to open manifest file")
-				log.Fatalln("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
+				g3i.Logger().Println("Failed to open manifest file")
+				g3i.Logger().Fatal("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
 			}
 			defer manifestFile.Close()
 			switch {
 			case strings.EqualFold(filepath.Ext(manifestPath), ".json"):
 				manifestBytes, err := os.ReadFile(manifestPath)
 				if err != nil {
-					log.Printf("Failed reading manifest %s, %v\n", manifestPath, err)
-					log.Fatalln("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
+					g3i.Logger().Printf("Failed reading manifest %s, %v\n", manifestPath, err)
+					g3i.Logger().Fatal("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
 				}
 				err = json.Unmarshal(manifestBytes, &objects)
 				if err != nil {
-					log.Fatalln("Unmarshalling manifest failed with error: " + err.Error())
+					g3i.Logger().Fatal("Unmarshalling manifest failed with error: " + err.Error())
 				}
 			default:
-				log.Println("Unsupported manifast format")
-				log.Fatalln("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
+				g3i.Logger().Println("Unsupported manifast format")
+				g3i.Logger().Fatal("A valid manifest can be acquired by using the \"Download Manifest\" button on " + dataExplorerURL)
 			}
 
 			absUploadPath, err := common.GetAbsolutePath(uploadPath)
 			if err != nil {
-				log.Fatalf("Error when parsing file paths: %s", err.Error())
+				g3i.Logger().Fatalf("Error when parsing file paths: %s", err.Error())
 			}
 
 			// Create unified upload request objects
@@ -90,14 +89,14 @@ func init() {
 				}
 
 				if err != nil {
-					log.Println(err.Error())
+					g3i.Logger().Println(err.Error())
 					continue
 				}
 
-				fileInfo, err := ProcessFilename(absUploadPath, localFilePath, object.ObjectID, includeSubDirName, false)
+				fileInfo, err := ProcessFilename(g3i.Logger(), absUploadPath, localFilePath, object.ObjectID, includeSubDirName, false)
 				if err != nil {
+					g3i.Logger().Println("Process filename error: " + err.Error())
 					g3i.Logger().Failed(localFilePath, filepath.Base(localFilePath), common.FileMetadata{}, object.ObjectID, 0, false)
-					log.Println("Process filename error: " + err.Error())
 					continue
 				}
 
@@ -135,7 +134,7 @@ func init() {
 			if len(multipartObjects) > 0 {
 				err := processMultipartUpload(g3i, multipartObjects, bucketName, includeSubDirName, absUploadPath)
 				if err != nil {
-					log.Fatalln(err.Error())
+					g3i.Logger().Fatal(err.Error())
 				}
 			}
 
@@ -166,8 +165,8 @@ func processSingleUploads(g3i client.Gen3Interface, singleObjects []common.FileU
 		filePath := furObject.FilePath
 		file, err := os.Open(filePath)
 		if err != nil {
+			g3i.Logger().Println("File open error: " + err.Error())
 			g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
-			log.Println("File open error: " + err.Error())
 			continue
 		}
 		startSingleFileUpload(g3i, furObject, file, bucketName)
@@ -186,8 +185,8 @@ func startSingleFileUpload(g3i client.Gen3Interface, furObject common.FileUpload
 
 	respURL, guid, err := GeneratePresignedURL(g3i, furObject.Filename, furObject.FileMetadata, bucketName)
 	if err != nil {
+		g3i.Logger().Println(err.Error())
 		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, guid, 0, false)
-		log.Println(err.Error())
 		return
 	}
 	furObject.GUID = guid
@@ -197,13 +196,13 @@ func startSingleFileUpload(g3i client.Gen3Interface, furObject common.FileUpload
 	furObject, err = GenerateUploadRequest(g3i, furObject, file, nil)
 	if err != nil {
 		file.Close()
-		log.Printf("Error occurred during request generation: %s\n", err.Error())
+		g3i.Logger().Printf("Error occurred during request generation: %s\n", err.Error())
 		return
 	}
 
 	err = uploadFile(g3i, furObject, 0)
 	if err != nil {
-		log.Println(err.Error())
+		g3i.Logger().Println(err.Error())
 	} else {
 		g3i.Logger().Scoreboard().IncrementSB(0)
 	}

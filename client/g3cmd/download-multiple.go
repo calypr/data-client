@@ -1,6 +1,7 @@
 package g3cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -23,23 +25,23 @@ import (
 
 // mockgen -destination=../mocks/mock_gen3interface.go -package=mocks . Gen3Interface
 
-func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protocol string, downloadPath string, filenameFormat string, rename bool, renamedFiles *[]RenamedOrSkippedFileInfo) (string, int64) {
+func AskGen3ForFileInfo(g3i client.Gen3Interface, guid string, protocol string, downloadPath string, filenameFormat string, rename bool, renamedFiles *[]RenamedOrSkippedFileInfo) (string, int64) {
 	var fileName string
 	var fileSize int64
 
 	// If the commons has the newer Shepherd API deployed, get the filename and file size from the Shepherd API.
 	// Otherwise, fall back on Indexd and Fence.
-	hasShepherd, err := gen3Interface.CheckForShepherdAPI()
+	hasShepherd, err := g3i.CheckForShepherdAPI()
 	if err != nil {
-		log.Println("Error occurred when checking for Shepherd API: " + err.Error())
-		log.Println("Falling back to Indexd...")
+		g3i.Logger().Println("Error occurred when checking for Shepherd API: " + err.Error())
+		g3i.Logger().Println("Falling back to Indexd...")
 	}
 	if hasShepherd {
 		endPointPostfix := common.ShepherdEndpoint + "/objects/" + guid
-		_, res, err := gen3Interface.GetResponse(endPointPostfix, "GET", "", nil)
+		_, res, err := g3i.GetResponse(endPointPostfix, "GET", "", nil)
 		if err != nil {
-			log.Println("Error occurred when querying filename from Shepherd: " + err.Error())
-			log.Println("Using GUID for filename instead.")
+			g3i.Logger().Println("Error occurred when querying filename from Shepherd: " + err.Error())
+			g3i.Logger().Println("Using GUID for filename instead.")
 			if filenameFormat != "guid" {
 				*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{GUID: guid, OldFilename: "N/A", NewFilename: guid})
 			}
@@ -54,8 +56,8 @@ func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protoco
 		}{}
 		err = json.NewDecoder(res.Body).Decode(&decoded)
 		if err != nil {
-			log.Println("Error occurred when reading response from Shepherd: " + err.Error())
-			log.Println("Using GUID for filename instead.")
+			g3i.Logger().Println("Error occurred when reading response from Shepherd: " + err.Error())
+			g3i.Logger().Println("Using GUID for filename instead.")
 			if filenameFormat != "guid" {
 				*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{GUID: guid, OldFilename: "N/A", NewFilename: guid})
 			}
@@ -69,10 +71,10 @@ func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protoco
 	} else {
 		// Attempt to get the filename from Indexd
 		endPointPostfix := common.IndexdIndexEndpoint + "/" + guid
-		indexdMsg, err := gen3Interface.DoRequestWithSignedHeader(endPointPostfix, "", nil)
+		indexdMsg, err := g3i.DoRequestWithSignedHeader(endPointPostfix, "", nil)
 		if err != nil {
-			log.Println("Error occurred when querying filename from IndexD: " + err.Error())
-			log.Println("Using GUID for filename instead.")
+			g3i.Logger().Println("Error occurred when querying filename from IndexD: " + err.Error())
+			g3i.Logger().Println("Using GUID for filename instead.")
 			if filenameFormat != "guid" {
 				*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{GUID: guid, OldFilename: "N/A", NewFilename: guid})
 			}
@@ -98,8 +100,8 @@ func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protoco
 
 				actualFilename = guessFilenameFromURL(indexdURL)
 				if actualFilename == "" {
-					log.Println("Error occurred when guessing filename for object " + guid)
-					log.Println("Using GUID for filename instead.")
+					g3i.Logger().Println("Error occurred when guessing filename for object " + guid)
+					g3i.Logger().Println("Using GUID for filename instead.")
 					*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{GUID: guid, OldFilename: "N/A", NewFilename: guid})
 					return guid, indexdMsg.Size
 				}
@@ -107,9 +109,9 @@ func AskGen3ForFileInfo(gen3Interface client.Gen3Interface, guid string, protoco
 				// Neither file name nor URLs exist in the Indexd record
 				// Indexd record is busted for that file, just return as we are renaming the file for now
 				// The download logic will handle the errors
-				log.Println("Neither file name nor URLs exist in the Indexd record of " + guid)
-				log.Println("The attempt of downloading file is likely to fail! Check Indexd record!")
-				log.Println("Using GUID for filename instead.")
+				g3i.Logger().Println("Neither file name nor URLs exist in the Indexd record of " + guid)
+				g3i.Logger().Println("The attempt of downloading file is likely to fail! Check Indexd record!")
+				g3i.Logger().Println("Using GUID for filename instead.")
 				*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{GUID: guid, OldFilename: "N/A", NewFilename: guid})
 				return guid, indexdMsg.Size
 			}
@@ -158,36 +160,14 @@ func processOriginalFilename(downloadPath string, actualFilename string) string 
 	}
 }
 
-func validateFilenameFormat(downloadPath string, filenameFormat string, rename bool, noPrompt bool) error {
-	if filenameFormat != "original" && filenameFormat != "guid" && filenameFormat != "combined" {
-		return fmt.Errorf("invalid option found! option \"filename-format\" can either be \"original\", \"guid\" or \"combined\" only")
-	}
-	if filenameFormat == "guid" || filenameFormat == "combined" {
-		fmt.Printf("WARNING: in \"guid\" or \"combined\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
-		if !noPrompt && !common.AskForConfirmation("Proceed?") {
-			log.Println("Aborted by user")
-			os.Exit(0)
-		}
-	} else if !rename {
-		fmt.Printf("WARNING: flag \"rename\" was set to false in \"original\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
-		if !noPrompt && !common.AskForConfirmation("Proceed?") {
-			log.Println("Aborted by user")
-			os.Exit(0)
-		}
-	} else {
-		fmt.Printf("NOTICE: flag \"rename\" was set to true in \"original\" mode, duplicated files under \"%s\" will be renamed by appending a counter value to the original filenames\n", downloadPath)
-	}
-	return nil
-}
-
-func validateLocalFileStat(downloadPath string, filename string, filesize int64, skipCompleted bool) common.FileDownloadResponseObject {
+func validateLocalFileStat(logger logs.Logger, downloadPath string, filename string, filesize int64, skipCompleted bool) common.FileDownloadResponseObject {
 	fi, err := os.Stat(downloadPath + filename) // check filename for local existence
 	if err != nil {
 		if os.IsNotExist(err) {
 			return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // no local file, normal full length download
 		}
-		log.Printf("Error occurred when getting information for file \"%s\": %s\n", downloadPath+filename, err.Error())
-		log.Println("Will try to download the whole file")
+		logger.Printf("Error occurred when getting information for file \"%s\": %s\n", downloadPath+filename, err.Error())
+		logger.Println("Will try to download the whole file")
 		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // errorred when trying to get local FI, normal full length download
 	}
 
@@ -261,7 +241,7 @@ func batchDownload(g3 client.Gen3Interface, progress *mpb.Progress, batchFDRSlic
 	wg := sync.WaitGroup{}
 	succeeded := 0
 	var err error
-	for i := 0; i < workers; i++ {
+	for range workers {
 		wg.Add(1)
 		go func() {
 			for fdr := range fdrCh {
@@ -284,6 +264,29 @@ func batchDownload(g3 client.Gen3Interface, progress *mpb.Progress, batchFDRSlic
 	return succeeded
 }
 
+// AskForConfirmation asks user for confirmation before proceed, will wait if user entered garbage
+func AskForConfirmation(logger logs.Logger, s string) bool {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		logger.Printf("%s [y/n]: ", s)
+
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			logger.Fatal("Error occurred during parsing user's confirmation: " + err.Error())
+		}
+
+		switch strings.ToLower(strings.TrimSpace(response)) {
+		case "y", "yes":
+			return true
+		case "n", "no":
+			return false
+		default:
+			return false // Example of defaulting to false
+		}
+	}
+}
+
 func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPath string, filenameFormat string, rename bool, noPrompt bool, protocol string, numParallel int, skipCompleted bool) error {
 	if numParallel < 1 {
 		return fmt.Errorf("invalid value for option \"numparallel\": must be a positive integer! Please check your input")
@@ -298,12 +301,25 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 	}
 	filenameFormat = strings.ToLower(strings.TrimSpace(filenameFormat))
 	if (filenameFormat == "guid" || filenameFormat == "combined") && rename {
-		log.Println("NOTICE: flag \"rename\" only works if flag \"filename-format\" is \"original\"")
+		g3i.Logger().Println("NOTICE: flag \"rename\" only works if flag \"filename-format\" is \"original\"")
 		rename = false
 	}
-	err = validateFilenameFormat(downloadPath, filenameFormat, rename, noPrompt)
-	if err != nil {
-		return err
+
+	if filenameFormat != "original" && filenameFormat != "guid" && filenameFormat != "combined" {
+		return fmt.Errorf("invalid option found! option \"filename-format\" can either be \"original\", \"guid\" or \"combined\" only")
+	}
+	if filenameFormat == "guid" || filenameFormat == "combined" {
+		g3i.Logger().Printf("WARNING: in \"guid\" or \"combined\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
+		if !noPrompt && !AskForConfirmation(g3i.Logger(), "Proceed?") {
+			g3i.Logger().Fatal("Aborted by user")
+		}
+	} else if !rename {
+		g3i.Logger().Printf("WARNING: flag \"rename\" was set to false in \"original\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
+		if !noPrompt && !AskForConfirmation(g3i.Logger(), "Proceed?") {
+			g3i.Logger().Fatal("Aborted by user")
+		}
+	} else {
+		g3i.Logger().Printf("NOTICE: flag \"rename\" was set to true in \"original\" mode, duplicated files under \"%s\" will be renamed by appending a counter value to the original filenames\n", downloadPath)
 	}
 
 	protocolText := ""
@@ -320,9 +336,9 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 	skippedFiles := make([]RenamedOrSkippedFileInfo, 0)
 	fdrObjects := make([]common.FileDownloadResponseObject, 0)
 
-	log.Printf("Total number of objects in manifest: %d", len(objects))
-	log.Println("Preparing file info for each file, please wait...")
-	fileInfoProgress := mpb.New(mpb.WithOutput(g3i.Logger().Writer()))
+	g3i.Logger().Printf("Total number of objects in manifest: %d\n", len(objects))
+	g3i.Logger().Println("Preparing file info for each file, please wait...")
+	fileInfoProgress := mpb.New(mpb.WithOutput(os.Stdout))
 	fileInfoBar := fileInfoProgress.AddBar(int64(len(objects)),
 		mpb.PrependDecorators(
 			decor.Name("Preparing files "),
@@ -332,7 +348,7 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 	)
 	for _, obj := range objects {
 		if obj.ObjectID == "" {
-			log.Println("Found empty object_id (GUID), skipping this entry")
+			g3i.Logger().Println("Found empty object_id (GUID), skipping this entry")
 			continue
 		}
 		var fdrObject common.FileDownloadResponseObject
@@ -344,22 +360,22 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 		}
 		fdrObject = common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename}
 		if !rename {
-			fdrObject = validateLocalFileStat(downloadPath, filename, filesize, skipCompleted)
+			fdrObject = validateLocalFileStat(g3i.Logger(), downloadPath, filename, filesize, skipCompleted)
 		}
 		fdrObject.GUID = obj.ObjectID
 		fdrObjects = append(fdrObjects, fdrObject)
 		fileInfoBar.Increment()
 	}
 	fileInfoProgress.Wait()
-	log.Println("File info prepared successfully")
+	g3i.Logger().Println("File info prepared successfully")
 
 	totalCompeleted := 0
 	workers, _, errCh, _ := initBatchUploadChannels(numParallel, len(fdrObjects))
-	downloadProgress := mpb.New(mpb.WithOutput(g3i.Logger().Writer()))
+	downloadProgress := mpb.New(mpb.WithOutput(os.Stdout))
 	batchFDRSlice := make([]common.FileDownloadResponseObject, 0)
 	for _, fdrObject := range fdrObjects {
 		if fdrObject.Skip {
-			log.Printf("File \"%s\" (GUID: %s) has been skipped because there is a complete local copy\n", fdrObject.Filename, fdrObject.GUID)
+			g3i.Logger().Printf("File \"%s\" (GUID: %s) has been skipped because there is a complete local copy\n", fdrObject.Filename, fdrObject.GUID)
 			skippedFiles = append(skippedFiles, RenamedOrSkippedFileInfo{GUID: fdrObject.GUID, OldFilename: fdrObject.Filename})
 			continue
 		}
@@ -375,22 +391,22 @@ func downloadFile(g3i client.Gen3Interface, objects []ManifestObject, downloadPa
 	totalCompeleted += batchDownload(g3i, downloadProgress, batchFDRSlice, protocolText, workers, errCh) // download remainders
 	downloadProgress.Wait()
 
-	log.Printf("%d files downloaded.\n", totalCompeleted)
+	g3i.Logger().Printf("%d files downloaded.\n", totalCompeleted)
 
 	if len(renamedFiles) > 0 {
-		log.Printf("%d files have been renamed as the following:\n", len(renamedFiles))
+		g3i.Logger().Printf("%d files have been renamed as the following:\n", len(renamedFiles))
 		for _, rfi := range renamedFiles {
-			log.Printf("File \"%s\" (GUID: %s) has been renamed as: %s\n", rfi.OldFilename, rfi.GUID, rfi.NewFilename)
+			g3i.Logger().Printf("File \"%s\" (GUID: %s) has been renamed as: %s\n", rfi.OldFilename, rfi.GUID, rfi.NewFilename)
 		}
 	}
 	if len(skippedFiles) > 0 {
-		log.Printf("%d files have been skipped\n", len(skippedFiles))
+		g3i.Logger().Printf("%d files have been skipped\n", len(skippedFiles))
 	}
 	if len(errCh) > 0 {
 		close(errCh)
-		log.Printf("%d files have encountered an error during downloading, detailed error messages are:\n", len(errCh))
+		g3i.Logger().Printf("%d files have encountered an error during downloading, detailed error messages are:\n", len(errCh))
 		for err := range errCh {
-			log.Println(err.Error())
+			g3i.Logger().Println(err.Error())
 		}
 	}
 	return nil
@@ -414,7 +430,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 
-			g3I, err := client.NewGen3Interface(context.Background(), profile)
+			g3i, err := client.NewGen3InterfaceWithLogger(context.Background(), profile, logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog()))
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -422,16 +438,16 @@ func init() {
 			manifestPath, _ = common.GetAbsolutePath(manifestPath)
 			manifestFile, err := os.Open(manifestPath)
 			if err != nil {
-				log.Fatalf("Failed to open manifest file %s, %v\n", manifestPath, err)
+				g3i.Logger().Fatalf("Failed to open manifest file %s, %v\n", manifestPath, err)
 			}
 			defer manifestFile.Close()
 			manifestFileStat, err := manifestFile.Stat()
 			if err != nil {
-				log.Fatalf("Failed to get manifest file stats %s, %v\n", manifestPath, err)
+				g3i.Logger().Fatalf("Failed to get manifest file stats %s, %v\n", manifestPath, err)
 			}
-			log.Println("Reading manifest...")
+			g3i.Logger().Println("Reading manifest...")
 			manifestFileSize := manifestFileStat.Size()
-			manifestProgress := mpb.New(mpb.WithOutput(g3I.Logger().Writer()))
+			manifestProgress := mpb.New(mpb.WithOutput(os.Stdout))
 			manifestFileBar := manifestProgress.AddBar(manifestFileSize,
 				mpb.PrependDecorators(
 					decor.Name("Manifest "),
@@ -444,19 +460,19 @@ func init() {
 
 			manifestBytes, err := io.ReadAll(manifestFileReader)
 			if err != nil {
-				log.Fatalf("Failed reading manifest %s, %v\n", manifestPath, err)
+				g3i.Logger().Fatalf("Failed reading manifest %s, %v\n", manifestPath, err)
 			}
 			manifestProgress.Wait()
 
 			var objects []ManifestObject
 			err = json.Unmarshal(manifestBytes, &objects)
 			if err != nil {
-				log.Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
+				g3i.Logger().Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
 			}
 
-			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, numParallel, skipCompleted)
+			err = downloadFile(g3i, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, numParallel, skipCompleted)
 			if err != nil {
-				log.Fatalln(err.Error())
+				g3i.Logger().Fatal(err.Error())
 			}
 		},
 	}

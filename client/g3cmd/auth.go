@@ -19,18 +19,19 @@ func init() {
 		Example: `./data-client auth --profile=<profile-name>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			gen3Interface, err := client.NewGen3Interface(context.Background(), profile)
+			g3i, err := client.NewGen3Interface(context.Background(), profile)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
-			host, resourceAccess, err := gen3Interface.CheckPrivileges()
+
+			host, resourceAccess, err := g3i.CheckPrivileges()
 			if err != nil {
-				log.Fatalf("Fatal authentication error: %s\n", err)
+				g3i.Logger().Fatalf("Fatal authentication error: %s\n", err)
 			} else {
 				if len(resourceAccess) == 0 {
-					log.Printf("\nYou don't currently have access to any resources at %s\n", host)
+					g3i.Logger().Printf("\nYou don't currently have access to any resources at %s\n", host)
 				} else {
-					log.Printf("\nYou have access to the following resource(s) at %s:\n", host)
+					g3i.Logger().Printf("\nYou have access to the following resource(s) at %s:\n", host)
 
 					// Sort by resource name
 					resources := make([]string, 0, len(resourceAccess))
@@ -49,14 +50,14 @@ func init() {
 								access = append(access, permission.(string))
 							}
 							sort.Strings(access)
-							log.Printf("%s %s\n", project, access)
+							g3i.Logger().Printf("%s %s\n", project, access)
 						} else {
 							// Permissions from Arborist already sorted, just pretty print them
 							marshalledPermissions, err := json.MarshalIndent(permissions, "", "  ")
 							if err != nil {
-								log.Printf("%s (error occurred when marshalling permissions): %s\n", project, err)
+								g3i.Logger().Printf("%s (error occurred when marshalling permissions): %s\n", project, err)
 							}
-							log.Printf("%s %s\n", project, marshalledPermissions)
+							g3i.Logger().Printf("%s %s\n", project, marshalledPermissions)
 						}
 					}
 				}

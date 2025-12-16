@@ -29,10 +29,10 @@ type Gen3Interface interface {
 
 // Gen3Client wraps jwt.FunctionInterface and embeds the credential
 type Gen3Client struct {
-	ctx context.Context
-	jwt.FunctionInterface
-	credential *jwt.Credential
-	logger     logs.Logger
+	Ctx               context.Context
+	FunctionInterface jwt.FunctionInterface
+	credential        *jwt.Credential
+	logger            logs.Logger
 }
 
 func (g *Gen3Client) Logger() logs.Logger {
@@ -73,8 +73,10 @@ func (g *Gen3Client) GetCredential() *jwt.Credential {
 func (g *Gen3Client) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
 	// Access the underlying Request through the Functions struct
 	// We need to create a temporary Request instance since we can't access it directly
-	request := &jwt.Request{Ctx: g.ctx}
-	return request.MakeARequest(method, apiEndpoint, accessToken, contentType, headers, body, noTimeout)
+	if functions, ok := g.FunctionInterface.(*jwt.Functions); ok {
+		return functions.Request.MakeARequest(method, apiEndpoint, accessToken, contentType, headers, body, noTimeout)
+	}
+	return nil, errors.New("unable to access MakeARequest method")
 }
 
 // DeleteRecord deletes a record from INDEXD as well as its storage locations
@@ -85,14 +87,7 @@ func (g *Gen3Client) DeleteRecord(guid string) (string, error) {
 	if functions, ok := g.FunctionInterface.(*jwt.Functions); ok {
 		return functions.DeleteRecord(g.credential, guid)
 	}
-	// Fallback: create a new Functions instance if type assertion fails
-	config := &jwt.Configure{}
-	request := &jwt.Request{Ctx: g.ctx}
-	functionInterface := jwt.NewFunctions(g.ctx, config, request)
-	// Cast to *Functions to access DeleteRecord
-	if functions, ok := functionInterface.(*jwt.Functions); ok {
-		return functions.DeleteRecord(g.credential, guid)
-	}
+
 	// This should never happen, but handle it gracefully
 	return "", errors.New("unable to access DeleteRecord method")
 }
@@ -105,7 +100,7 @@ func NewGen3Interface(ctx context.Context, profile string) (Gen3Interface, error
 // This eliminates the need to pass credentials around everywhere.
 func NewGen3InterfaceWithLogger(ctx context.Context, profile string, logger logs.Logger) (Gen3Interface, error) {
 	config := &jwt.Configure{}
-	request := &jwt.Request{Ctx: ctx}
+	request := &jwt.Request{Ctx: ctx, Logs: logger}
 	client := jwt.NewFunctions(ctx, config, request)
 
 	cred, err := config.ParseConfig(profile)

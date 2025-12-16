@@ -47,7 +47,7 @@ type GitHubRelease struct {
 
 func initConfig() {
 
-	log := logs.New(profile,
+	logger := logs.New(profile,
 		logs.WithConsole(),
 		logs.WithMessageFile(),
 		logs.WithFailedLog(),
@@ -58,7 +58,7 @@ func initConfig() {
 	// init local config file
 	err := conf.InitConfigFile()
 	if err != nil {
-		log.Fatal("Error occurred when trying to init config file: " + err.Error())
+		logger.Fatal("Error occurred when trying to init config file: " + err.Error())
 	}
 
 	// version checker
@@ -72,25 +72,23 @@ func initConfig() {
 			apiURL = "https://api.github.com/repos/" + owner + "/" + repository + "/releases/latest"
 		)
 
-		// 1. Fetch the latest release information
 		client := http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Get(apiURL)
 		if err != nil {
-			log.Println("Error occurred when fetching latest version (HTTP request failed): " + err.Error())
+			logger.Println("Error occurred when fetching latest version (HTTP request failed): " + err.Error())
 			// Continue execution, as version check failure is non-fatal
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			log.Println("Error occurred when fetching latest version (GitHub API returned status " + strconv.Itoa(resp.StatusCode) + ")")
+			logger.Println("Error occurred when fetching latest version (GitHub API returned status " + strconv.Itoa(resp.StatusCode) + ")")
 			return
 		}
 
-		// 2. Decode the response body
 		var release GitHubRelease
 		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-			log.Println("Error occurred when decoding latest version response: " + err.Error())
+			logger.Println("Error occurred when decoding latest version response: " + err.Error())
 			return
 		}
 
@@ -99,8 +97,8 @@ func initConfig() {
 		latest := strings.TrimPrefix(latestVersionTag, "v")
 
 		if semver.Compare("v"+current, "v"+latest) < 0 {
-			log.Println("A new version of data-client is available! The latest version is " + latestVersionTag + ". You are using version " + gitversion)
-			log.Println("Please download the latest data-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
+			logger.Println("A new version of data-client is available! The latest version is " + latestVersionTag + ". You are using version " + gitversion)
+			logger.Println("Please download the latest data-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
 		}
 	}
 }

@@ -124,7 +124,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 	var p *mpb.Progress
 	var bar *mpb.Bar
 	if showProgress {
-		p = mpb.New(mpb.WithOutput(g3.Logger().Writer()))
+		p = mpb.New(mpb.WithOutput(os.Stdout))
 		bar = p.AddBar(stat.Size(),
 			mpb.PrependDecorators(
 				decor.Name(req.Filename+" "),

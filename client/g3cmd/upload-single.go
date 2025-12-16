@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -45,21 +44,22 @@ func init() {
 }
 
 func UploadSingle(profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
-	if enableLogs == false {
-		log.SetOutput(io.Discard)
-	}
 
-	// Instantiate interface to Gen3
-	g3i, err := client.NewGen3InterfaceWithLogger(
-		context.Background(),
-		profile,
-		logs.New(
+	var logger logs.Logger = logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
+	if enableLogs {
+		logger = logs.New(
 			profile,
 			logs.WithSucceededLog(),
 			logs.WithFailedLog(),
 			logs.WithScoreboard(),
 			logs.WithConsole(),
-		),
+		)
+	}
+	// Instantiate interface to Gen3
+	g3i, err := client.NewGen3InterfaceWithLogger(
+		context.Background(),
+		profile,
+		logger,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to parse config on profile %s: %w", profile, err)
@@ -86,11 +86,11 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
 		sb := g3i.Logger().Scoreboard()
 		sb.IncrementSB(len(sb.Counts))
 		sb.PrintSB()
-		log.Fatalln("File open error: " + err.Error())
+		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
+		g3i.Logger().Println("File open error: " + err.Error())
 		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s", filePath, err.Error())
 	}
 	defer file.Close()

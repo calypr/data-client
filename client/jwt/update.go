@@ -4,14 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/hashicorp/go-version"
 )
 
-func UpdateConfig(logger *log.Logger, cred *Credential) error {
+func UpdateConfig(logger logs.Logger, cred *Credential) error {
 	var conf Configure
 	var req Request = Request{Ctx: context.Background()}
 

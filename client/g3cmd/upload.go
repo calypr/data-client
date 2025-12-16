@@ -40,13 +40,14 @@ func init() {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
+			logger := g3i.Logger()
 			if hasMetadata {
 				hasShepherd, err := g3i.CheckForShepherdAPI()
 				if err != nil {
-					log.Printf("WARNING: Error when checking for Shepherd API: %v", err)
+					logger.Printf("WARNING: Error when checking for Shepherd API: %v", err)
 				} else {
 					if !hasShepherd {
-						log.Fatalf("ERROR: Metadata upload (`--metadata`) is not supported in the environment you are uploading to. Double check that you are uploading to the right profile.")
+						logger.Fatalf("ERROR: Metadata upload (`--metadata`) is not supported in the environment you are uploading to. Double check that you are uploading to the right profile.")
 					}
 				}
 			}
@@ -54,38 +55,38 @@ func init() {
 			uploadPath, _ = common.GetAbsolutePath(uploadPath)
 			filePaths, err := common.ParseFilePaths(uploadPath, hasMetadata)
 			if err != nil {
-				log.Fatalf("Error when parsing file paths: %s", err.Error())
+				logger.Fatalf("Error when parsing file paths: %s", err.Error())
 			}
 			uploadRequestObjects := make([]common.FileUploadRequestObject, 0, len(filePaths))
 
-			log.Println("\nThe following file(s) has been found in path \"" + uploadPath + "\" and will be uploaded:")
+			logger.Println("\nThe following file(s) has been found in path \"" + uploadPath + "\" and will be uploaded:")
 			for _, filePath := range filePaths {
 				// Use ProcessFilename to create the unified object (GUID is empty here, as this command requests a new GUID)
 				// ProcessFilename signature: (uploadPath, filePath, objectId, includeSubDirName, includeMetadata)
-				furObject, err := ProcessFilename(uploadPath, filePath, "", includeSubDirName, hasMetadata)
+				furObject, err := ProcessFilename(g3i.Logger(), uploadPath, filePath, "", includeSubDirName, hasMetadata)
 
 				// Handle case where ProcessFilename fails (e.g., metadata parsing error)
 				if err != nil {
 					// Use the data available for logging the failure
 					g3i.Logger().Failed(filePath, filepath.Base(filePath), common.FileMetadata{}, "", 0, false)
-					log.Println("Error processing file path or metadata: " + err.Error())
+					logger.Println("Error processing file path or metadata: " + err.Error())
 					continue
 				}
 
 				// Optional: Display file path before proceeding
 				file, _ := os.Open(filePath)
 				if fi, _ := file.Stat(); !fi.IsDir() {
-					log.Println("\t" + filePath)
+					logger.Println("\t" + filePath)
 				}
 				file.Close()
 
 				uploadRequestObjects = append(uploadRequestObjects, furObject)
 			}
 			// fmt.Fprintln(os.Stderr)
-			log.Println()
+			logger.Println()
 
 			if len(uploadRequestObjects) == 0 {
-				log.Println("No valid file upload requests were created.")
+				logger.Println("No valid file upload requests were created.")
 				return
 			}
 
@@ -109,7 +110,7 @@ func init() {
 					close(errCh)
 					for err := range errCh {
 						if err != nil {
-							log.Printf("Error occurred during uploading: %s\n", err.Error())
+							logger.Printf("Error occurred during uploading: %s\n", err.Error())
 						}
 					}
 				}
@@ -118,7 +119,7 @@ func init() {
 					file, err := os.Open(furObject.FilePath)
 					if err != nil {
 						g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
-						log.Println("File open error: " + err.Error())
+						logger.Println("File open error: " + err.Error())
 						continue
 					}
 					startSingleFileUpload(g3i, furObject, file, bucketName)
@@ -128,7 +129,7 @@ func init() {
 			if len(multipartObjects) > 0 {
 				err := processMultipartUpload(g3i, multipartObjects, bucketName, includeSubDirName, uploadPath)
 				if err != nil {
-					log.Println(err.Error())
+					logger.Println(err.Error())
 				}
 			}
 			if len(g3i.Logger().GetSucceededLogMap()) == 0 {
