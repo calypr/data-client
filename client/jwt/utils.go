@@ -6,9 +6,9 @@ import (
 	"net/http"
 )
 
-type Message interface{}
+type Message any
 
-type Response interface{}
+type Response any
 
 type AccessTokenStruct struct {
 	AccessToken string `json:"access_token"`

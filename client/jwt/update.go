@@ -1,79 +1,78 @@
 package jwt
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/hashicorp/go-version"
 )
 
-func UpdateConfig(cred *Credential) error {
-
+func UpdateConfig(logger logs.Logger, cred *Credential) error {
 	var conf Configure
-	var req Request
+	var req Request = Request{Ctx: context.Background()}
 
-	if len(cred.APIEndpoint) == 0 {
-		return fmt.Errorf("Expecting API endpoint to be populated")
+	if cred.Profile == "" {
+		return fmt.Errorf("profile name is required")
 	}
+	if cred.APIEndpoint == "" {
+		return fmt.Errorf("API endpoint is required")
+	}
+
+	// Normalize endpoint
 	cred.APIEndpoint = strings.TrimSpace(cred.APIEndpoint)
-	if cred.APIEndpoint[len(cred.APIEndpoint)-1:] == "/" {
-		cred.APIEndpoint = cred.APIEndpoint[:len(cred.APIEndpoint)-1]
-	}
+	cred.APIEndpoint = strings.TrimSuffix(cred.APIEndpoint, "/")
+
+	// Validate URL format
 	parsedURL, err := conf.ValidateUrl(cred.APIEndpoint)
 	if err != nil {
-		return fmt.Errorf("Errr occurred when validating apiendpoint URL: %s", err.Error())
+		return fmt.Errorf("invalid apiendpoint URL: %w", err)
 	}
-
-	prefixEndPoint := parsedURL.Scheme + "://" + parsedURL.Host
-	fileCredential, err := conf.ParseConfig(cred.Profile)
-	// If not found error, continue execution since Wouldn't expect this profile to already be written in the file
-	if !errors.Is(err, ErrProfileNotFound) {
+	fenceBase := parsedURL.Scheme + "://" + parsedURL.Host
+	if existingCfg, err := conf.ParseConfig(cred.Profile); err == nil {
+		// Only copy optional fields if the user didn't override them via flags
+		if cred.UseShepherd == "" {
+			cred.UseShepherd = existingCfg.UseShepherd
+		}
+		if cred.MinShepherdVersion == "" {
+			cred.MinShepherdVersion = existingCfg.MinShepherdVersion
+		}
+	} else if !errors.Is(err, ErrProfileNotFound) {
 		return err
 	}
-	if cred.APIKey == "" {
-		cred.APIKey = fileCredential.APIKey
-	}
 
-	if cred.AccessToken == "" && cred.APIKey != "" || cred.AccessToken != "" {
-		err = req.RequestNewAccessToken(prefixEndPoint+commonUtils.FenceAccessTokenEndpoint, cred)
+	if cred.APIKey != "" {
+		// Always refresh the access token — ignore any old one that might be in the struct
+		err = req.RequestNewAccessToken(fenceBase+common.FenceAccessTokenEndpoint, cred)
 		if err != nil {
-			receivedErrorString := err.Error()
-			errorMessageString := receivedErrorString
-			if strings.Contains(receivedErrorString, "401") {
-				errorMessageString = `Invalid credentials for apiendpoint '` + prefixEndPoint + `': check if your credentials are expired or incorrect`
-			} else if strings.Contains(receivedErrorString, "404") || strings.Contains(receivedErrorString, "405") || strings.Contains(receivedErrorString, "no such host") {
-				errorMessageString = `The provided apiendpoint '` + prefixEndPoint + `' is possibly not a valid Gen3 data commons`
+			if strings.Contains(err.Error(), "401") {
+				return fmt.Errorf("authentication failed (401) for %s — your API key is invalid, revoked, or expired", fenceBase)
 			}
-			return fmt.Errorf("Error occurred when validating profile config: %s", errorMessageString)
+			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "no such host") {
+				return fmt.Errorf("cannot reach Fence at %s — is this a valid Gen3 commons?", fenceBase)
+			}
+			return fmt.Errorf("failed to refresh access token: %w", err)
 		}
 	} else {
-		return fmt.Errorf("Cannot attempt to retrieve a refresh token without a populated access token or a popualted api key")
+		logger.Printf("WARNING: Your profile will only be valid for 24 hours since you have only provided a refresh token for authentication")
 	}
 
+	// Clean up shepherd flags
 	cred.UseShepherd = strings.TrimSpace(cred.UseShepherd)
 	cred.MinShepherdVersion = strings.TrimSpace(cred.MinShepherdVersion)
+
 	if cred.MinShepherdVersion != "" {
-		_, err = version.NewVersion(cred.MinShepherdVersion)
-		if err != nil {
-			return fmt.Errorf("Error occurred when validating minShepherdVersion: %s", err.Error())
+		if _, err = version.NewVersion(cred.MinShepherdVersion); err != nil {
+			return fmt.Errorf("invalid min-shepherd-version: %w", err)
 		}
 	}
 
-	// Store user info in ~/.gen3/gen3_client_config.ini
-	err = conf.UpdateConfigFile(*cred)
-	if err != nil {
-		return err
+	if err := conf.UpdateConfigFile(*cred); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	log.Println(`Profile '` + cred.Profile + `' has been configured successfully.`)
-	err = logs.CloseMessageLog()
-	if err != nil {
-		log.Println(err.Error())
-		return err
-	}
-	return nil
 
+	return nil
 }

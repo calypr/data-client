@@ -1,20 +1,26 @@
 package g3cmd
 
 import (
-	"fmt"
-	"log"
+	"encoding/json"
+	"net/http"
 	"os"
 	"strconv"
-	"strings"
+	"time"
 
-	"github.com/spf13/cobra"
-	latest "github.com/tcnksm/go-latest"
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/logs"
+	"github.com/spf13/cobra"
+	"golang.org/x/mod/semver"
 )
 
 var profile string
-var profileConfig jwt.Credential
+
+// Package-level variable to hold the closer function
+// (Assuming logs.Closer is a type that can hold a function, like func() error)
+var logCloser func()
+
+// Or just:
+// var logCloser io.Closer // if closer implements io.Closer
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -27,8 +33,14 @@ var RootCmd = &cobra.Command{
 // Execute adds all child commands to the root command sets flags appropriately
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	if logCloser != nil {
+		defer func() {
+			logCloser()
+		}()
+	}
+
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		os.Stderr.WriteString("Error: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 }
@@ -41,50 +53,72 @@ func init() {
 	_ = RootCmd.MarkFlagRequired("profile")
 }
 
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+}
+
 func initConfig() {
+	// The logger is needed throughout the application, so we don't store it here,
+	// but the closer must be stored.
+	logger, closer := logs.New(profile,
+		logs.WithConsole(),
+		logs.WithMessageFile(),
+		logs.WithFailedLog(),
+		logs.WithSucceededLog(),
+	)
 
-	logs.Init()
-	logs.InitMessageLog(profile)
-	logs.SetToBoth()
+	// 2. ASSIGN CLOSER TO PACKAGE VARIABLE
+	logCloser = closer
 
+	// The rest of the function remains the same, except for removing the 'defer resp.Body.Close()'
+	// from the initConfig body, as that was unrelated to the logs closer.
+	// The rest of your original logic follows...
+
+	conf := jwt.Configure{}
 	// init local config file
 	err := conf.InitConfigFile()
 	if err != nil {
-		log.Fatalln("Error occurred when trying to init config file: " + err.Error())
+		logger.Fatal("Error occurred when trying to init config file: " + err.Error())
 	}
 
 	// version checker
 	if os.Getenv("GEN3_CLIENT_VERSION_CHECK") != "false" &&
-	gitversion != "" && gitversion != "N/A" {
-		githubTag := &latest.GithubTag{
-			Owner:      "uc-cdis",
-			Repository: "cdis-data-client",
-			TagFilterFunc: func(versionTag string) bool {
-				// only assume a version tag to be valid version tag if it has either 2 or 3 "." in it
-				// so tags like "whatever" or "new.123.release" won't interfere
-				gitversionSlice := strings.Split(gitversion, ".")
-				versionTagSlice := strings.Split(versionTag, ".")
-				// if gitversion is sematic version number, ignore tags that don't have 3 "."
-				// if gitversion is monthly release version number, ignore tags that don't have 2 "."
-				if (len(gitversionSlice) == 3 && len(versionTagSlice) != 3) || (len(gitversionSlice) == 2 && len(versionTagSlice) != 2) {
-					return false
-				}
-				for _, s := range versionTagSlice {
-					_, err := strconv.Atoi(s)
-					if err != nil {
-						return false
-					}
-				}
-				return true
-			},
-		}
-		res, err := latest.Check(githubTag, gitversion)
+		gitversion != "" && gitversion != "N/A" {
+
+		const (
+			owner      = "uc-cdis"
+			repository = "cdis-data-client"
+			// The official GitHub API endpoint for the latest release
+			apiURL = "https://api.github.com/repos/" + owner + "/" + repository + "/releases/latest"
+		)
+
+		client := http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get(apiURL)
 		if err != nil {
-			log.Println("Error occurred when checking for latest version: " + err.Error())
-		} else if res.Outdated {
-			log.Println("A new version of data-client is available! The latest version is " + res.Current + ". You are using version " + gitversion)
-			log.Println("Please download the latest data-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
+			logger.Println("Error occurred when fetching latest version (HTTP request failed): " + err.Error())
+			// Continue execution, as version check failure is non-fatal
+			return
+		}
+
+		// This defer is correct and should remain, as it cleans up the HTTP response body
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			logger.Println("Error occurred when fetching latest version (GitHub API returned status " + strconv.Itoa(resp.StatusCode) + ")")
+			return
+		}
+
+		var release GitHubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+			logger.Println("Error occurred when decoding latest version response: " + err.Error())
+			return
+		}
+
+		latestVersionTag := release.TagName
+
+		if semver.Compare(gitversion, latestVersionTag) < 0 {
+			logger.Println("A new version of data-client is available! The latest version is " + latestVersionTag + ". You are using version " + gitversion)
+			logger.Println("Please download the latest data-client release from https://github.com/uc-cdis/cdis-data-client/releases/latest")
 		}
 	}
-	logs.SetToMessageLog()
 }
