@@ -26,7 +26,7 @@ type Gen3Interface interface {
 	GetCredential() *jwt.Credential
 	DeleteRecord(guid string) (string, error)
 
-	Logger() logs.Logger
+	Logger() *logs.TeeLogger
 }
 
 // Gen3Client wraps jwt.FunctionInterface and embeds the credential
@@ -34,10 +34,11 @@ type Gen3Client struct {
 	Ctx               context.Context
 	FunctionInterface jwt.FunctionInterface
 	credential        *jwt.Credential
-	logger            logs.Logger
+
+	logger *logs.TeeLogger
 }
 
-func (g *Gen3Client) Logger() logs.Logger {
+func (g *Gen3Client) Logger() *logs.TeeLogger {
 	return g.logger
 }
 
@@ -96,7 +97,9 @@ func (g *Gen3Client) DeleteRecord(guid string) (string, error) {
 
 // NewGen3Interface returns a Gen3Client that embeds the credential and implements Gen3Interface.
 // This eliminates the need to pass credentials around everywhere.
-func NewGen3Interface(ctx context.Context, profile string, logger logs.Logger) (Gen3Interface, error) {
+func NewGen3Interface(ctx context.Context, profile string, logger *logs.TeeLogger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
+	// Note: A tee logger must be passed here otherwise you risk causing panics.
+
 	config := &jwt.Configure{}
 	request := &jwt.Request{Ctx: ctx, Logs: logger}
 	client := jwt.NewFunctions(ctx, config, request)

@@ -103,7 +103,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		return fmt.Errorf("cannot stat file: %w", err)
 	}
 
-	g3.Logger().Printf("File Name: '%s', File Size: '%s\n", stat.Name(), stat.Size())
+	g3.Logger().Printf("File Name: '%s', File Size: '%d'\n", stat.Name(), stat.Size())
 
 	if stat.Size() == 0 {
 		return fmt.Errorf("file is empty: %s", req.Filename)

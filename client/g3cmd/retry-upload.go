@@ -52,6 +52,7 @@ func handleFailedRetry(g3i client.Gen3Interface, ro common.RetryObject, retryObj
 
 func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryObject) {
 	logger := g3i.Logger()
+
 	sb, err := logs.FromSBContext(context.Background())
 	if err != nil {
 		logger.Println(err)
@@ -156,7 +157,6 @@ func retryUpload(g3i client.Gen3Interface, failedLogMap map[string]common.RetryO
 				continue
 			}
 
-			// SUCCESS!
 			logger.Succeeded(ro.FilePath, fur.GUID)
 			sb.IncrementSB(ro.RetryCount - 1)
 		}

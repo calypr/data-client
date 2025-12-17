@@ -9,24 +9,27 @@ import (
 	"time"
 )
 
-func New(profile string, opts ...Option) (Logger, func()) {
+func New(profile string, opts ...Option) (*TeeLogger, func()) {
 	cfg := defaults()
 	for _, o := range opts {
 		o(cfg)
 	}
 
-	// Setup log directory
 	usr, _ := user.Current()
 	logDir := filepath.Join(usr.HomeDir, ".gen3", "logs")
 	os.MkdirAll(logDir, 0755)
 
-	// Console + message log file
 	var writers []io.Writer
+	var messageFile *os.File
+
+	if cfg.baseLogger != nil {
+		writers = append(writers, cfg.baseLogger.Writer())
+	}
+
 	if cfg.console {
 		writers = append(writers, os.Stderr)
 	}
 
-	var messageFile = (*os.File)(nil)
 	if cfg.messageFile {
 		filename := fmt.Sprintf("%s_message_%s_%d.log",
 			profile,
@@ -42,19 +45,19 @@ func New(profile string, opts ...Option) (Logger, func()) {
 	}
 
 	t := NewTeeLogger(logDir, profile, writers...)
+
 	if cfg.enableScoreboard {
 		t.scoreboard = NewSB(5, t)
 	}
 
 	if cfg.failedLog {
-		// Only set the path if failedLog is enabled
-		t.failedPath = filepath.Join(logDir, profile+"_failed_log.json")
-		loadJSON(t.failedPath, &t.FailedMap) // Loads only if enabled
+		t.failedPath = filepath.Join(logDir, profile+"_failed.json")
+		loadJSON(t.failedPath, &t.FailedMap)
 	}
+
 	if cfg.succeededLog {
-		// Only set the path if succeededLog is enabled
-		t.succeededPath = filepath.Join(logDir, profile+"_succeeded_log.json")
-		loadJSON(t.succeededPath, &t.succeededMap) // Loads only if enabled
+		t.succeededPath = filepath.Join(logDir, profile+"_succeeded.json")
+		loadJSON(t.succeededPath, &t.succeededMap)
 	}
 
 	cleanup := func() {
@@ -65,5 +68,4 @@ func New(profile string, opts ...Option) (Logger, func()) {
 	}
 
 	return t, cleanup
-
 }

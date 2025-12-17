@@ -151,10 +151,10 @@ func (mr *MockGen3InterfaceMockRecorder) GetResponse(endpointPostPrefix, method,
 }
 
 // Logger mocks base method.
-func (m *MockGen3Interface) Logger() logs.Logger {
+func (m *MockGen3Interface) Logger() *logs.TeeLogger {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Logger")
-	ret0, _ := ret[0].(logs.Logger)
+	ret0, _ := ret[0].(*logs.TeeLogger)
 	return ret0
 }
 
