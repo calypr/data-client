@@ -138,35 +138,42 @@ func (f *Functions) ParseFenceURLResponse(resp *http.Response) (JsonMessage, err
 		return msg, errors.New("Nil response received")
 	}
 
+	// Capture the body for error reporting before we do anything else
+	// Using your existing ResponseToString helper
+	bodyStr := ResponseToString(resp)
+
 	if !(resp.StatusCode == 200 || resp.StatusCode == 201) {
+		// Prepare a base error that includes the body content
+		errorMessage := fmt.Sprintf("Status: %d | Response: %s", resp.StatusCode, bodyStr)
+
 		switch resp.StatusCode {
 		case 401:
-			return msg, errors.New("401 Unauthorized error has occurred! Something went wrong during authentication, please check your configuration and/or credentials")
+			return msg, fmt.Errorf("401 Unauthorized: %s", errorMessage)
 		case 403:
-			return msg, errors.New("403 Forbidden error has occurred! You don't have permission to access the requested url \"" + resp.Request.URL.String() + "\"")
+			return msg, fmt.Errorf("403 Forbidden: %s (URL: %s)", bodyStr, resp.Request.URL.String())
 		case 404:
-			return msg, errors.New("404 Not found error has occurred! The requested url \"" + resp.Request.URL.String() + "\" cannot be found or one of the requested resources cannot be found")
+			return msg, fmt.Errorf("404 Not Found: %s (URL: %s)", bodyStr, resp.Request.URL.String())
 		case 500:
-			return msg, errors.New("500 Internal Server error has occurred! Please try again later")
+			return msg, fmt.Errorf("500 Internal Server Error: %s", bodyStr)
 		case 503:
-			return msg, errors.New("503 Service Unavailable error has occurred! Please check backend services for more details")
+			return msg, fmt.Errorf("503 Service Unavailable: %s", bodyStr)
 		default:
-			return msg, errors.New("Unexpected server error has occurred! Please check backend services or contact support")
+			return msg, fmt.Errorf("Unexpected Error (%d): %s", resp.StatusCode, bodyStr)
 		}
 	}
 
-	str := ResponseToString(resp)
-	if strings.Contains(str, "Can't find a location for the data") {
+	// Logic for successful status codes
+	if strings.Contains(bodyStr, "Can't find a location for the data") {
 		return msg, errors.New("The provided GUID is not found")
 	}
 
-	err := DecodeJsonFromString(str, &msg)
+	err := DecodeJsonFromString(bodyStr, &msg)
 	if err != nil {
-		return msg, err
+		return msg, fmt.Errorf("failed to decode JSON: %w (Raw body: %s)", err, bodyStr)
 	}
+
 	return msg, nil
 }
-
 func (f *Functions) CheckForShepherdAPI(profileConfig *Credential) (bool, error) {
 	// Check if Shepherd is enabled
 	if profileConfig.UseShepherd == "false" {
