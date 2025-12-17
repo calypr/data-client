@@ -2,25 +2,26 @@ package tests
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
-	"github.com/golang/mock/gomock"
-	"github.com/uc-cdis/gen3-client/gen3-client/commonUtils"
-	g3cmd "github.com/uc-cdis/gen3-client/gen3-client/g3cmd"
-	"github.com/uc-cdis/gen3-client/gen3-client/jwt"
-	"github.com/uc-cdis/gen3-client/gen3-client/mocks"
+	"github.com/calypr/data-client/client/common"
+	g3cmd "github.com/calypr/data-client/client/g3cmd"
+	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/client/mocks"
+	"go.uber.org/mock/gomock"
 )
+
+// Add all other methods required by your logs.Logger interface!
 
 // If Shepherd is deployed, attempt to get the filename from the Shepherd API.
 func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	testFileName := "test-file"
 	testFileSize := int64(120)
 	mockCtrl := gomock.NewController(t)
@@ -42,16 +43,16 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 }`
 	testResponse := http.Response{
 		StatusCode: 200,
-		Body:       ioutil.NopCloser(strings.NewReader(testBody)),
+		Body:       io.NopCloser(strings.NewReader(testBody)),
 	}
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(true, nil)
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
+		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
 		Return("", &testResponse, nil)
 	// ----------
 
@@ -70,9 +71,6 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -81,13 +79,19 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(true, nil)
 	mockGen3Interface.
 		EXPECT().
-		GetResponse(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
+		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
 		Return("", nil, fmt.Errorf("Error getting metadata from Shepherd"))
 	// ----------
+
+	mockGen3Interface.
+		EXPECT().
+		Logger().
+		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
+		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
 	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
@@ -106,9 +110,6 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	testFileName := "test-file"
 	testFileSize := int64(120)
 	mockCtrl := gomock.NewController(t)
@@ -118,13 +119,19 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{FileName: testFileName, Size: testFileSize}, nil)
 	// ----------
+
+	mockGen3Interface.
+		EXPECT().
+		Logger().
+		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
+		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to return the correct filename and filesize from indexd.
 	fileName, fileSize := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]g3cmd.RenamedOrSkippedFileInfo{})
@@ -141,9 +148,6 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	testProfileConfig := &jwt.Credential{
-		Profile: "test-profile",
-	}
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -152,13 +156,18 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI(gomock.AssignableToTypeOf(testProfileConfig)).
+		CheckForShepherdAPI().
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(gomock.AssignableToTypeOf(testProfileConfig), commonUtils.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(jwt.JsonMessage{}, fmt.Errorf("Error downloading file from Indexd"))
 	// ----------
+	mockGen3Interface.
+		EXPECT().
+		Logger().
+		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
+		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
 	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
