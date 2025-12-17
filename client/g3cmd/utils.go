@@ -543,11 +543,17 @@ func getFullFilePath(filePath string, filename string) (string, error) {
 	}
 }
 
+<<<<<<< HEAD:client/g3cmd/utils.go
 func uploadFile(g3i client.Gen3Interface, furObject common.FileUploadRequestObject, retryCount int) error {
 	g3i.Logger().Println("Uploading data ...")
 	if furObject.Progress != nil {
 		defer furObject.Progress.Wait()
 	}
+=======
+func uploadFile(furObject commonUtils.FileUploadRequestObject, retryCount int) error {
+	log.Println("Uploading data ...")
+	furObject.Bar.Start()
+>>>>>>> master:gen3-client/g3cmd/utils.go
 
 	client := &http.Client{}
 	resp, err := client.Do(furObject.Request)
