@@ -22,8 +22,7 @@ import (
 )
 
 const (
-	defaultChunkSize     = 100 * 1024 * 1024 // 100 MiB - adjust based on your backend
-	minChunkSize         = 5 * 1024 * 1024   // S3 minimum part size
+	minChunkSize         = 5 * 1024 * 1024 // S3 minimum part size
 	maxMultipartParts    = 10000
 	maxConcurrentUploads = 10
 	maxRetries           = 5
@@ -197,7 +196,9 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 
 			// Success
 			mu.Lock()
-			parts = append(parts, MultipartPartObject{PartNumber: partNum, ETag: strings.Trim(etag, `"`)})
+			etag = strings.Trim(etag, `"`)
+			parts = append(parts, MultipartPartObject{PartNumber: partNum, ETag: etag})
+			g3.Logger().Printf("Appended part %d with ETag %s\n", partNum, etag)
 			if bar != nil {
 				bar.IncrBy(n)
 			}
@@ -224,6 +225,11 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 	sort.Slice(parts, func(i, j int) bool {
 		return parts[i].PartNumber < parts[j].PartNumber
 	})
+
+	g3.Logger().Printf("Completing multipart upload with %d parts for file %s\n", len(parts), req.Filename)
+	for _, part := range parts {
+		g3.Logger().Printf("  Part %d: ETag=%s\n", part.PartNumber, part.ETag)
+	}
 
 	if err := CompleteMultipartUpload(g3, key, uploadID, parts, bucketName); err != nil {
 		return fmt.Errorf("failed to complete multipart upload: %w", err)
