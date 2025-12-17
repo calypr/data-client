@@ -1,12 +1,11 @@
 package jwt
 
-//go:generate mockgen -destination=./data-client/mocks/mock_configure.go -package=mocks github.com/calypr/data-client/client/jwt ConfigureInterface
+//go:generate mockgen -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/data-client/client/jwt ConfigureInterface
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path"
@@ -14,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/golang-jwt/jwt/v5"
-	homedir "github.com/mitchellh/go-homedir"
 	"gopkg.in/ini.v1"
 )
 
@@ -32,7 +31,9 @@ type Credential struct {
 	MinShepherdVersion string
 }
 
-type Configure struct{}
+type Configure struct {
+	Logs logs.Logger
+}
 
 type ConfigureInterface interface {
 	ReadFile(string, string) string
@@ -46,26 +47,26 @@ type ConfigureInterface interface {
 
 func (conf *Configure) ReadFile(filePath string, fileType string) string {
 	//Look in config file
-	fullFilePath, err := commonUtils.GetAbsolutePath(filePath)
+	fullFilePath, err := common.GetAbsolutePath(filePath)
 	if err != nil {
-		log.Println("error occurred when parsing config file path: " + err.Error())
+		conf.Logs.Println("error occurred when parsing config file path: " + err.Error())
 		return ""
 	}
 	if _, err := os.Stat(fullFilePath); err != nil {
-		log.Println("File specified at " + fullFilePath + " not found")
+		conf.Logs.Println("File specified at " + fullFilePath + " not found")
 		return ""
 	}
 
 	content, err := os.ReadFile(fullFilePath)
 	if err != nil {
-		log.Println("error occurred when reading file: " + err.Error())
+		conf.Logs.Println("error occurred when reading file: " + err.Error())
 		return ""
 	}
 
 	contentStr := string(content[:])
 
 	if fileType == "json" {
-		contentStr = strings.Replace(contentStr, "\n", "", -1)
+		contentStr = strings.ReplaceAll(contentStr, "\n", "")
 	}
 	return contentStr
 }
@@ -85,12 +86,12 @@ func (conf *Configure) ReadCredentials(filePath string, fenceToken string) (*Cre
 	var profileConfig Credential
 	if filePath != "" {
 		jsonContent := conf.ReadFile(filePath, "json")
-		jsonContent = strings.Replace(jsonContent, "key_id", "KeyId", -1)
-		jsonContent = strings.Replace(jsonContent, "api_key", "APIKey", -1)
+		jsonContent = strings.ReplaceAll(jsonContent, "key_id", "KeyId")
+		jsonContent = strings.ReplaceAll(jsonContent, "api_key", "APIKey")
 		err := json.Unmarshal([]byte(jsonContent), &profileConfig)
 		if err != nil {
 			errs := fmt.Errorf("Cannot read json file: %s", err.Error())
-			log.Println(errs.Error())
+			conf.Logs.Println(errs.Error())
 			return nil, errs
 		}
 	} else if fenceToken != "" {
@@ -100,11 +101,11 @@ func (conf *Configure) ReadCredentials(filePath string, fenceToken string) (*Cre
 }
 
 func (conf *Configure) GetConfigPath() (string, error) {
-	homeDir, err := homedir.Dir()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	configPath := path.Join(homeDir + commonUtils.PathSeparator + ".gen3" + commonUtils.PathSeparator + "gen3_client_config.ini")
+	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
 	return configPath, nil
 }
 
@@ -149,22 +150,32 @@ func (conf *Configure) UpdateConfigFile(profileConfig Credential) error {
 	configPath, err := conf.GetConfigPath()
 	if err != nil {
 		errs := fmt.Errorf("error occurred when getting config path: %s", err.Error())
-		log.Println(errs.Error())
+		conf.Logs.Println(errs.Error())
 		return errs
 	}
 	cfg, err := ini.Load(configPath)
 	if err != nil {
 		errs := fmt.Errorf("error occurred when loading config file: %s", err.Error())
-		log.Println(errs.Error())
+		conf.Logs.Println(errs.Error())
 		return errs
 	}
 
-	cfg.Section(profileConfig.Profile).Key("key_id").SetValue(profileConfig.KeyId)
-	cfg.Section(profileConfig.Profile).Key("api_key").SetValue(profileConfig.APIKey)
-	cfg.Section(profileConfig.Profile).Key("access_token").SetValue(profileConfig.AccessToken)
-	cfg.Section(profileConfig.Profile).Key("api_endpoint").SetValue(profileConfig.APIEndpoint)
-	cfg.Section(profileConfig.Profile).Key("use_shepherd").SetValue(profileConfig.UseShepherd)
-	cfg.Section(profileConfig.Profile).Key("min_shepherd_version").SetValue(profileConfig.MinShepherdVersion)
+	section := cfg.Section(profileConfig.Profile)
+	if profileConfig.KeyId != "" {
+		section.Key("key_id").SetValue(profileConfig.KeyId)
+	}
+	if profileConfig.APIKey != "" {
+		section.Key("api_key").SetValue(profileConfig.APIKey)
+	}
+	if profileConfig.AccessToken != "" {
+		section.Key("access_token").SetValue(profileConfig.AccessToken)
+	}
+	if profileConfig.APIEndpoint != "" {
+		section.Key("api_endpoint").SetValue(profileConfig.APIEndpoint)
+	}
+
+	section.Key("use_shepherd").SetValue(profileConfig.UseShepherd)
+	section.Key("min_shepherd_version").SetValue(profileConfig.MinShepherdVersion)
 	err = cfg.SaveTo(configPath)
 	if err != nil {
 		errs := fmt.Errorf("error occurred when saving config file: %s", err.Error())
@@ -215,12 +226,12 @@ func (conf *Configure) ParseConfig(profile string) (Credential, error) {
 			An instance of Credential
 	*/
 
-	homeDir, err := homedir.Dir()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		errs := fmt.Errorf("Error occurred when getting home directory: %s", err.Error())
 		return Credential{}, errs
 	}
-	configPath := path.Join(homeDir + commonUtils.PathSeparator + ".gen3" + commonUtils.PathSeparator + "gen3_client_config.ini")
+	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
 	profileConfig := Credential{
 		Profile:     profile,
 		KeyId:       "",

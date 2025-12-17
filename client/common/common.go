@@ -1,7 +1,6 @@
-package commonUtils
+package common
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"log"
@@ -11,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	homedir "github.com/mitchellh/go-homedir"
-	pb "gopkg.in/cheggaaa/pb.v1"
+	"github.com/hashicorp/go-multierror"
+	"github.com/vbauerster/mpb/v8"
 )
 
 // DefaultUseShepherd sets whether gen3client will attempt to use the Shepherd / Object Management API
@@ -73,7 +72,8 @@ type FileUploadRequestObject struct {
 	GUID         string
 	PresignedURL string
 	Request      *http.Request
-	Bar          *pb.ProgressBar
+	Progress     *mpb.Progress
+	Bar          *mpb.Bar
 	Bucket       string `json:"bucket,omitempty"`
 }
 
@@ -95,7 +95,7 @@ type FileMetadata struct {
 	Authz   []string `json:"authz"`
 	Aliases []string `json:"aliases"`
 	// Metadata is an encoded JSON string of any arbitrary metadata the user wishes to upload.
-	Metadata map[string]interface{} `json:"metadata"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 // RetryObject defines a object for retry upload
@@ -112,7 +112,7 @@ type RetryObject struct {
 // ParseRootPath parses dirname that has "~" in the beginning
 func ParseRootPath(filePath string) (string, error) {
 	if filePath != "" && filePath[0] == '~' {
-		homeDir, err := homedir.Dir()
+		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
@@ -135,24 +135,27 @@ func GetAbsolutePath(filePath string) (string, error) {
 func ParseFilePaths(filePath string, metadataEnabled bool) ([]string, error) {
 	fullFilePath, err := GetAbsolutePath(filePath)
 	if err != nil {
-		return nil, err
+		return []string{}, err
 	}
-	filePaths, err := filepath.Glob(fullFilePath) // Generating all possible file paths
+	initialPaths, err := filepath.Glob(fullFilePath)
 	if err != nil {
-		return nil, err
+		return []string{}, err
 	}
 
-	filePaths = cleanupHiddenFiles(filePaths)
+	var multiErr *multierror.Error
+	var finalFilePaths []string
+	for _, p := range cleanupHiddenFiles(initialPaths) {
+		file, err := os.Open(p)
+		if err != nil {
+			multiErr = multierror.Append(multiErr, fmt.Errorf("file open error for %s: %w", p, err))
+			continue
+		}
 
-	for _, filePath := range filePaths {
-		func() {
-			file, err := os.Open(filePath)
-			if err != nil {
-				log.Fatal("File error for " + filePath)
-			}
+		func(filePath string, file *os.File) {
 			defer file.Close()
 
-			if fi, _ := file.Stat(); fi.IsDir() {
+			fi, _ := file.Stat()
+			if fi.IsDir() {
 				err = filepath.Walk(filePath, func(path string, fileInfo os.FileInfo, err error) error {
 					if err != nil {
 						return err
@@ -162,47 +165,24 @@ func ParseFilePaths(filePath string, metadataEnabled bool) ([]string, error) {
 						return err
 					}
 					isMetadata := false
-					// if file metadata is enabled, do not include metadata in the list of files.
 					if metadataEnabled {
 						isMetadata = strings.HasSuffix(path, "_metadata.json")
 					}
-
 					if !fileInfo.IsDir() && !isHidden && !isMetadata {
-						filePaths = append(filePaths, path)
-					} else if isHidden {
-						log.Printf("File %s is a hidden file and will be skipped\n", path)
+						finalFilePaths = append(finalFilePaths, path)
 					}
 					return nil
 				})
+				if err != nil {
+					multiErr = multierror.Append(multiErr, fmt.Errorf("directory walk error for %s: %w", filePath, err))
+				}
+			} else {
+				finalFilePaths = append(finalFilePaths, filePath)
 			}
-			if err != nil {
-				log.Fatal("File walk error for " + filePath + " : " + err.Error())
-			}
-		}()
+		}(p, file)
 	}
-	return filePaths, err
-}
 
-// AskForConfirmation asks user for confirmation before proceed, will wait if user entered garbage
-func AskForConfirmation(s string) bool {
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		fmt.Printf("%s [y/n]: ", s)
-
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatal("Error occurred during parsing user's confirmation: " + err.Error())
-		}
-
-		response = strings.ToLower(strings.TrimSpace(response))
-
-		if response == "y" || response == "yes" {
-			return true
-		} else if response == "n" || response == "no" {
-			return false
-		}
-	}
+	return finalFilePaths, multiErr.ErrorOrNil()
 }
 
 func cleanupHiddenFiles(filePaths []string) []string {

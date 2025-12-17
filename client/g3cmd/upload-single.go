@@ -2,14 +2,15 @@ package g3cmd
 
 // Deprecated: Use upload instead.
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
+	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
@@ -26,11 +27,7 @@ func init() {
 		Example: `./data-client upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// initialize transmission logs
-			logs.InitSucceededLog(profile)
-			logs.InitFailedLog(profile)
-			logs.SetToBoth()
-			logs.InitScoreBoard(0)
-			err := UploadSingle(profile, guid, filePath, bucketName, false)
+			err := UploadSingle(profile, guid, filePath, bucketName, true)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}
@@ -47,26 +44,30 @@ func init() {
 }
 
 func UploadSingle(profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
-	if !enableLogs {
-		log.SetOutput(io.Discard)
+
+	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
+	if enableLogs {
+		logger, closer = logs.New(
+			profile,
+			logs.WithSucceededLog(),
+			logs.WithFailedLog(),
+			logs.WithScoreboard(),
+			logs.WithConsole(),
+		)
 	}
+	defer closer()
 
 	// Instantiate interface to Gen3
-	gen3Interface := NewGen3Interface()
-
-	// done so that profileConfig is written globally
-	var err error
-	profileConfig, err = conf.ParseConfig(profile)
+	g3i, err := client.NewGen3Interface(
+		context.Background(),
+		profile,
+		logger,
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse config on profile %s: %w", profile, err)
 	}
 
-	valid, err := conf.IsValidCredential(profileConfig)
-	if err != nil && !valid {
-		return err
-	}
-
-	filePaths, err := commonUtils.ParseFilePaths(filePath, false)
+	filePaths, err := common.ParseFilePaths(filePath, false)
 	if len(filePaths) > 1 {
 		return errors.New("more than 1 file location has been found. Do not use \"*\" in file path or provide a folder as file path")
 	}
@@ -78,44 +79,44 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	}
 	filename := filepath.Base(filePath)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		logs.AddToFailedLog(filePath, filename, commonUtils.FileMetadata{}, "", 0, false, log.Writer() != io.Discard)
-		logs.IncrementScore(logs.ScoreBoardLen - 1)
-		logs.PrintScoreBoard()
-		logs.CloseAll()
-		return fmt.Errorf("[ERROR] The file you specified \"%s\" does not exist locally", filePath)
+		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
+		sb := g3i.Logger().Scoreboard()
+		sb.IncrementSB(len(sb.Counts))
+		sb.PrintSB()
+		return fmt.Errorf("[ERROR] The file you specified \"%s\" does not exist locally\n", filePath)
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		logs.AddToFailedLog(filePath, filename, commonUtils.FileMetadata{}, "", 0, false, log.Writer() != io.Discard)
-		logs.IncrementScore(logs.ScoreBoardLen - 1)
-		logs.PrintScoreBoard()
-		logs.CloseAll()
-		log.Fatalln("File open error: " + err.Error())
-		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s", filePath, err.Error())
+		sb := g3i.Logger().Scoreboard()
+		sb.IncrementSB(len(sb.Counts))
+		sb.PrintSB()
+		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
+		g3i.Logger().Println("File open error: " + err.Error())
+		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s\n", filePath, err.Error())
 	}
 	defer file.Close()
 
-	furObject := commonUtils.FileUploadRequestObject{FilePath: filePath, Filename: filename, GUID: guid, Bucket: bucketName}
+	furObject := common.FileUploadRequestObject{FilePath: filePath, Filename: filename, GUID: guid, Bucket: bucketName}
 
-	furObject, err = GenerateUploadRequest(gen3Interface, furObject, file)
+	furObject, err = GenerateUploadRequest(g3i, furObject, file, nil)
 	if err != nil {
 		file.Close()
-		logs.AddToFailedLog(furObject.FilePath, furObject.Filename, commonUtils.FileMetadata{}, furObject.GUID, 0, false, true)
-		logs.IncrementScore(logs.ScoreBoardLen - 1)
-		logs.PrintScoreBoard()
-		logs.CloseAll()
-		log.Fatalf("Error occurred during request generation: %s", err.Error())
-		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s", filePath, err.Error())
+		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, common.FileMetadata{}, furObject.GUID, 0, false)
+		sb := g3i.Logger().Scoreboard()
+		sb.IncrementSB(len(sb.Counts))
+		sb.PrintSB()
+		g3i.Logger().Fatalf("Error occurred during request generation: %s", err.Error())
+		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
 	}
-	err = uploadFile(furObject, 0)
+	err = uploadFile(g3i, furObject, 0)
 	if err != nil {
-		logs.IncrementScore(logs.ScoreBoardLen - 1) // update failed score
-		return fmt.Errorf("[ERROR] Error uploading file %s: %s", filePath, err.Error())
+		sb := g3i.Logger().Scoreboard()
+		sb.IncrementSB(len(sb.Counts))
+		return fmt.Errorf("[ERROR] Error uploading file %s: %s\n", filePath, err.Error())
 	} else {
-		logs.IncrementScore(0) // update succeeded score
+		g3i.Logger().Scoreboard().IncrementSB(0)
 	}
-	logs.PrintScoreBoard()
-	logs.CloseAll()
+	g3i.Logger().Scoreboard().PrintSB()
 	return nil
 }

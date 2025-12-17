@@ -2,17 +2,15 @@ package g3cmd
 
 import (
 	"fmt"
-	"log"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )
 
-var conf jwt.Configure // Why is this a global variable?
-
 func init() {
+	var profile string
 	var credFile string
 	var fenceToken string
 	var apiEndpoint string
@@ -26,8 +24,6 @@ func init() {
 		Example: `./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			logs.SetToBoth()
-
 			cred := &jwt.Credential{
 				Profile:            profile,
 				APIEndpoint:        apiEndpoint,
@@ -35,10 +31,15 @@ func init() {
 				UseShepherd:        useShepherd,
 				MinShepherdVersion: minShepherdVersion,
 			}
+			logger, logCloser := logs.New(profile, logs.WithConsole())
+			defer logCloser()
+
+			conf := jwt.Configure{Logs: logger}
+
 			if credFile != "" {
 				readCred, err := conf.ReadCredentials(credFile, "")
 				if err != nil {
-					log.Fatal(err) // or return proper error
+					logger.Fatal(err) // or return proper error
 				}
 				cred.KeyId = readCred.KeyId
 				cred.APIKey = readCred.APIKey
@@ -47,11 +48,11 @@ func init() {
 				}
 				cred.AccessToken = ""
 			}
-			err := jwt.UpdateConfig(cred)
+			err := jwt.UpdateConfig(logger, cred)
 			if err != nil {
-				log.Println(err.Error())
+				logger.Println(err.Error())
 			}
-			log.Println(`Profile '` + profile + `' has been configured successfully.`)
+			logger.Println(`Profile '` + profile + `' has been configured successfully.`)
 		},
 	}
 
@@ -62,7 +63,7 @@ func init() {
 	configureCmd.Flags().StringVar(&fenceToken, "fenceToken", "", "Specify the fence token to use as a substitute for credential file")
 	configureCmd.Flags().StringVar(&apiEndpoint, "apiendpoint", "", "Specify the API endpoint of the data commons")
 	configureCmd.MarkFlagRequired("apiendpoint") //nolint:errcheck
-	configureCmd.Flags().StringVar(&useShepherd, "use-shepherd", "", fmt.Sprintf("Enables or disables support for the Shepherd API. If enabled, gen3client will use the Shepherd API if available. (Default: %v)", commonUtils.DefaultUseShepherd))
-	configureCmd.Flags().StringVar(&minShepherdVersion, "min-shepherd-version", "", fmt.Sprintf("Specify the minimum version of Shepherd that the gen3client will use if Shepherd is enabled. (Default: %v)", commonUtils.DefaultMinShepherdVersion))
+	configureCmd.Flags().StringVar(&useShepherd, "use-shepherd", "", fmt.Sprintf("Enables or disables support for the Shepherd API. If enabled, gen3client will use the Shepherd API if available. (Default: %v)", common.DefaultUseShepherd))
+	configureCmd.Flags().StringVar(&minShepherdVersion, "min-shepherd-version", "", fmt.Sprintf("Specify the minimum version of Shepherd that the gen3client will use if Shepherd is enabled. (Default: %v)", common.DefaultMinShepherdVersion))
 	RootCmd.AddCommand(configureCmd)
 }

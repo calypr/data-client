@@ -11,7 +11,7 @@ import (
 
 	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/mocks"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 func TestDoRequestWithSignedHeaderNoProfile(t *testing.T) {
@@ -143,7 +143,7 @@ func TestCheckPrivilegesNoAccess(t *testing.T) {
 
 	_, receivedAccess, err := testFunction.CheckPrivileges(&profileConfig)
 
-	expectedAccess := make(map[string]interface{})
+	expectedAccess := make(map[string]any)
 
 	if err != nil {
 		t.Errorf("Expected no errors, received an error \"%v\"", err)
@@ -179,8 +179,8 @@ func TestCheckPrivilegesGrantedAccess(t *testing.T) {
 
 	_, expectedAccess, err := testFunction.CheckPrivileges(&profileConfig)
 
-	receivedAccess := make(map[string]interface{})
-	receivedAccess["test_project"] = []interface{}{
+	receivedAccess := make(map[string]any)
+	receivedAccess["test_project"] = []any{
 		"read",
 		"create",
 		"read-storage",
@@ -233,8 +233,8 @@ func TestCheckPrivilegesGrantedAccessAuthz(t *testing.T) {
 
 	_, expectedAccess, err := testFunction.CheckPrivileges(&profileConfig)
 
-	receivedAccess := make(map[string]interface{})
-	receivedAccess["test_project"] = []map[string]interface{}{
+	receivedAccess := make(map[string]any)
+	receivedAccess["test_project"] = []map[string]any{
 		{"method": "create", "service": "*"},
 		{"method": "delete", "service": "*"},
 		{"method": "read", "service": "*"},
