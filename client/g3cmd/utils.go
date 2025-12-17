@@ -419,7 +419,7 @@ func separateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []commo
 
 		// Check if file exists locally
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			g3i.Logger().Printf("The file you specified \"%s\" does not exist locally", filePath)
+			g3i.Logger().Printf("The file you specified \"%s\" does not exist locally\n", filePath)
 			g3i.Logger().Failed(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false)
 			continue
 		}
