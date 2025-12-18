@@ -43,18 +43,19 @@ func init() {
 	RootCmd.AddCommand(uploadSingleCmd)
 }
 
-func UploadSingle(profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
+func UploadSingle(profile string, guid string, filePath string, bucketName string, showProgress bool) error {
 
-	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
-	if enableLogs {
-		logger, closer = logs.New(
-			profile,
-			logs.WithSucceededLog(),
-			logs.WithFailedLog(),
-			logs.WithScoreboard(),
-			logs.WithConsole(),
-		)
+	opts := []logs.Option{
+		logs.WithSucceededLog(),
+		logs.WithFailedLog(),
+		logs.WithMessageFile(),
 	}
+
+	if showProgress {
+		opts = append(opts, logs.WithScoreboard(), logs.WithConsole())
+	}
+
+	logger, closer := logs.New(profile, opts...)
 	defer closer()
 
 	// Instantiate interface to Gen3
@@ -65,6 +66,14 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	)
 	if err != nil {
 		return fmt.Errorf("failed to parse config on profile %s: %w", profile, err)
+	}
+
+	updateUI := func() {
+		if showProgress {
+			sb := g3i.Logger().Scoreboard()
+			sb.IncrementSB(len(sb.Counts))
+			sb.PrintSB()
+		}
 	}
 
 	filePaths, err := common.ParseFilePaths(filePath, false)
@@ -80,17 +89,13 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	filename := filepath.Base(filePath)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
-		sb.PrintSB()
+		updateUI()
 		return fmt.Errorf("[ERROR] The file you specified \"%s\" does not exist locally\n", filePath)
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
-		sb.PrintSB()
+		updateUI()
 		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
 		g3i.Logger().Println("File open error: " + err.Error())
 		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s\n", filePath, err.Error())
@@ -98,25 +103,21 @@ func UploadSingle(profile string, guid string, filePath string, bucketName strin
 	defer file.Close()
 
 	furObject := common.FileUploadRequestObject{FilePath: filePath, Filename: filename, GUID: guid, Bucket: bucketName}
-
 	furObject, err = GenerateUploadRequest(g3i, furObject, file, nil)
 	if err != nil {
 		file.Close()
 		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, common.FileMetadata{}, furObject.GUID, 0, false)
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
-		sb.PrintSB()
+		updateUI()
 		g3i.Logger().Fatalf("Error occurred during request generation: %s", err.Error())
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
 	}
 	err = uploadFile(g3i, furObject, 0)
 	if err != nil {
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
+		updateUI()
 		return fmt.Errorf("[ERROR] Error uploading file %s: %s\n", filePath, err.Error())
-	} else {
-		g3i.Logger().Scoreboard().IncrementSB(0)
 	}
-	g3i.Logger().Scoreboard().PrintSB()
+	if showProgress {
+		g3i.Logger().Scoreboard().PrintSB()
+	}
 	return nil
 }

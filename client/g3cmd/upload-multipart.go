@@ -104,22 +104,19 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 
 	g3.Logger().Printf("File Name: '%s', File Size: '%d'\n", stat.Name(), stat.Size())
 
-	if stat.Size() == 0 {
+	fileSize := stat.Size()
+	if fileSize == 0 {
 		return fmt.Errorf("file is empty: %s", req.Filename)
 	}
 
-	// Initialize multipart upload
-	uploadID, finalGUID, err := InitMultipartUpload(g3, req, bucketName)
-	if err != nil {
-		return fmt.Errorf("failed to initiate multipart upload: %w", err)
+	if fileSize < 5*1024*1024*1024 {
+		g3.Logger().Printf("File size < 5GB (%d bytes), using single-part upload\n", fileSize)
+		err := UploadSingle(g3.GetCredential().Profile, req.GUID, req.FilePath, req.Bucket, showProgress)
+		if err != nil {
+			g3.Logger().Fatal(err.Error())
+		}
+		return nil
 	}
-	req.GUID = finalGUID // update with server-provided GUID
-
-	key := finalGUID + "/" + req.Filename
-	chunkSize := optimalChunkSize(stat.Size())
-
-	numChunks := int((stat.Size() + chunkSize - 1) / chunkSize)
-	parts := make([]MultipartPartObject, 0, numChunks)
 
 	// Progress bar setup (modern mpb)
 	var p *mpb.Progress
@@ -137,6 +134,19 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 			),
 		)
 	}
+
+	// Initialize multipart upload
+	uploadID, finalGUID, err := InitMultipartUpload(g3, req, bucketName)
+	if err != nil {
+		return fmt.Errorf("failed to initiate multipart upload: %w", err)
+	}
+	req.GUID = finalGUID // update with server-provided GUID
+
+	key := finalGUID + "/" + req.Filename
+	chunkSize := optimalChunkSize(stat.Size())
+
+	numChunks := int((stat.Size() + chunkSize - 1) / chunkSize)
+	parts := make([]MultipartPartObject, 0, numChunks)
 
 	// Channel for chunk indices
 	chunks := make(chan int, numChunks)
