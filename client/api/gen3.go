@@ -1,7 +1,6 @@
-package jwt
+package api
 
-//go:generate mockgen -destination=../mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/jwt FunctionInterface
-//go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/data-client/client/jwt RequestInterface
+//go:generate mockgen -destination=../mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/api FunctionInterface
 
 import (
 	"bytes"
@@ -16,123 +15,35 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/client/conf"
+	req "github.com/calypr/data-client/client/request"
 	"github.com/hashicorp/go-version"
 )
 
-func NewFunctions(ctx context.Context, config ConfigureInterface, request RequestInterface) FunctionInterface {
+func NewFunctions(ctx context.Context, config conf.Manager, request req.RequestInterface) FunctionInterface {
 	return &Functions{
-		Config:  config,
 		Request: request,
 	}
 }
 
 type Functions struct {
-	Request RequestInterface
-	Config  ConfigureInterface
+	Config  conf.ManagerInterface
+	Request req.RequestInterface
 }
 
 type FunctionInterface interface {
-	CheckPrivileges(profileConfig *Credential) (string, map[string]any, error)
-	CheckForShepherdAPI(profileConfig *Credential) (bool, error)
-	GetResponse(profileConfig *Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error)
-	DoRequestWithSignedHeader(profileConfig *Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (JsonMessage, error)
-	ParseFenceURLResponse(resp *http.Response) (JsonMessage, error)
-	GetHost(profileConfig *Credential) (*url.URL, error)
+	CheckPrivileges(cred *conf.Credential) (string, map[string]any, error)
+	CheckForShepherdAPI(cred *conf.Credential) (bool, error)
+	GetResponse(cred *conf.Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error)
+	DoRequestWithSignedHeader(cred *conf.Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (FenceResponse, error)
+	GetHost(cred *conf.Credential) (*url.URL, error)
+	ExportCredential(cred *conf.Credential) error
+
+	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
 }
 
-type Request struct {
-	Logs logs.Logger
-	Ctx  context.Context
-}
-
-type RequestInterface interface {
-	MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error)
-	RequestNewAccessToken(accessTokenEndpoint string, profileConfig *Credential) error
-	Logger() logs.Logger
-}
-
-func (r *Request) Logger() logs.Logger {
-	return r.Logs
-}
-
-func (r *Request) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
-	/*
-	   Make http request with header and body
-	*/
-	if headers == nil {
-		headers = make(map[string]string)
-	}
-	if accessToken != "" {
-		headers["Authorization"] = "Bearer " + accessToken
-	}
-	if contentType != "" {
-		headers["Content-Type"] = contentType
-	}
-	var client *http.Client
-	if noTimeout {
-		client = &http.Client{}
-	} else {
-		client = &http.Client{Timeout: common.DefaultTimeout}
-	}
-	var req *http.Request
-	var err error
-	if body == nil {
-		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, nil)
-	} else {
-		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, body)
-	}
-	if err != nil {
-		return nil, errors.New("Error occurred during generating HTTP request: " + err.Error())
-	}
-	for k, v := range headers {
-		req.Header.Add(k, v)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, errors.New("Error occurred during making HTTP request: " + err.Error())
-	}
-	return resp, nil
-}
-
-func (r *Request) RequestNewAccessToken(accessTokenEndpoint string, profileConfig *Credential) error {
-	/*
-		Request new access token to replace the expired one.
-
-		Args:
-			accessTokenEndpoint: the api endpoint for request new access token
-		Returns:
-			profileConfig: new credential
-			err: error
-
-	*/
-	body := bytes.NewBufferString("{\"api_key\": \"" + profileConfig.APIKey + "\"}")
-	resp, err := r.MakeARequest("POST", accessTokenEndpoint, "", "application/json", nil, body, false)
-	var m AccessTokenStruct
-	// parse resp error codes first for profile configuration verification
-	if resp != nil && resp.StatusCode != 200 {
-		return errors.New("Error occurred in RequestNewAccessToken with error code " + strconv.Itoa(resp.StatusCode) + ", check FENCE log for more details.")
-	}
-	if err != nil {
-		return errors.New("Error occurred in RequestNewAccessToken: " + err.Error())
-	}
-	defer resp.Body.Close()
-
-	str := ResponseToString(resp)
-	err = DecodeJsonFromString(str, &m)
-	if err != nil {
-		return errors.New("Error occurred in RequestNewAccessToken: " + err.Error())
-	}
-
-	if m.AccessToken == "" {
-		return errors.New("Could not get new access key from response string: " + str)
-	}
-	profileConfig.AccessToken = m.AccessToken
-	return nil
-}
-
-func (f *Functions) ParseFenceURLResponse(resp *http.Response) (JsonMessage, error) {
-	msg := JsonMessage{}
+func (f *Functions) ParseFenceURLResponse(resp *http.Response) (FenceResponse, error) {
+	msg := FenceResponse{}
 
 	if resp == nil {
 		return msg, errors.New("Nil response received")
@@ -167,14 +78,14 @@ func (f *Functions) ParseFenceURLResponse(resp *http.Response) (JsonMessage, err
 		return msg, errors.New("The provided GUID is not found")
 	}
 
-	err := DecodeJsonFromString(bodyStr, &msg)
+	err := json.Unmarshal([]byte(bodyStr), &msg)
 	if err != nil {
 		return msg, fmt.Errorf("failed to decode JSON: %w (Raw body: %s)", err, bodyStr)
 	}
 
 	return msg, nil
 }
-func (f *Functions) CheckForShepherdAPI(profileConfig *Credential) (bool, error) {
+func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, error) {
 	// Check if Shepherd is enabled
 	if profileConfig.UseShepherd == "false" {
 		return false, nil
@@ -222,7 +133,7 @@ func (f *Functions) CheckForShepherdAPI(profileConfig *Credential) (bool, error)
 	return false, fmt.Errorf("Shepherd is enabled, but %v does not have correct Shepherd version. (Need Shepherd version >=%v, got %v)", profileConfig.APIEndpoint, minVer, ver)
 }
 
-func (f *Functions) GetResponse(profileConfig *Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error) {
+func (f *Functions) GetResponse(profileConfig *conf.Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error) {
 
 	var resp *http.Response
 	var err error
@@ -254,7 +165,7 @@ func (f *Functions) GetResponse(profileConfig *Credential, endpointPostPrefix st
 		if err != nil {
 			return prefixEndPoint, resp, err
 		}
-		err = f.Config.UpdateConfigFile(*profileConfig)
+		err = f.Config.Save(profileConfig)
 		if err != nil {
 			return prefixEndPoint, resp, err
 		}
@@ -268,7 +179,7 @@ func (f *Functions) GetResponse(profileConfig *Credential, endpointPostPrefix st
 	return prefixEndPoint, resp, nil
 }
 
-func (f *Functions) GetHost(profileConfig *Credential) (*url.URL, error) {
+func (f *Functions) GetHost(profileConfig *conf.Credential) (*url.URL, error) {
 	if profileConfig.APIEndpoint == "" {
 		return nil, errors.New("No APIEndpoint found in the configuration file! Please use \"./data-client configure\" to configure your credentials first")
 	}
@@ -276,12 +187,12 @@ func (f *Functions) GetHost(profileConfig *Credential) (*url.URL, error) {
 	return host, nil
 }
 
-func (f *Functions) DoRequestWithSignedHeader(profileConfig *Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (JsonMessage, error) {
+func (f *Functions) DoRequestWithSignedHeader(profileConfig *conf.Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (FenceResponse, error) {
 	/*
 	   Do request with signed header. User may have more than one profile and use a profile to make a request
 	*/
 	var err error
-	var msg JsonMessage
+	var msg FenceResponse
 
 	method := "GET"
 	if bodyBytes != nil {
@@ -298,7 +209,7 @@ func (f *Functions) DoRequestWithSignedHeader(profileConfig *Credential, endpoin
 	return msg, err
 }
 
-func (f *Functions) CheckPrivileges(profileConfig *Credential) (string, map[string]any, error) {
+func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (string, map[string]any, error) {
 	/*
 	   Return user privileges from specified profile
 	*/
@@ -330,41 +241,87 @@ func (f *Functions) CheckPrivileges(profileConfig *Credential) (string, map[stri
 	return host, resourceAccess, err
 }
 
-func (f *Functions) DeleteRecord(profileConfig *Credential, guid string) (string, error) {
-	var err error
-	var msg string
-
+func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (string, error) {
+	endpoint := common.FenceDataEndpoint + "/" + guid
 	hasShepherd, err := f.CheckForShepherdAPI(profileConfig)
 	if err != nil {
-		f.Request.Logger().Printf("WARNING: Error while checking for Shepherd API: %v. Falling back to Fence to delete record.\n", err)
+		f.Request.Logger().Printf("WARNING: Error checking Shepherd API: %v. Falling back to Fence.\n", err)
 	} else if hasShepherd {
-		endPointPostfix := common.ShepherdEndpoint + "/objects/" + guid
-		_, resp, err := f.GetResponse(profileConfig, endPointPostfix, "DELETE", "", nil)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == 204 {
-			msg = "Record with GUID " + guid + " has been deleted"
-		} else if resp.StatusCode == 500 {
-			err = errors.New("Internal server error occurred when deleting " + guid + "; could not delete stored files, or not able to delete INDEXD record")
-		}
-		return msg, err
+		endpoint = common.ShepherdEndpoint + "/objects/" + guid
 	}
 
-	endPointPostfix := common.FenceDataEndpoint + "/" + guid
-
-	_, resp, err := f.GetResponse(profileConfig, endPointPostfix, "DELETE", "", nil)
+	_, resp, err := f.GetResponse(profileConfig, endpoint, "DELETE", "", nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 204 {
-		msg = "Record with GUID " + guid + " has been deleted"
-	} else if resp.StatusCode == 500 {
-		err = errors.New("Internal server error occurred when deleting " + guid + "; could not delete stored files, or not able to delete INDEXD record")
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyMsg := string(bodyBytes)
+
+	switch resp.StatusCode {
+	case 204:
+		return fmt.Sprintf("Record with GUID %s has been deleted. Response: %s", guid, bodyMsg), nil
+	case 500:
+		return bodyMsg, fmt.Errorf("internal server error (500) for GUID %s: could not delete stored files or INDEXD record. Response: %s", guid, bodyMsg)
+	default:
+		return bodyMsg, fmt.Errorf("unexpected error (%d) for GUID %s. Response: %s", resp.StatusCode, guid, bodyMsg)
+	}
+}
+
+func (f *Functions) ExportCredential(cred *conf.Credential) error {
+	var request req.Request = req.Request{Ctx: context.Background()}
+
+	if cred.Profile == "" {
+		return fmt.Errorf("profile name is required")
+	}
+	if cred.APIEndpoint == "" {
+		return fmt.Errorf("API endpoint is required")
 	}
 
-	return msg, err
+	// Normalize endpoint
+	cred.APIEndpoint = strings.TrimSpace(cred.APIEndpoint)
+	cred.APIEndpoint = strings.TrimSuffix(cred.APIEndpoint, "/")
+
+	// Validate URL format
+	parsedURL, err := conf.ValidateUrl(cred.APIEndpoint)
+	if err != nil {
+		return fmt.Errorf("invalid apiendpoint URL: %w", err)
+	}
+	fenceBase := parsedURL.Scheme + "://" + parsedURL.Host
+	if _, err := f.Config.Load(cred.Profile); err != nil && !errors.Is(err, conf.ErrProfileNotFound) {
+		return err
+	}
+
+	if cred.APIKey != "" {
+		// Always refresh the access token — ignore any old one that might be in the struct
+		err = request.RequestNewAccessToken(fenceBase+common.FenceAccessTokenEndpoint, cred)
+		if err != nil {
+			if strings.Contains(err.Error(), "401") {
+				return fmt.Errorf("authentication failed (401) for %s — your API key is invalid, revoked, or expired", fenceBase)
+			}
+			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "no such host") {
+				return fmt.Errorf("cannot reach Fence at %s — is this a valid Gen3 commons?", fenceBase)
+			}
+			return fmt.Errorf("failed to refresh access token: %w", err)
+		}
+	} else {
+		f.Request.Logger().Printf("WARNING: Your profile will only be valid for 24 hours since you have only provided a refresh token for authentication")
+	}
+
+	// Clean up shepherd flags
+	cred.UseShepherd = strings.TrimSpace(cred.UseShepherd)
+	cred.MinShepherdVersion = strings.TrimSpace(cred.MinShepherdVersion)
+
+	if cred.MinShepherdVersion != "" {
+		if _, err = version.NewVersion(cred.MinShepherdVersion); err != nil {
+			return fmt.Errorf("invalid min-shepherd-version: %w", err)
+		}
+	}
+
+	if err := f.Config.Save(cred); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
 }

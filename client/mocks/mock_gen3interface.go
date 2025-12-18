@@ -15,7 +15,8 @@ import (
 	url "net/url"
 	reflect "reflect"
 
-	jwt "github.com/calypr/data-client/client/jwt"
+	api "github.com/calypr/data-client/client/api"
+	conf "github.com/calypr/data-client/client/conf"
 	logs "github.com/calypr/data-client/client/logs"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -91,10 +92,10 @@ func (mr *MockGen3InterfaceMockRecorder) DeleteRecord(guid any) *gomock.Call {
 }
 
 // DoRequestWithSignedHeader mocks base method.
-func (m *MockGen3Interface) DoRequestWithSignedHeader(endpointPostPrefix, contentType string, bodyBytes []byte) (jwt.JsonMessage, error) {
+func (m *MockGen3Interface) DoRequestWithSignedHeader(endpointPostPrefix, contentType string, bodyBytes []byte) (api.FenceResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DoRequestWithSignedHeader", endpointPostPrefix, contentType, bodyBytes)
-	ret0, _ := ret[0].(jwt.JsonMessage)
+	ret0, _ := ret[0].(api.FenceResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -106,10 +107,10 @@ func (mr *MockGen3InterfaceMockRecorder) DoRequestWithSignedHeader(endpointPostP
 }
 
 // GetCredential mocks base method.
-func (m *MockGen3Interface) GetCredential() *jwt.Credential {
+func (m *MockGen3Interface) GetCredential() *conf.Credential {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCredential")
-	ret0, _ := ret[0].(*jwt.Credential)
+	ret0, _ := ret[0].(*conf.Credential)
 	return ret0
 }
 

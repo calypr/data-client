@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/data-client/client/api"
 	"github.com/calypr/data-client/client/common"
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
-	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/mocks"
 	"go.uber.org/mock/gomock"
 )
@@ -95,7 +95,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 
 	// Mock the request to Fence for the download URL of this file.
 	mockDownloadURL := "https://example.com/example.pfb"
-	mockDownloadURLResponse := jwt.JsonMessage{
+	mockDownloadURLResponse := api.FenceResponse{
 		URL: mockDownloadURL,
 	}
 	mockGen3Interface.
@@ -151,7 +151,7 @@ func TestGeneratePresignedURL_noShepherd(t *testing.T) {
 	expectedReqBody := []byte(fmt.Sprintf(`{"file_name":"%v","bucket":"%v"}`, testFilename, testBucketname))
 	mockPresignedURL := "https://example.com/example.pfb"
 	mockGUID := "000000-0000000-0000000-000000"
-	mockUploadURLResponse := jwt.JsonMessage{
+	mockUploadURLResponse := api.FenceResponse{
 		URL:  mockPresignedURL,
 		GUID: mockGUID,
 	}

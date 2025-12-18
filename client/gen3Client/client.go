@@ -1,4 +1,4 @@
-package client
+package gen3Client
 
 import (
 	"bytes"
@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/api"
+	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
+	req "github.com/calypr/data-client/client/request"
 )
 
 //go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/gen3Client Gen3Interface
@@ -20,10 +22,10 @@ type Gen3Interface interface {
 	CheckPrivileges() (string, map[string]any, error)
 	CheckForShepherdAPI() (bool, error)
 	GetResponse(endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error)
-	DoRequestWithSignedHeader(endpointPostPrefix string, contentType string, bodyBytes []byte) (jwt.JsonMessage, error)
+	DoRequestWithSignedHeader(endpointPostPrefix string, contentType string, bodyBytes []byte) (api.FenceResponse, error)
 	MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error)
 	GetHost() (*url.URL, error)
-	GetCredential() *jwt.Credential
+	GetCredential() *conf.Credential
 	DeleteRecord(guid string) (string, error)
 
 	Logger() *logs.TeeLogger
@@ -32,10 +34,9 @@ type Gen3Interface interface {
 // Gen3Client wraps jwt.FunctionInterface and embeds the credential
 type Gen3Client struct {
 	Ctx               context.Context
-	FunctionInterface jwt.FunctionInterface
-	credential        *jwt.Credential
-
-	logger *logs.TeeLogger
+	FunctionInterface api.FunctionInterface
+	credential        *conf.Credential
+	logger            *logs.TeeLogger
 }
 
 func (g *Gen3Client) Logger() *logs.TeeLogger {
@@ -58,7 +59,7 @@ func (g *Gen3Client) GetResponse(endpointPostPrefix string, method string, conte
 }
 
 // DoRequestWithSignedHeader wraps the underlying method with embedded credential
-func (g *Gen3Client) DoRequestWithSignedHeader(endpointPostPrefix string, contentType string, bodyBytes []byte) (jwt.JsonMessage, error) {
+func (g *Gen3Client) DoRequestWithSignedHeader(endpointPostPrefix string, contentType string, bodyBytes []byte) (api.FenceResponse, error) {
 	return g.FunctionInterface.DoRequestWithSignedHeader(g.credential, endpointPostPrefix, contentType, bodyBytes)
 }
 
@@ -68,7 +69,7 @@ func (g *Gen3Client) GetHost() (*url.URL, error) {
 }
 
 // GetCredential returns the embedded credential
-func (g *Gen3Client) GetCredential() *jwt.Credential {
+func (g *Gen3Client) GetCredential() *conf.Credential {
 	return g.credential
 }
 
@@ -76,7 +77,7 @@ func (g *Gen3Client) GetCredential() *jwt.Credential {
 func (g *Gen3Client) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
 	// Access the underlying Request through the Functions struct
 	// We need to create a temporary Request instance since we can't access it directly
-	if functions, ok := g.FunctionInterface.(*jwt.Functions); ok {
+	if functions, ok := g.FunctionInterface.(*api.Functions); ok {
 		return functions.Request.MakeARequest(method, apiEndpoint, accessToken, contentType, headers, body, noTimeout)
 	}
 	return nil, errors.New("unable to access MakeARequest method")
@@ -87,7 +88,7 @@ func (g *Gen3Client) DeleteRecord(guid string) (string, error) {
 	// Use the embedded credential
 	// Since DeleteRecord is not part of FunctionInterface, we need to access it via type assertion
 	// or create a new Functions instance. We'll use type assertion first.
-	if functions, ok := g.FunctionInterface.(*jwt.Functions); ok {
+	if functions, ok := g.FunctionInterface.(*api.Functions); ok {
 		return functions.DeleteRecord(g.credential, guid)
 	}
 
@@ -100,21 +101,21 @@ func (g *Gen3Client) DeleteRecord(guid string) (string, error) {
 func NewGen3Interface(ctx context.Context, profile string, logger *logs.TeeLogger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
 	// Note: A tee logger must be passed here otherwise you risk causing panics.
 
-	config := &jwt.Configure{}
-	request := &jwt.Request{Ctx: ctx, Logs: logger}
-	client := jwt.NewFunctions(ctx, config, request)
+	config := conf.Manager{}
 
-	cred, err := config.ParseConfig(profile)
+	client := api.NewFunctions(ctx, config, req.NewRequest(ctx, logger))
+
+	cred, err := config.Load(profile)
 	if err != nil {
 		return nil, err
 	}
-	if valid, err := config.IsValidCredential(cred); !valid {
+	if valid, err := config.IsValid(cred); !valid {
 		return nil, fmt.Errorf("invalid credential: %v", err)
 	}
 
 	return &Gen3Client{
 		FunctionInterface: client,
-		credential:        &cred,
+		credential:        cred,
 		logger:            logger,
 	}, nil
 }

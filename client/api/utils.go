@@ -1,20 +1,14 @@
-package jwt
+package api
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 )
 
 type Message any
-
 type Response any
 
-type AccessTokenStruct struct {
-	AccessToken string `json:"access_token"`
-}
-
-type JsonMessage struct {
+type FenceResponse struct {
 	URL          string   `json:"url"`
 	GUID         string   `json:"guid"`
 	UploadID     string   `json:"uploadId"`
@@ -24,15 +18,8 @@ type JsonMessage struct {
 	Size         int64    `json:"size"`
 }
 
-type DoRequest func(*http.Response) *http.Response
-
 func ResponseToString(resp *http.Response) string {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body) // nolint: errcheck
 	return buf.String()
-}
-
-func DecodeJsonFromString(str string, msg Message) error {
-	err := json.Unmarshal([]byte(str), &msg)
-	return err
 }

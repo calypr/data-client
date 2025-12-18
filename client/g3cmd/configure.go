@@ -1,11 +1,14 @@
 package g3cmd
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/calypr/data-client/client/api"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
+	req "github.com/calypr/data-client/client/request"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +27,7 @@ func init() {
 		Example: `./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
-			cred := &jwt.Credential{
+			cred := &conf.Credential{
 				Profile:            profile,
 				APIEndpoint:        apiEndpoint,
 				AccessToken:        fenceToken,
@@ -34,21 +37,23 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			conf := jwt.Configure{Logs: logger}
+			conf := conf.Manager{Logger: logger}
 
 			if credFile != "" {
-				readCred, err := conf.ReadCredentials(credFile, "")
+				readCred, err := conf.Import(credFile, "")
 				if err != nil {
 					logger.Fatal(err) // or return proper error
 				}
-				cred.KeyId = readCred.KeyId
+				cred.KeyID = readCred.KeyID
 				cred.APIKey = readCred.APIKey
 				if readCred.APIEndpoint != "" {
 					cred.APIEndpoint = readCred.APIEndpoint
 				}
 				cred.AccessToken = ""
 			}
-			err := jwt.UpdateConfig(logger, cred)
+			ctx := context.Background()
+			newFunc := api.NewFunctions(ctx, conf, req.NewRequest(ctx, logger))
+			err := newFunc.ExportCredential(cred)
 			if err != nil {
 				logger.Println(err.Error())
 			}

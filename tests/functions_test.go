@@ -9,7 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/api"
+	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/mocks"
 	"go.uber.org/mock/gomock"
 )
@@ -19,10 +20,10 @@ func TestDoRequestWithSignedHeaderNoProfile(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig}
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
+	testFunction := &api.Functions{Config: mockConfig}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "", AccessToken: "", APIEndpoint: ""}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "", AccessToken: "", APIEndpoint: ""}
 
 	_, err := testFunction.DoRequestWithSignedHeader(&profileConfig, "/user/data/download/test_uuid", "", nil)
 
@@ -35,11 +36,11 @@ func TestDoRequestWithSignedHeaderGoodToken(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	testFunction := &api.Functions{Config: mockConfig, Request: mockRequest}
 
-	profileConfig := jwt.Credential{Profile: "test", KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com", UseShepherd: "false", MinShepherdVersion: ""}
+	profileConfig := conf.Credential{Profile: "test", KeyID: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com", UseShepherd: "false", MinShepherdVersion: ""}
 	mockedResp := &http.Response{
 		Body:       io.NopCloser(bytes.NewBufferString("{\"url\": \"http://www.test.com/user/data/download/test_uuid\"}")),
 		StatusCode: 200,
@@ -59,17 +60,17 @@ func TestDoRequestWithSignedHeaderCreateNewToken(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	testFunction := &api.Functions{Config: mockConfig, Request: mockRequest}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "", APIEndpoint: "http://www.test.com"}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "fake_api_key", AccessToken: "", APIEndpoint: "http://www.test.com"}
 	mockedResp := &http.Response{
 		Body:       io.NopCloser(bytes.NewBufferString("{\"url\": \"www.test.com/user/data/download/\"}")),
 		StatusCode: 200,
 	}
 
-	mockConfig.EXPECT().UpdateConfigFile(profileConfig).Times(1)
+	mockConfig.EXPECT().Save(profileConfig).Times(1)
 	mockRequest.EXPECT().RequestNewAccessToken("http://www.test.com/user/credentials/api/access_token", &profileConfig).Return(nil).Times(1)
 	mockRequest.EXPECT().MakeARequest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(1)
 
@@ -85,17 +86,17 @@ func TestDoRequestWithSignedHeaderRefreshToken(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	testFunction := &api.Functions{Config: mockConfig, Request: mockRequest}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "expired_token", APIEndpoint: "http://www.test.com"}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "fake_api_key", AccessToken: "expired_token", APIEndpoint: "http://www.test.com"}
 	mockedResp := &http.Response{
 		Body:       io.NopCloser(bytes.NewBufferString("{\"url\": \"www.test.com/user/data/download/\"}")),
 		StatusCode: 401,
 	}
 
-	mockConfig.EXPECT().UpdateConfigFile(profileConfig).Times(1)
+	mockConfig.EXPECT().Save(profileConfig).Times(1)
 	mockRequest.EXPECT().RequestNewAccessToken("http://www.test.com/user/credentials/api/access_token", &profileConfig).Return(nil).Times(1)
 	mockRequest.EXPECT().MakeARequest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(2)
 
@@ -112,10 +113,10 @@ func TestCheckPrivilegesNoProfile(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig}
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
+	testFunction := &api.Functions{Config: mockConfig}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "", AccessToken: "", APIEndpoint: ""}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "", AccessToken: "", APIEndpoint: ""}
 
 	_, _, err := testFunction.CheckPrivileges(&profileConfig)
 
@@ -129,11 +130,11 @@ func TestCheckPrivilegesNoAccess(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	testFunction := &api.Functions{Config: mockConfig, Request: mockRequest}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
 	mockedResp := &http.Response{
 		Body:       io.NopCloser(bytes.NewBufferString("{\"project_access\": {}}")),
 		StatusCode: 200,
@@ -157,11 +158,11 @@ func TestCheckPrivilegesGrantedAccess(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	testFunction := &api.Functions{Config: mockConfig, Request: mockRequest}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
 
 	grantedAccessJSON := `{
 		"project_access":
@@ -202,11 +203,11 @@ func TestCheckPrivilegesGrantedAccessAuthz(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	testFunction := &api.Functions{Config: mockConfig, Request: mockRequest}
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
+	profileConfig := conf.Credential{KeyID: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
 
 	grantedAccessJSON := `{
 		"authz": {

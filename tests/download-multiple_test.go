@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/data-client/client/api"
 	"github.com/calypr/data-client/client/common"
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
-	"github.com/calypr/data-client/client/jwt"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/calypr/data-client/client/mocks"
 	"go.uber.org/mock/gomock"
@@ -124,7 +124,7 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	mockGen3Interface.
 		EXPECT().
 		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
-		Return(jwt.JsonMessage{FileName: testFileName, Size: testFileSize}, nil)
+		Return(api.FenceResponse{FileName: testFileName, Size: testFileSize}, nil)
 	// ----------
 
 	mockGen3Interface.
@@ -161,7 +161,7 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	mockGen3Interface.
 		EXPECT().
 		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
-		Return(jwt.JsonMessage{}, fmt.Errorf("Error downloading file from Indexd"))
+		Return(api.FenceResponse{}, fmt.Errorf("Error downloading file from Indexd"))
 	// ----------
 	mockGen3Interface.
 		EXPECT().

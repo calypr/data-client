@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/semver"
@@ -74,9 +74,9 @@ func initConfig() {
 	// from the initConfig body, as that was unrelated to the logs closer.
 	// The rest of your original logic follows...
 
-	conf := jwt.Configure{}
+	conf := conf.Manager{}
 	// init local config file
-	err := conf.InitConfigFile()
+	err := conf.EnsureExists()
 	if err != nil {
 		logger.Fatal("Error occurred when trying to init config file: " + err.Error())
 	}
