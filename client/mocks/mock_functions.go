@@ -11,11 +11,11 @@ package mocks
 
 import (
 	http "net/http"
-	url "net/url"
 	reflect "reflect"
 
 	api "github.com/calypr/data-client/client/api"
 	conf "github.com/calypr/data-client/client/conf"
+	req "github.com/calypr/data-client/client/request"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -59,13 +59,12 @@ func (mr *MockFunctionInterfaceMockRecorder) CheckForShepherdAPI(cred any) *gomo
 }
 
 // CheckPrivileges mocks base method.
-func (m *MockFunctionInterface) CheckPrivileges(cred *conf.Credential) (string, map[string]any, error) {
+func (m *MockFunctionInterface) CheckPrivileges(cred *conf.Credential) (map[string]any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CheckPrivileges", cred)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(map[string]any)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // CheckPrivileges indicates an expected call of CheckPrivileges.
@@ -74,19 +73,34 @@ func (mr *MockFunctionInterfaceMockRecorder) CheckPrivileges(cred any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckPrivileges", reflect.TypeOf((*MockFunctionInterface)(nil).CheckPrivileges), cred)
 }
 
-// DoRequestWithSignedHeader mocks base method.
-func (m *MockFunctionInterface) DoRequestWithSignedHeader(cred *conf.Credential, endpointPostPrefix, contentType string, bodyBytes []byte) (api.FenceResponse, error) {
+// DeleteRecord mocks base method.
+func (m *MockFunctionInterface) DeleteRecord(profileConfig *conf.Credential, guid string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DoRequestWithSignedHeader", cred, endpointPostPrefix, contentType, bodyBytes)
-	ret0, _ := ret[0].(api.FenceResponse)
+	ret := m.ctrl.Call(m, "DeleteRecord", profileConfig, guid)
+	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DoRequestWithSignedHeader indicates an expected call of DoRequestWithSignedHeader.
-func (mr *MockFunctionInterfaceMockRecorder) DoRequestWithSignedHeader(cred, endpointPostPrefix, contentType, bodyBytes any) *gomock.Call {
+// DeleteRecord indicates an expected call of DeleteRecord.
+func (mr *MockFunctionInterfaceMockRecorder) DeleteRecord(profileConfig, guid any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoRequestWithSignedHeader", reflect.TypeOf((*MockFunctionInterface)(nil).DoRequestWithSignedHeader), cred, endpointPostPrefix, contentType, bodyBytes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRecord", reflect.TypeOf((*MockFunctionInterface)(nil).DeleteRecord), profileConfig, guid)
+}
+
+// DoAuthenticatedRequest mocks base method.
+func (m *MockFunctionInterface) DoAuthenticatedRequest(cred *conf.Credential, request *req.RequestBuilder) (*http.Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DoAuthenticatedRequest", cred, request)
+	ret0, _ := ret[0].(*http.Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DoAuthenticatedRequest indicates an expected call of DoAuthenticatedRequest.
+func (mr *MockFunctionInterfaceMockRecorder) DoAuthenticatedRequest(cred, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoAuthenticatedRequest", reflect.TypeOf((*MockFunctionInterface)(nil).DoAuthenticatedRequest), cred, request)
 }
 
 // ExportCredential mocks base method.
@@ -103,35 +117,18 @@ func (mr *MockFunctionInterfaceMockRecorder) ExportCredential(cred any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportCredential", reflect.TypeOf((*MockFunctionInterface)(nil).ExportCredential), cred)
 }
 
-// GetHost mocks base method.
-func (m *MockFunctionInterface) GetHost(cred *conf.Credential) (*url.URL, error) {
+// NewAccessToken mocks base method.
+func (m *MockFunctionInterface) NewAccessToken(profileConfig *conf.Credential) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetHost", cred)
-	ret0, _ := ret[0].(*url.URL)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "NewAccessToken", profileConfig)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-// GetHost indicates an expected call of GetHost.
-func (mr *MockFunctionInterfaceMockRecorder) GetHost(cred any) *gomock.Call {
+// NewAccessToken indicates an expected call of NewAccessToken.
+func (mr *MockFunctionInterfaceMockRecorder) NewAccessToken(profileConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHost", reflect.TypeOf((*MockFunctionInterface)(nil).GetHost), cred)
-}
-
-// GetResponse mocks base method.
-func (m *MockFunctionInterface) GetResponse(cred *conf.Credential, endpointPostPrefix, method, contentType string, bodyBytes []byte) (string, *http.Response, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetResponse", cred, endpointPostPrefix, method, contentType, bodyBytes)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(*http.Response)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// GetResponse indicates an expected call of GetResponse.
-func (mr *MockFunctionInterfaceMockRecorder) GetResponse(cred, endpointPostPrefix, method, contentType, bodyBytes any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResponse", reflect.TypeOf((*MockFunctionInterface)(nil).GetResponse), cred, endpointPostPrefix, method, contentType, bodyBytes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewAccessToken", reflect.TypeOf((*MockFunctionInterface)(nil).NewAccessToken), profileConfig)
 }
 
 // ParseFenceURLResponse mocks base method.

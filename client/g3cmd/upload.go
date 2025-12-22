@@ -9,6 +9,7 @@ import (
 	"github.com/calypr/data-client/client/common"
 	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/client/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +44,7 @@ func init() {
 
 			logger := g3i.Logger()
 			if hasMetadata {
-				hasShepherd, err := g3i.CheckForShepherdAPI()
+				hasShepherd, err := g3i.CheckForShepherdAPI(g3i.GetCredential())
 				if err != nil {
 					logger.Printf("WARNING: Error when checking for Shepherd API: %v", err)
 				} else {
@@ -64,7 +65,8 @@ func init() {
 			for _, filePath := range filePaths {
 				// Use ProcessFilename to create the unified object (GUID is empty here, as this command requests a new GUID)
 				// ProcessFilename signature: (uploadPath, filePath, objectId, includeSubDirName, includeMetadata)
-				furObject, err := ProcessFilename(g3i.Logger(), uploadPath, filePath, "", includeSubDirName, hasMetadata)
+				furObject, err := upload.ProcessFilename(g3i.Logger(), uploadPath, filePath, "", includeSubDirName, hasMetadata)
+				furObject.Bucket = bucketName
 
 				// Handle case where ProcessFilename fails (e.g., metadata parsing error)
 				if err != nil {
@@ -91,20 +93,21 @@ func init() {
 				return
 			}
 
-			singlePartObjects, multipartObjects := separateSingleAndMultipartUploads(g3i, uploadRequestObjects, forceMultipart)
+			singlePartObjects, multipartObjects := upload.SeparateSingleAndMultipartUploads(g3i, uploadRequestObjects, forceMultipart)
+
 			if batch {
-				workers, respCh, errCh, batchFURObjects := initBatchUploadChannels(numParallel, len(singlePartObjects))
+				workers, respCh, errCh, batchFURObjects := upload.InitBatchUploadChannels(numParallel, len(singlePartObjects))
 
 				for _, furObject := range singlePartObjects {
 					if len(batchFURObjects) < workers {
 						batchFURObjects = append(batchFURObjects, furObject)
 					} else {
-						batchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
 				}
 				if len(batchFURObjects) > 0 {
-					batchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+					upload.BatchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 				}
 
 				if len(errCh) > 0 {
@@ -119,24 +122,40 @@ func init() {
 				for _, furObject := range singlePartObjects {
 					file, err := os.Open(furObject.FilePath)
 					if err != nil {
-						g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						logger.Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
 						logger.Println("File open error: " + err.Error())
 						continue
 					}
-					startSingleFileUpload(g3i, furObject, file, bucketName)
+					fi, err := file.Stat()
+					if err != nil {
+						logger.Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						logger.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
+						continue
+					}
+					upload.UploadSingleFile(g3i, furObject, true)
 				}
 			}
 
 			if len(multipartObjects) > 0 {
-				err := processMultipartUpload(g3i, multipartObjects, bucketName, includeSubDirName, uploadPath)
-				if err != nil {
-					logger.Println(err.Error())
+				cred := g3i.GetCredential()
+				if cred.UseShepherd == "true" ||
+					cred.UseShepherd == "" && common.DefaultUseShepherd == true {
+					logger.Printf("error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again", cred.Profile)
+					return
+				}
+				g3i.Logger().Println("Multipart uploading...")
+				for _, furObject := range multipartObjects {
+					err := upload.MultipartUpload(context.Background(), g3i, furObject, true)
+					if err != nil {
+						g3i.Logger().Println(err.Error())
+					} else {
+						g3i.Logger().Scoreboard().IncrementSB(0)
+					}
 				}
 			}
 			if len(g3i.Logger().GetSucceededLogMap()) == 0 {
-				retryUpload(g3i, g3i.Logger().GetFailedLogMap())
+				upload.RetryFailedUploads(g3i, g3i.Logger().GetFailedLogMap())
 			}
-
 			g3i.Logger().Scoreboard().PrintSB()
 		},
 	}

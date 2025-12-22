@@ -10,6 +10,7 @@ import (
 
 	"github.com/calypr/data-client/client/api"
 	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/download"
 	g3cmd "github.com/calypr/data-client/client/g3cmd"
 	"github.com/calypr/data-client/client/mocks"
 	"go.uber.org/mock/gomock"
@@ -63,7 +64,7 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		GUID:     testGUID,
 		Range:    0,
 	}
-	err := g3cmd.GetDownloadResponse(mockGen3Interface, &mockFDRObj, "")
+	err := download.GetDownloadResponse(mockGen3Interface, &mockFDRObj, "")
 	if err != nil {
 		t.Error(err)
 	}
@@ -119,7 +120,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		GUID:     testGUID,
 		Range:    0,
 	}
-	err := g3cmd.GetDownloadResponse(mockGen3Interface, &mockFDRObj, "")
+	err := download.GetDownloadResponse(mockGen3Interface, &mockFDRObj, "")
 	if err != nil {
 		t.Error(err)
 	}

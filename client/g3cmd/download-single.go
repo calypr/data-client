@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 
+	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/download"
 	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
@@ -35,11 +37,12 @@ func init() {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
-			obj := ManifestObject{
-				ObjectID: guid,
+			objects := []common.ManifestObject{
+				common.ManifestObject{
+					ObjectID: guid,
+				},
 			}
-			objects := []ManifestObject{obj}
-			err = downloadFile(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
+			err = download.DownloadMultiple(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
 			if err != nil {
 				g3I.Logger().Println(err.Error())
 			}

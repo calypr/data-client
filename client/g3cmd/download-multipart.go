@@ -51,20 +51,20 @@ func DownloadSignedURL(signedURL, dstPath string) error {
 
 	// If we have a partial file, resume with single stream (safer and simpler)
 	if existingSize > 0 && existingSize < contentLength {
-		return downloadResumableSingle(signedURL, dstPath, contentLength, existingSize, client, progress)
+		return downloadResumableSingle(signedURL, dstPath, contentLength, existingSize, client)
 	}
 
 	// For complete downloads: use multipart if file is large enough
-	if contentLength >= multiPartThreshold {
-		return downloadConcurrentMultipart(signedURL, dstPath, contentLength, client, progress)
+	if contentLength >= 5*1024*1024*1024 {
+		return downloadConcurrentMultipart(signedURL, dstPath, contentLength, client)
 	}
 
 	// Otherwise: simple single-stream download
-	return downloadResumableSingle(signedURL, dstPath, contentLength, 0, client, progress)
+	return downloadResumableSingle(signedURL, dstPath, contentLength, 0, client)
 }
 
 // downloadResumableSingle handles single-stream (possibly resumed) download
-func downloadResumableSingle(signedURL, dstPath string, totalSize, startByte int64, client *http.Client, progress *mpb.Progress) error {
+func downloadResumableSingle(signedURL, dstPath string, totalSize, startByte int64, client *http.Client) error {
 	req, err := http.NewRequest("GET", signedURL, nil)
 	if err != nil {
 		return err
@@ -125,7 +125,7 @@ func downloadResumableSingle(signedURL, dstPath string, totalSize, startByte int
 }
 
 // downloadConcurrentMultipart downloads in parallel chunks
-func downloadConcurrentMultipart(signedURL, dstPath string, totalSize int64, client *http.Client, progress *mpb.Progress) error {
+func downloadConcurrentMultipart(signedURL, dstPath string, totalSize int64, client *http.Client) error {
 	numChunks := int((totalSize + chunkSize - 1) / chunkSize)
 	if numChunks < defaultConcurrency {
 		numChunks = defaultConcurrency

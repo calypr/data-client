@@ -86,8 +86,8 @@ func initConfig() {
 		gitversion != "" && gitversion != "N/A" {
 
 		const (
-			owner      = "uc-cdis"
-			repository = "cdis-data-client"
+			owner      = "calypr"
+			repository = "data-client"
 			// The official GitHub API endpoint for the latest release
 			apiURL = "https://api.github.com/repos/" + owner + "/" + repository + "/releases/latest"
 		)

@@ -3,7 +3,6 @@ package api
 //go:generate mockgen -destination=../mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/api FunctionInterface
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/conf"
+	"github.com/calypr/data-client/client/logs"
 	req "github.com/calypr/data-client/client/request"
 	"github.com/hashicorp/go-version"
 )
@@ -29,19 +29,59 @@ func NewFunctions(ctx context.Context, config conf.Manager, request req.RequestI
 type Functions struct {
 	Config  conf.ManagerInterface
 	Request req.RequestInterface
+	Logger  logs.Logger
 }
 
 type FunctionInterface interface {
-	CheckPrivileges(cred *conf.Credential) (string, map[string]any, error)
+	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
+
+	CheckPrivileges(cred *conf.Credential) (map[string]any, error)
 	CheckForShepherdAPI(cred *conf.Credential) (bool, error)
-	GetResponse(cred *conf.Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error)
-	DoRequestWithSignedHeader(cred *conf.Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (FenceResponse, error)
-	GetHost(cred *conf.Credential) (*url.URL, error)
 	ExportCredential(cred *conf.Credential) error
 
-	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
+	DoAuthenticatedRequest(cred *conf.Credential, request *req.RequestBuilder) (*http.Response, error)
+	DeleteRecord(profileConfig *conf.Credential, guid string) (string, error)
 }
 
+func (r *Functions) NewAccessToken(profileConfig *conf.Credential) error {
+	if profileConfig.APIKey == "" {
+		return errors.New("APIKey is required to refresh access token")
+	}
+
+	bodyBytes, err := json.Marshal(map[string]string{"api_key": profileConfig.APIKey})
+	if err != nil {
+		return err
+	}
+
+	resp, err := r.Request.Do(
+		r.Request.New(http.MethodPost, profileConfig.APIEndpoint+common.FenceAccessTokenEndpoint).
+			WithHeader(common.HeaderContentType, common.MIMEApplicationJSON).
+			WithBody(bodyBytes),
+	)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("failed to refresh token, status: " + strconv.Itoa(resp.StatusCode))
+	}
+
+	var result common.AccessTokenStruct
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return errors.New("failed to parse token response: " + err.Error())
+	}
+
+	if result.AccessToken == "" {
+		return errors.New("empty access token in response")
+	}
+
+	profileConfig.AccessToken = result.AccessToken
+	return nil
+}
+
+// Todo: why isn't this calld in every fence response that has a body ? why is this seperated out
 func (f *Functions) ParseFenceURLResponse(resp *http.Response) (FenceResponse, error) {
 	msg := FenceResponse{}
 
@@ -85,6 +125,7 @@ func (f *Functions) ParseFenceURLResponse(resp *http.Response) (FenceResponse, e
 
 	return msg, nil
 }
+
 func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, error) {
 	// Check if Shepherd is enabled
 	if profileConfig.UseShepherd == "false" {
@@ -102,7 +143,13 @@ func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, e
 		minShepherdVersion = profileConfig.MinShepherdVersion
 	}
 
-	_, res, err := f.GetResponse(profileConfig, common.ShepherdVersionEndpoint, "GET", "", nil)
+	res, err := f.DoAuthenticatedRequest(
+		profileConfig,
+		&req.RequestBuilder{
+			Url:    common.ShepherdVersionEndpoint,
+			Method: http.MethodGet,
+		},
+	)
 	if err != nil {
 		return false, errors.New("Error occurred during generating HTTP request: " + err.Error())
 	}
@@ -133,99 +180,51 @@ func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, e
 	return false, fmt.Errorf("Shepherd is enabled, but %v does not have correct Shepherd version. (Need Shepherd version >=%v, got %v)", profileConfig.APIEndpoint, minVer, ver)
 }
 
-func (f *Functions) GetResponse(profileConfig *conf.Credential, endpointPostPrefix string, method string, contentType string, bodyBytes []byte) (string, *http.Response, error) {
-
-	var resp *http.Response
-	var err error
-
-	if profileConfig.APIKey == "" && profileConfig.AccessToken == "" && profileConfig.APIEndpoint == "" {
-		return "", resp, fmt.Errorf("No credentials found in the configuration file! Please use \"./data-client configure\" to configure your credentials first %s", profileConfig)
+func (f *Functions) DoAuthenticatedRequest(
+	cred *conf.Credential,
+	rb *req.RequestBuilder,
+) (*http.Response, error) {
+	if cred.APIEndpoint == "" {
+		return nil, errors.New("APIEndpoint is missing in credential")
 	}
 
-	host, _ := url.Parse(profileConfig.APIEndpoint)
-	prefixEndPoint := host.Scheme + "://" + host.Host
-	apiEndpoint := host.Scheme + "://" + host.Host + endpointPostPrefix
-	isExpiredToken := false
-	if profileConfig.AccessToken != "" {
-		resp, err = f.Request.MakeARequest(method, apiEndpoint, profileConfig.AccessToken, contentType, nil, bytes.NewBuffer(bodyBytes), false)
-		if err != nil {
-			return "", resp, fmt.Errorf("Error while requesting user access token at %v: %v", apiEndpoint, err)
-		}
-
-		// 401 code is general error code from FENCE. the error message is also not clear for the case
-		// that the token expired. Temporary solution: get new access token and make another attempt.
-		if resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 503) {
-			isExpiredToken = true
-		} else {
-			return prefixEndPoint, resp, err
-		}
-	}
-	if profileConfig.AccessToken == "" || isExpiredToken {
-		err := f.Request.RequestNewAccessToken(prefixEndPoint+common.FenceAccessTokenEndpoint, profileConfig)
-		if err != nil {
-			return prefixEndPoint, resp, err
-		}
-		err = f.Config.Save(profileConfig)
-		if err != nil {
-			return prefixEndPoint, resp, err
-		}
-
-		resp, err = f.Request.MakeARequest(method, apiEndpoint, profileConfig.AccessToken, contentType, nil, bytes.NewBuffer(bodyBytes), false)
-		if err != nil {
-			return prefixEndPoint, resp, err
-		}
-	}
-
-	return prefixEndPoint, resp, nil
-}
-
-func (f *Functions) GetHost(profileConfig *conf.Credential) (*url.URL, error) {
-	if profileConfig.APIEndpoint == "" {
-		return nil, errors.New("No APIEndpoint found in the configuration file! Please use \"./data-client configure\" to configure your credentials first")
-	}
-	host, _ := url.Parse(profileConfig.APIEndpoint)
-	return host, nil
-}
-
-func (f *Functions) DoRequestWithSignedHeader(profileConfig *conf.Credential, endpointPostPrefix string, contentType string, bodyBytes []byte) (FenceResponse, error) {
-	/*
-	   Do request with signed header. User may have more than one profile and use a profile to make a request
-	*/
-	var err error
-	var msg FenceResponse
-
-	method := "GET"
-	if bodyBytes != nil {
-		method = "POST"
-	}
-
-	_, resp, err := f.GetResponse(profileConfig, endpointPostPrefix, method, contentType, bodyBytes)
+	baseURL, err := url.Parse(cred.APIEndpoint)
 	if err != nil {
-		return msg, err
+		return nil, fmt.Errorf("invalid APIEndpoint URL: %w", err)
 	}
-	defer resp.Body.Close()
+	rb.Url = baseURL.ResolveReference(&url.URL{Path: rb.Url}).String()
 
-	msg, err = f.ParseFenceURLResponse(resp)
-	return msg, err
+	// Define refresh callback (combines NewAccessToken + Save)
+	refreshCallback := func(c *conf.Credential) error {
+		if err := f.NewAccessToken(c); err != nil {
+			return err
+		}
+		return f.Config.Save(c)
+	}
+	return f.Request.DoAuthenticated(rb, cred, refreshCallback)
 }
 
-func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (string, map[string]any, error) {
+func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (map[string]any, error) {
 	/*
 	   Return user privileges from specified profile
 	*/
 	var err error
 	var data map[string]any
 
-	host, resp, err := f.GetResponse(profileConfig, common.FenceUserEndpoint, "GET", "", nil)
+	resp, err := f.DoAuthenticatedRequest(profileConfig,
+		&req.RequestBuilder{
+			Url:    common.FenceUserEndpoint,
+			Method: http.MethodGet},
+	)
 	if err != nil {
-		return "", nil, errors.New("Error occurred when getting response from remote: " + err.Error())
+		return nil, errors.New("Error occurred when getting response from remote: " + err.Error())
 	}
 	defer resp.Body.Close()
 
 	str := ResponseToString(resp)
 	err = json.Unmarshal([]byte(str), &data)
 	if err != nil {
-		return "", nil, errors.New("Error occurred when unmarshalling response: " + err.Error())
+		return nil, errors.New("Error occurred when unmarshalling response: " + err.Error())
 	}
 
 	resourceAccess, ok := data["authz"].(map[string]any)
@@ -234,23 +233,27 @@ func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (string, map
 	if len(resourceAccess) == 0 || !ok {
 		resourceAccess, ok = data["project_access"].(map[string]any)
 		if !ok {
-			return "", nil, errors.New("Not possible to read access privileges of user")
+			return nil, errors.New("Not possible to read access privileges of user")
 		}
 	}
 
-	return host, resourceAccess, err
+	return resourceAccess, err
 }
 
 func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (string, error) {
 	endpoint := common.FenceDataEndpoint + "/" + guid
 	hasShepherd, err := f.CheckForShepherdAPI(profileConfig)
 	if err != nil {
-		f.Request.Logger().Printf("WARNING: Error checking Shepherd API: %v. Falling back to Fence.\n", err)
+		f.Logger.Printf("WARNING: Error checking Shepherd API: %v. Falling back to Fence.\n", err)
 	} else if hasShepherd {
 		endpoint = common.ShepherdEndpoint + "/objects/" + guid
 	}
 
-	_, resp, err := f.GetResponse(profileConfig, endpoint, "DELETE", "", nil)
+	resp, err := f.DoAuthenticatedRequest(profileConfig,
+		&req.RequestBuilder{
+			Url:    endpoint,
+			Method: http.MethodDelete},
+	)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
@@ -270,7 +273,6 @@ func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (s
 }
 
 func (f *Functions) ExportCredential(cred *conf.Credential) error {
-	var request req.Request = req.Request{Ctx: context.Background()}
 
 	if cred.Profile == "" {
 		return fmt.Errorf("profile name is required")
@@ -295,7 +297,7 @@ func (f *Functions) ExportCredential(cred *conf.Credential) error {
 
 	if cred.APIKey != "" {
 		// Always refresh the access token — ignore any old one that might be in the struct
-		err = request.RequestNewAccessToken(fenceBase+common.FenceAccessTokenEndpoint, cred)
+		err = f.NewAccessToken(cred)
 		if err != nil {
 			if strings.Contains(err.Error(), "401") {
 				return fmt.Errorf("authentication failed (401) for %s — your API key is invalid, revoked, or expired", fenceBase)
@@ -306,7 +308,7 @@ func (f *Functions) ExportCredential(cred *conf.Credential) error {
 			return fmt.Errorf("failed to refresh access token: %w", err)
 		}
 	} else {
-		f.Request.Logger().Printf("WARNING: Your profile will only be valid for 24 hours since you have only provided a refresh token for authentication")
+		f.Logger.Printf("WARNING: Your profile will only be valid for 24 hours since you have only provided a refresh token for authentication")
 	}
 
 	// Clean up shepherd flags

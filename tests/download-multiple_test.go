@@ -10,9 +10,10 @@ import (
 
 	"github.com/calypr/data-client/client/api"
 	"github.com/calypr/data-client/client/common"
-	g3cmd "github.com/calypr/data-client/client/g3cmd"
+	"github.com/calypr/data-client/client/download"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/calypr/data-client/client/mocks"
+	"github.com/stretchr/testify/mock"
 	"go.uber.org/mock/gomock"
 )
 
@@ -57,7 +58,7 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	// ----------
 
 	// Expect AskGen3ForFileInfo to return the correct filename and filesize from shepherd.
-	fileName, fileSize := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]g3cmd.RenamedOrSkippedFileInfo{})
+	fileName, fileSize := download.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]download.RenamedOrSkippedFileInfo{})
 	if fileName != testFileName {
 		t.Errorf("Wanted filename %v, got %v", testFileName, fileName)
 	}
@@ -94,9 +95,9 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
-	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
-	fileName, _ := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
-	expected := g3cmd.RenamedOrSkippedFileInfo{GUID: testGUID, OldFilename: "N/A", NewFilename: testGUID}
+	skipped := []download.RenamedOrSkippedFileInfo{}
+	fileName, _ := download.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
+	expected := download.RenamedOrSkippedFileInfo{GUID: testGUID, OldFilename: "N/A", NewFilename: testGUID}
 	if skipped[0] != expected {
 		t.Errorf("Wanted skipped files list to contain %v, got %v", expected, skipped)
 	}
@@ -134,7 +135,7 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to return the correct filename and filesize from indexd.
-	fileName, fileSize := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]g3cmd.RenamedOrSkippedFileInfo{})
+	fileName, fileSize := download.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]download.RenamedOrSkippedFileInfo{})
 	if fileName != testFileName {
 		t.Errorf("Wanted filename %v, got %v", testFileName, fileName)
 	}
@@ -156,11 +157,11 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
 	mockGen3Interface.
 		EXPECT().
-		CheckForShepherdAPI().
+		CheckForShepherdAPI(mock.Anything).
 		Return(false, nil)
 	mockGen3Interface.
 		EXPECT().
-		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
+		DoAuthenticatedRequest(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
 		Return(api.FenceResponse{}, fmt.Errorf("Error downloading file from Indexd"))
 	// ----------
 	mockGen3Interface.
@@ -170,9 +171,9 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 		AnyTimes()
 
 	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
-	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
-	fileName, _ := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
-	expected := g3cmd.RenamedOrSkippedFileInfo{GUID: testGUID, OldFilename: "N/A", NewFilename: testGUID}
+	skipped := []download.RenamedOrSkippedFileInfo{}
+	fileName, _ := download.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
+	expected := download.RenamedOrSkippedFileInfo{GUID: testGUID, OldFilename: "N/A", NewFilename: testGUID}
 	if skipped[0] != expected {
 		t.Errorf("Wanted skipped files list to contain %v, got %v", expected, skipped)
 	}

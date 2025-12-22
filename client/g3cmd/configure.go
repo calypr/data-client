@@ -52,7 +52,7 @@ func init() {
 				cred.AccessToken = ""
 			}
 			ctx := context.Background()
-			newFunc := api.NewFunctions(ctx, conf, req.NewRequest(ctx, logger))
+			newFunc := api.NewFunctions(ctx, conf, req.NewRequestInterface(ctx, logger))
 			err := newFunc.ExportCredential(cred)
 			if err != nil {
 				logger.Println(err.Error())

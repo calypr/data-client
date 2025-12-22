@@ -5,13 +5,11 @@ package req
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/hashicorp/go-retryablehttp"
@@ -24,16 +22,12 @@ type Request struct {
 }
 
 type RequestInterface interface {
-	MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error)
-	RequestNewAccessToken(accessTokenEndpoint string, profileConfig *conf.Credential) error
-	Logger() logs.Logger
+	New(method, url string) *RequestBuilder
+	Do(req *RequestBuilder) (*http.Response, error)
+	DoAuthenticated(rb *RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error)
 }
 
-func (r *Request) Logger() logs.Logger {
-	return r.Logs
-}
-
-func NewRequest(ctx context.Context, logger logs.Logger) *Request {
+func NewRequestInterface(ctx context.Context, logger logs.Logger) RequestInterface {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 10
 	retryClient.RetryWaitMin = 1 * time.Second
@@ -57,80 +51,69 @@ func NewRequest(ctx context.Context, logger logs.Logger) *Request {
 	}
 }
 
-func (r *Request) MakeARequest(method string, apiEndpoint string, accessToken string, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
-	/*
-	   Make http request with header and body
-	*/
-	if headers == nil {
-		headers = make(map[string]string)
+func (r *Request) Do(rb *RequestBuilder) (*http.Response, error) {
+	// Prepare body reader
+	var bodyReader *bytes.Buffer
+	if len(rb.Body) > 0 {
+		bodyReader = bytes.NewBuffer(rb.Body)
 	}
-	if accessToken != "" {
-		headers["Authorization"] = "Bearer " + accessToken
-	}
-	if contentType != "" {
-		headers["Content-Type"] = contentType
-	}
-	var client *http.Client
-	if noTimeout {
-		client = &http.Client{}
-	} else {
-		client = &http.Client{Timeout: common.DefaultTimeout}
-	}
-	var req *http.Request
-	var err error
-	if body == nil {
-		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, nil)
-	} else {
-		req, err = http.NewRequestWithContext(r.Ctx, method, apiEndpoint, body)
-	}
+
+	httpReq, err := http.NewRequestWithContext(r.Ctx, rb.Method, rb.Url, bodyReader)
 	if err != nil {
-		return nil, errors.New("Error occurred during generating HTTP request: " + err.Error())
+		return nil, errors.New("failed to create HTTP request: " + err.Error())
 	}
-	for k, v := range headers {
-		req.Header.Add(k, v)
+
+	for key, value := range rb.Headers {
+		httpReq.Header.Add(key, value)
 	}
-	resp, err := client.Do(req)
+
+	if rb.Token != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+rb.Token)
+	}
+
+	// Convert to retryablehttp.Request
+	retryReq, err := retryablehttp.FromRequest(httpReq)
 	if err != nil {
-		return nil, errors.New("Error occurred during making HTTP request: " + err.Error())
+		return nil, err
 	}
+
+	oldTimeout := r.RetryClient.HTTPClient.Timeout
+	if rb.Timeout == false {
+		r.RetryClient.HTTPClient.Timeout = 0
+		defer func() { r.RetryClient.HTTPClient.Timeout = oldTimeout }()
+	}
+
+	resp, err := r.RetryClient.Do(retryReq)
+	if err != nil {
+		return nil, errors.New("request failed after retries: " + err.Error())
+	}
+
 	return resp, nil
 }
 
-func (r *Request) RequestNewAccessToken(accessTokenEndpoint string, profileConfig *conf.Credential) error {
-	/*
-		Request new access token to replace the expired one.
-
-		Args:
-			accessTokenEndpoint: the api endpoint for request new access token
-		Returns:
-			profileConfig: new credential
-			err: error
-
-	*/
-	body := bytes.NewBufferString("{\"api_key\": \"" + profileConfig.APIKey + "\"}")
-	resp, err := r.MakeARequest("POST", accessTokenEndpoint, "", "application/json", nil, body, false)
-	var m common.AccessTokenStruct
-	// parse resp error codes first for profile configuration verification
-	if resp != nil && resp.StatusCode != 200 {
-		return errors.New("Error occurred in RequestNewAccessToken with error code " + strconv.Itoa(resp.StatusCode) + ", check FENCE log for more details.")
+func (r *Request) DoAuthenticated(rb *RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error) {
+	// First attempt with current token (if any)
+	if cred.AccessToken != "" {
+		rb = rb.WithToken(cred.AccessToken)
 	}
+
+	resp, err := r.Do(rb)
 	if err != nil {
-		return errors.New("Error occurred in RequestNewAccessToken: " + err.Error())
-	}
-	defer resp.Body.Close()
-
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-	respStr := buf.String()
-
-	err = json.Unmarshal([]byte(respStr), &m)
-	if err != nil {
-		return errors.New("Error occurred in RequestNewAccessToken: " + err.Error())
+		return resp, err
 	}
 
-	if m.AccessToken == "" {
-		return errors.New("Could not get new access key from response string: " + respStr)
+	// Only attempt refresh+retry if we got 401/503 AND we have a way to refresh
+	if (resp.StatusCode == 401 || resp.StatusCode == 503) && cred.APIKey != "" {
+		resp.Body.Close()
+
+		if err := refreshToken(cred); err != nil {
+			return nil, fmt.Errorf("token refresh failed: %w", err)
+		}
+
+		// Retry once with new token
+		rb = rb.WithToken(cred.AccessToken)
+		return r.Do(rb)
 	}
-	profileConfig.AccessToken = m.AccessToken
-	return nil
+
+	return resp, nil
 }

@@ -10,12 +10,11 @@
 package mocks
 
 import (
-	bytes "bytes"
 	http "net/http"
 	reflect "reflect"
 
 	conf "github.com/calypr/data-client/client/conf"
-	logs "github.com/calypr/data-client/client/logs"
+	req "github.com/calypr/data-client/client/request"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,45 +42,46 @@ func (m *MockRequestInterface) EXPECT() *MockRequestInterfaceMockRecorder {
 	return m.recorder
 }
 
-// Logger mocks base method.
-func (m *MockRequestInterface) Logger() logs.Logger {
+// Do mocks base method.
+func (m *MockRequestInterface) Do(arg0 *req.RequestBuilder) (*http.Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Logger")
-	ret0, _ := ret[0].(logs.Logger)
-	return ret0
-}
-
-// Logger indicates an expected call of Logger.
-func (mr *MockRequestInterfaceMockRecorder) Logger() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logger", reflect.TypeOf((*MockRequestInterface)(nil).Logger))
-}
-
-// MakeARequest mocks base method.
-func (m *MockRequestInterface) MakeARequest(method, apiEndpoint, accessToken, contentType string, headers map[string]string, body *bytes.Buffer, noTimeout bool) (*http.Response, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MakeARequest", method, apiEndpoint, accessToken, contentType, headers, body, noTimeout)
+	ret := m.ctrl.Call(m, "Do", arg0)
 	ret0, _ := ret[0].(*http.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// MakeARequest indicates an expected call of MakeARequest.
-func (mr *MockRequestInterfaceMockRecorder) MakeARequest(method, apiEndpoint, accessToken, contentType, headers, body, noTimeout any) *gomock.Call {
+// Do indicates an expected call of Do.
+func (mr *MockRequestInterfaceMockRecorder) Do(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MakeARequest", reflect.TypeOf((*MockRequestInterface)(nil).MakeARequest), method, apiEndpoint, accessToken, contentType, headers, body, noTimeout)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockRequestInterface)(nil).Do), arg0)
 }
 
-// RequestNewAccessToken mocks base method.
-func (m *MockRequestInterface) RequestNewAccessToken(accessTokenEndpoint string, profileConfig *conf.Credential) error {
+// DoAuthenticated mocks base method.
+func (m *MockRequestInterface) DoAuthenticated(rb *req.RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestNewAccessToken", accessTokenEndpoint, profileConfig)
-	ret0, _ := ret[0].(error)
+	ret := m.ctrl.Call(m, "DoAuthenticated", rb, cred, refreshToken)
+	ret0, _ := ret[0].(*http.Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DoAuthenticated indicates an expected call of DoAuthenticated.
+func (mr *MockRequestInterfaceMockRecorder) DoAuthenticated(rb, cred, refreshToken any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoAuthenticated", reflect.TypeOf((*MockRequestInterface)(nil).DoAuthenticated), rb, cred, refreshToken)
+}
+
+// New mocks base method.
+func (m *MockRequestInterface) New(method, url string) *req.RequestBuilder {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "New", method, url)
+	ret0, _ := ret[0].(*req.RequestBuilder)
 	return ret0
 }
 
-// RequestNewAccessToken indicates an expected call of RequestNewAccessToken.
-func (mr *MockRequestInterfaceMockRecorder) RequestNewAccessToken(accessTokenEndpoint, profileConfig any) *gomock.Call {
+// New indicates an expected call of New.
+func (mr *MockRequestInterfaceMockRecorder) New(method, url any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestNewAccessToken", reflect.TypeOf((*MockRequestInterface)(nil).RequestNewAccessToken), accessTokenEndpoint, profileConfig)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "New", reflect.TypeOf((*MockRequestInterface)(nil).New), method, url)
 }
