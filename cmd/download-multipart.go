@@ -1,4 +1,4 @@
-package g3cmd
+package cmd
 
 /*
 // DownloadSignedURL downloads a file from a signed URL with:

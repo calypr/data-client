@@ -1,4 +1,4 @@
-package g3cmd
+package cmd
 
 // Deprecated: Use "upload" instead for new uploads (without pre-existing GUIDs).
 import (
@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/calypr/data-client/client/upload"
 	"github.com/spf13/cobra"

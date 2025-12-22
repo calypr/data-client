@@ -6,15 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/gen3Client"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/vbauerster/mpb/v8"
 )
 
 func UploadSingleFileWrapper(profile, bucket, filePath, guid string, progress bool) error {
-
 	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
 	defer closer()
 	g3, err := client.NewGen3Interface(
@@ -42,7 +40,7 @@ func UploadSingleFileWrapper(profile, bucket, filePath, guid string, progress bo
 }
 
 // UploadSingleFile handles single-part upload with progress
-func UploadSingleFile(g3 gen3Client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
+func UploadSingleFile(g3 client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
 	file, err := os.Open(req.FilePath)
 	if err != nil {
 		return err
@@ -54,7 +52,7 @@ func UploadSingleFile(g3 gen3Client.Gen3Interface, req common.FileUploadRequestO
 		return fmt.Errorf("file exceeds 5GB limit")
 	}
 
-	url, guid, err := generatePresignedURL(g3, req.Filename, req.FileMetadata, req.Bucket)
+	respObj, err := GeneratePresignedURL(g3, req.Filename, req.FileMetadata, req.Bucket)
 	if err != nil {
 		return err
 	}
@@ -68,8 +66,8 @@ func UploadSingleFile(g3 gen3Client.Gen3Interface, req common.FileUploadRequestO
 	fur, err := generateUploadRequest(g3, common.FileUploadRequestObject{
 		FilePath:     req.FilePath,
 		Filename:     req.Filename,
-		PresignedURL: url,
-		GUID:         guid,
+		PresignedURL: respObj.URL,
+		GUID:         respObj.GUID,
 		Bucket:       req.Bucket,
 	}, file, p)
 	if err != nil {

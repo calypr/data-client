@@ -1,4 +1,4 @@
-package g3cmd
+package cmd
 
 // Deprecated: Use upload instead.
 import (

@@ -1,4 +1,4 @@
-package gen3Client
+package client
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	req "github.com/calypr/data-client/client/request"
 )
 
-//go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/gen3Client Gen3Interface
+//go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/client Gen3Interface
 
 // Top level wrapper Interface for calling lower level interface functions.
 //

@@ -1,29 +1,34 @@
 package download
 
 import (
-	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
 
-// batchDownload downloads a batch in parallel and returns success count
 func batchDownload(
 	g3 client.Gen3Interface,
 	progress *mpb.Progress,
+	globalBar *mpb.Bar, // counts completed files
 	batch []common.FileDownloadResponseObject,
 	protocolText string,
 	workers int,
 	errCh chan error,
 ) int {
 	var ready []common.FileDownloadResponseObject
-	for _, fdr := range batch {
+
+	// ---- prepare download responses + per-file bars ----
+	for i := range batch {
+		fdr := batch[i]
+
 		if err := GetDownloadResponse(g3, &fdr, protocolText); err != nil {
 			errCh <- err
 			continue
@@ -37,45 +42,61 @@ func batchDownload(
 		}
 
 		if sub := filepath.Dir(fdr.Filename); sub != "." && sub != "/" {
-			os.MkdirAll(fdr.DownloadPath+sub, 0766) // ignore error — already checked upstream
+			_ = os.MkdirAll(fdr.DownloadPath+sub, 0766)
 		}
 
 		file, err := os.OpenFile(fdr.DownloadPath+fdr.Filename, flags, 0666)
 		if err != nil {
-			errCh <- errors.New("Open local file failed: " + err.Error())
+			errCh <- fmt.Errorf("open local file failed: %w", err)
 			continue
 		}
 
 		total := fdr.Response.ContentLength + fdr.Range
-		bar := progress.AddBar(total,
-			mpb.PrependDecorators(decor.Name(fdr.Filename+" "), decor.CountersKibiByte("% .1f / % .1f")),
-			mpb.AppendDecorators(decor.Percentage(), decor.AverageSpeed(decor.SizeB1024(0), " % .1f")),
+
+		fileBar := progress.AddBar(
+			total,
+			mpb.PrependDecorators(
+				decor.Name(fdr.Filename+" "),
+				decor.CountersKibiByte("% .1f / % .1f"),
+			),
+			mpb.AppendDecorators(
+				decor.Percentage(),
+				decor.AverageSpeed(decor.SizeB1024(0), " % .1f"),
+			),
 		)
+
 		if fdr.Range > 0 {
-			bar.SetCurrent(fdr.Range)
+			fileBar.SetCurrent(fdr.Range)
 		}
 
-		fdr.Writer = bar.ProxyWriter(file)
-		ready = append(ready, fdr)
+		fdr.Writer = fileBar.ProxyWriter(file)
 
-		defer file.Close()
-		defer fdr.Response.Body.Close()
+		ready = append(ready, fdr)
 	}
 
-	fdrCh := make(chan common.FileDownloadResponseObject, len(ready))
+	// ---- worker pool ----
+	fdrCh := make(chan common.FileDownloadResponseObject)
 	var wg sync.WaitGroup
-	success := 0
+	var success int64
 
+	wg.Add(workers)
 	for i := 0; i < workers; i++ {
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for fdr := range fdrCh {
-				if _, err := io.Copy(fdr.Writer, fdr.Response.Body); err != nil {
-					errCh <- errors.New("Copy failed: " + err.Error())
-					return
+				_, err := io.Copy(fdr.Writer, fdr.Response.Body)
+
+				// close resources deterministically
+				_ = fdr.Response.Body.Close()
+
+				if err != nil {
+					errCh <- fmt.Errorf("copy failed for %s: %w", fdr.Filename, err)
+					continue
 				}
-				success++
+
+				atomic.AddInt64(&success, 1)
+
+				globalBar.Increment()
 			}
 		}()
 	}
@@ -84,7 +105,7 @@ func batchDownload(
 		fdrCh <- fdr
 	}
 	close(fdrCh)
-	wg.Wait()
 
-	return success
+	wg.Wait()
+	return int(success)
 }

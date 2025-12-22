@@ -2,26 +2,33 @@ package upload
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/gen3Client"
 	req "github.com/calypr/data-client/client/request"
 )
 
+type PresignedURLResponse struct {
+	GUID string `json:"guid"`
+	URL  string `json:"upload_url"`
+}
+
 // GeneratePresignedURL handles both Shepherd and Fence fallback
-func generatePresignedURL(g3 gen3Client.Gen3Interface, filename string, metadata common.FileMetadata, bucket string) (string, string, error) {
+func GeneratePresignedURL(g3 client.Gen3Interface, filename string, metadata common.FileMetadata, bucket string) (*PresignedURLResponse, error) {
 	hasShepherd, err := g3.CheckForShepherdAPI(g3.GetCredential())
 	if err != nil || !hasShepherd {
-		// Fallback to Fence
 		payload := map[string]string{
 			"file_name": filename,
 		}
 		if bucket != "" {
 			payload["bucket"] = bucket
 		}
-		body, _ := json.Marshal(payload)
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
 
 		resp, err := g3.DoAuthenticatedRequest(g3.GetCredential(), &req.RequestBuilder{
 			Method:  http.MethodPost,
@@ -30,31 +37,24 @@ func generatePresignedURL(g3 gen3Client.Gen3Interface, filename string, metadata
 			Body:    body,
 		})
 		if err != nil {
-			return "", "", err
+			return nil, err
 		}
 		msg, err := g3.ParseFenceURLResponse(resp)
-		return msg.URL, msg.GUID, err
+		return &PresignedURLResponse{msg.URL, msg.GUID}, err
 	}
 
-	// Shepherd path
-	shepherdPayload := struct {
-		Filename string `json:"file_name"`
-		Authz    struct {
-			Version       string
-			ResourcePaths []string
-		} `json:"authz"`
-		Aliases  []string       `json:"aliases"`
-		Metadata map[string]any `json:"metadata"`
-	}{
+	shepherdPayload := ShepherdInitRequestObject{
 		Filename: filename,
-		Authz: struct {
-			Version       string
-			ResourcePaths []string
-		}{Version: "0", ResourcePaths: metadata.Authz},
+		Authz: ShepherdAuthz{
+			Version: "0", ResourcePaths: metadata.Authz,
+		},
 		Aliases:  metadata.Aliases,
 		Metadata: metadata.Metadata,
 	}
-	body, _ := json.Marshal(shepherdPayload)
+	body, err := json.Marshal(shepherdPayload)
+	if err != nil {
+		return nil, err
+	}
 
 	r, err := g3.DoAuthenticatedRequest(g3.GetCredential(), &req.RequestBuilder{
 		Url:    common.ShepherdEndpoint + "/objects",
@@ -62,15 +62,12 @@ func generatePresignedURL(g3 gen3Client.Gen3Interface, filename string, metadata
 		Body:   body,
 	})
 	if err != nil || r.StatusCode != http.StatusCreated {
-		return "", "", errors.New("shepherd upload init failed")
+		return nil, fmt.Errorf("shepherd upload init failed")
 	}
 
-	var res struct {
-		GUID string `json:"guid"`
-		URL  string `json:"upload_url"`
-	}
+	var res PresignedURLResponse
 	if err := json.NewDecoder(r.Body).Decode(&res); err != nil {
-		return "", "", err
+		return nil, err
 	}
-	return res.URL, res.GUID, nil
+	return &res, nil
 }

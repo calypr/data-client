@@ -117,20 +117,6 @@ func (mr *MockFunctionInterfaceMockRecorder) ExportCredential(cred any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportCredential", reflect.TypeOf((*MockFunctionInterface)(nil).ExportCredential), cred)
 }
 
-// NewAccessToken mocks base method.
-func (m *MockFunctionInterface) NewAccessToken(profileConfig *conf.Credential) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewAccessToken", profileConfig)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// NewAccessToken indicates an expected call of NewAccessToken.
-func (mr *MockFunctionInterfaceMockRecorder) NewAccessToken(profileConfig any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewAccessToken", reflect.TypeOf((*MockFunctionInterface)(nil).NewAccessToken), profileConfig)
-}
-
 // ParseFenceURLResponse mocks base method.
 func (m *MockFunctionInterface) ParseFenceURLResponse(resp *http.Response) (api.FenceResponse, error) {
 	m.ctrl.T.Helper()

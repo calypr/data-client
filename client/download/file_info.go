@@ -2,11 +2,12 @@ package download
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	req "github.com/calypr/data-client/client/request"
 )
@@ -89,7 +90,8 @@ func fetchFromIndexd(
 		},
 	)
 	if err != nil {
-		return fallbackToGUID(g3i.Logger(), guid, filenameFormat, renamedFiles), 0, err
+
+		return fallbackToGUID(g3i.Logger(), guid, filenameFormat, renamedFiles), 0, fmt.Errorf("Error in fetch FromIndexd: %s", err)
 	}
 	defer resp.Body.Close()
 

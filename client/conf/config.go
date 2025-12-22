@@ -101,13 +101,7 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 		return nil, errs
 	}
 	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
-	profileConfig := Credential{
-		Profile:     profile,
-		KeyID:       "",
-		APIKey:      "",
-		AccessToken: "",
-		APIEndpoint: "",
-	}
+
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("%w Run configure command (with a profile if desired) to set up account credentials \n"+
 			"Example: ./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org", ErrProfileNotFound)
@@ -123,25 +117,27 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: Need to run \"data-client configure --profile="+profile+" --cred=<path-to-credential/cred.json> --apiendpoint=<api_endpoint_url>\" first", ErrProfileNotFound)
 	}
-	// Read in API key, key ID and endpoint for given profile
-	profileConfig.KeyID = sec.Key("key_id").String()
-	profileConfig.APIKey = sec.Key("api_key").String()
-	profileConfig.AccessToken = sec.Key("access_token").String()
+
+	profileConfig := &Credential{
+		Profile:            profile,
+		KeyID:              sec.Key("key_id").String(),
+		APIKey:             sec.Key("api_key").String(),
+		AccessToken:        sec.Key("access_token").String(),
+		APIEndpoint:        sec.Key("api_endpoint").String(),
+		UseShepherd:        sec.Key("use_shepherd").String(),
+		MinShepherdVersion: sec.Key("min_shepherd_version").String(),
+	}
 
 	if profileConfig.KeyID == "" && profileConfig.APIKey == "" && profileConfig.AccessToken == "" {
 		errs := fmt.Errorf("key_id, api_key and access_token not found in profile.")
 		return nil, errs
 	}
-	profileConfig.APIEndpoint = sec.Key("api_endpoint").String()
 	if profileConfig.APIEndpoint == "" {
 		errs := fmt.Errorf("api_endpoint not found in profile.")
 		return nil, errs
 	}
-	// UseShepherd and MinShepherdVersion are optional
-	profileConfig.UseShepherd = sec.Key("use_shepherd").String()
-	profileConfig.MinShepherdVersion = sec.Key("min_shepherd_version").String()
 
-	return nil, nil
+	return profileConfig, nil
 }
 
 func (man *Manager) Save(profileConfig *Credential) error {

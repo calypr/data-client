@@ -1,4 +1,4 @@
-package g3cmd
+package cmd
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/download"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"

@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -144,18 +144,30 @@ func DownloadMultiple(
 	errCh := make(chan error, len(fdrObjects))
 
 	downloadProgress := mpb.New(mpb.WithOutput(os.Stdout))
+
+	downloadBar := downloadProgress.AddBar(
+		int64(len(fdrObjects)),
+		mpb.PrependDecorators(
+			decor.Name("Downloading "),
+			decor.CountersNoUnit("%d / %d"),
+		),
+		mpb.AppendDecorators(
+			decor.Percentage(),
+		),
+	)
+
 	batch := make([]common.FileDownloadResponseObject, 0, workers)
 
 	for _, fdr := range fdrObjects {
 		batch = append(batch, fdr)
 		if len(batch) == workers {
-			totalCompleted += batchDownload(g3i, downloadProgress, batch, protocolText, workers, errCh)
+			totalCompleted += batchDownload(g3i, downloadProgress, downloadBar, batch, protocolText, workers, errCh)
 			batch = batch[:0] // reset batch
 		}
 	}
 	// Download any remaining files
 	if len(batch) > 0 {
-		totalCompleted += batchDownload(g3i, downloadProgress, batch, protocolText, workers, errCh)
+		totalCompleted += batchDownload(g3i, downloadProgress, downloadBar, batch, protocolText, workers, errCh)
 	}
 	downloadProgress.Wait()
 

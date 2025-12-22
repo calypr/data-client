@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )

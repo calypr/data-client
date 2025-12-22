@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -53,7 +54,7 @@ func NewRequestInterface(ctx context.Context, logger logs.Logger) RequestInterfa
 
 func (r *Request) Do(rb *RequestBuilder) (*http.Response, error) {
 	// Prepare body reader
-	var bodyReader *bytes.Buffer
+	var bodyReader io.Reader
 	if len(rb.Body) > 0 {
 		bodyReader = bytes.NewBuffer(rb.Body)
 	}
@@ -99,10 +100,12 @@ func (r *Request) DoAuthenticated(rb *RequestBuilder, cred *conf.Credential, ref
 
 	resp, err := r.Do(rb)
 	if err != nil {
+		r.Logs.Println("r.DO RESP: ", resp.StatusCode)
 		return resp, err
 	}
+	r.Logs.Println("RESP: ", resp.StatusCode)
 
-	// Only attempt refresh+retry if we got 401/503 AND we have a way to refresh
+	// Only attempt refresh+retry if we got 401,403/503 AND we have a way to refresh
 	if (resp.StatusCode == 401 || resp.StatusCode == 503) && cred.APIKey != "" {
 		resp.Body.Close()
 

@@ -1,4 +1,4 @@
-package g3cmd
+package cmd
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"log"
 	"sort"
 
-	client "github.com/calypr/data-client/client/gen3Client"
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/spf13/cobra"
 )

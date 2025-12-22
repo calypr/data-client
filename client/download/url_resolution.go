@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	req "github.com/calypr/data-client/client/request"
 )
 

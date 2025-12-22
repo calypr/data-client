@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
+	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 )
 
@@ -23,7 +23,7 @@ func GetWaitTime(retryCount int) time.Duration {
 }
 
 // RetryFailedUploads re-uploads previously failed files with exponential backoff
-func RetryFailedUploads(g3 gen3Client.Gen3Interface, failedMap map[string]common.RetryObject) {
+func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.RetryObject) {
 	logger := g3.Logger()
 	if len(failedMap) == 0 {
 		logger.Println("No failed files to retry.")
@@ -96,7 +96,7 @@ func RetryFailedUploads(g3 gen3Client.Gen3Interface, failedMap map[string]common
 			}
 		} else {
 			// Retry single-part
-			url, guid, err := generatePresignedURL(g3, ro.Filename, ro.FileMetadata, ro.Bucket)
+			respObj, err := GeneratePresignedURL(g3, ro.Filename, ro.FileMetadata, ro.Bucket)
 			if err != nil {
 				handleRetryFailure(g3, ro, retryChan, err)
 				continue
@@ -120,8 +120,8 @@ func RetryFailedUploads(g3 gen3Client.Gen3Interface, failedMap map[string]common
 				FilePath:     ro.FilePath,
 				Filename:     ro.Filename,
 				FileMetadata: ro.FileMetadata,
-				GUID:         guid,
-				PresignedURL: url,
+				GUID:         respObj.GUID,
+				PresignedURL: respObj.URL,
 			}
 
 			fur, err = generateUploadRequest(g3, fur, nil, nil)
@@ -146,7 +146,7 @@ func RetryFailedUploads(g3 gen3Client.Gen3Interface, failedMap map[string]common
 }
 
 // handleRetryFailure logs failure and requeues if retries remain
-func handleRetryFailure(g3 gen3Client.Gen3Interface, ro common.RetryObject, retryChan chan common.RetryObject, err error) {
+func handleRetryFailure(g3 client.Gen3Interface, ro common.RetryObject, retryChan chan common.RetryObject, err error) {
 	logger := g3.Logger()
 	logger.Failed(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart)
 	if err != nil {

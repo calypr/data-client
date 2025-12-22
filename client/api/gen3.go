@@ -3,6 +3,7 @@ package api
 //go:generate mockgen -destination=../mocks/mock_functions.go -package=mocks github.com/calypr/data-client/client/api FunctionInterface
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -59,7 +60,7 @@ func (r *Functions) NewAccessToken(profileConfig *conf.Credential) error {
 			WithBody(bodyBytes),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error when calling Request.Do: ", err)
 	}
 
 	defer resp.Body.Close()
@@ -84,43 +85,42 @@ func (r *Functions) NewAccessToken(profileConfig *conf.Credential) error {
 // Todo: why isn't this calld in every fence response that has a body ? why is this seperated out
 func (f *Functions) ParseFenceURLResponse(resp *http.Response) (FenceResponse, error) {
 	msg := FenceResponse{}
-
 	if resp == nil {
 		return msg, errors.New("Nil response received")
 	}
 
-	// Capture the body for error reporting before we do anything else
-	// Using your existing ResponseToString helper
-	bodyStr := ResponseToString(resp)
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(resp.Body) // nolint: errcheck
+	bodyStr := buf.String()
 
-	if !(resp.StatusCode == 200 || resp.StatusCode == 201) {
-		// Prepare a base error that includes the body content
-		errorMessage := fmt.Sprintf("Status: %d | Response: %s", resp.StatusCode, bodyStr)
+	err := json.Unmarshal(buf.Bytes(), &msg)
+	if err != nil {
+		return msg, fmt.Errorf("failed to decode JSON: %w (Raw body: %s)", err, buf.String())
+	}
 
+	if !(resp.StatusCode == 200 || resp.StatusCode == 201 || resp.StatusCode == 204) {
+		strUrl := resp.Request.URL.String()
 		switch resp.StatusCode {
-		case 401:
-			return msg, fmt.Errorf("401 Unauthorized: %s", errorMessage)
-		case 403:
-			return msg, fmt.Errorf("403 Forbidden: %s (URL: %s)", bodyStr, resp.Request.URL.String())
-		case 404:
-			return msg, fmt.Errorf("404 Not Found: %s (URL: %s)", bodyStr, resp.Request.URL.String())
-		case 500:
-			return msg, fmt.Errorf("500 Internal Server Error: %s", bodyStr)
-		case 503:
-			return msg, fmt.Errorf("503 Service Unavailable: %s", bodyStr)
+		case http.StatusUnauthorized:
+			return msg, fmt.Errorf("401 Unauthorized: %s (URL: %s)", bodyStr, strUrl)
+		case http.StatusForbidden:
+			return msg, fmt.Errorf("403 Forbidden: %s (URL: %s)", bodyStr, strUrl)
+		case http.StatusNotFound:
+			return msg, fmt.Errorf("404 Not Found: %s (URL: %s)", bodyStr, strUrl)
+		case http.StatusInternalServerError:
+			return msg, fmt.Errorf("500 Internal Server Error: %s (URL: %s)", bodyStr, strUrl)
+		case http.StatusServiceUnavailable:
+			return msg, fmt.Errorf("503 Service Unavailable: %s (URL: %s)", bodyStr, strUrl)
+		case http.StatusBadGateway:
+			return msg, fmt.Errorf("502 Bad Gateway: %s (URL: %s)", bodyStr, strUrl)
 		default:
-			return msg, fmt.Errorf("Unexpected Error (%d): %s", resp.StatusCode, bodyStr)
+			return msg, fmt.Errorf("Unexpected Error (%d): %s (URL: %s)", resp.StatusCode, bodyStr, strUrl)
 		}
 	}
 
 	// Logic for successful status codes
 	if strings.Contains(bodyStr, "Can't find a location for the data") {
 		return msg, errors.New("The provided GUID is not found")
-	}
-
-	err := json.Unmarshal([]byte(bodyStr), &msg)
-	if err != nil {
-		return msg, fmt.Errorf("failed to decode JSON: %w (Raw body: %s)", err, bodyStr)
 	}
 
 	return msg, nil
@@ -242,6 +242,7 @@ func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (map[string]
 
 func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (string, error) {
 	endpoint := common.FenceDataEndpoint + "/" + guid
+	msg := ""
 	hasShepherd, err := f.CheckForShepherdAPI(profileConfig)
 	if err != nil {
 		f.Logger.Printf("WARNING: Error checking Shepherd API: %v. Falling back to Fence.\n", err)
@@ -259,17 +260,16 @@ func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (s
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	bodyMsg := string(bodyBytes)
-
-	switch resp.StatusCode {
-	case 204:
-		return fmt.Sprintf("Record with GUID %s has been deleted. Response: %s", guid, bodyMsg), nil
-	case 500:
-		return bodyMsg, fmt.Errorf("internal server error (500) for GUID %s: could not delete stored files or INDEXD record. Response: %s", guid, bodyMsg)
-	default:
-		return bodyMsg, fmt.Errorf("unexpected error (%d) for GUID %s. Response: %s", resp.StatusCode, guid, bodyMsg)
+	if resp.StatusCode == 204 {
+		msg = "Record with GUID " + guid + " has been deleted"
+	} else {
+		_, err = f.ParseFenceURLResponse(resp)
+		if err != nil {
+			return "", err
+		}
 	}
+	return msg, nil
+
 }
 
 func (f *Functions) ExportCredential(cred *conf.Credential) error {

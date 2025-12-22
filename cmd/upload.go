@@ -1,4 +1,4 @@
-package g3cmd
+package cmd
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	client "github.com/calypr/data-client/client/gen3Client"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/calypr/data-client/client/upload"
 	"github.com/spf13/cobra"

@@ -33,14 +33,15 @@ type InitRequestObject struct {
 
 // ShepherdInitRequestObject represents the payload that sends to Shepherd for getting a singlepart upload presignedURL or init a multipart upload for new object file
 type ShepherdInitRequestObject struct {
-	Filename string `json:"file_name"`
-	Authz    struct {
-		Version       string   `json:"version"`
-		ResourcePaths []string `json:"resource_paths"`
-	} `json:"authz"`
-	Aliases []string `json:"aliases"`
+	Filename string        `json:"file_name"`
+	Authz    ShepherdAuthz `json:"authz"`
+	Aliases  []string      `json:"aliases"`
 	// Metadata is an encoded JSON string of any arbitrary metadata the user wishes to upload.
 	Metadata map[string]any `json:"metadata"`
+}
+type ShepherdAuthz struct {
+	Version       string   `json:"version"`
+	ResourcePaths []string `json:"resource_paths"`
 }
 
 // MultipartUploadRequestObject represents the payload that sends to FENCE for getting a presignedURL for a part

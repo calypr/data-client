@@ -31,11 +31,14 @@ func (ar *RequestBuilder) WithToken(token string) *RequestBuilder {
 	return ar
 }
 
-func (ar *RequestBuilder) WithJSONBody(v any) *RequestBuilder {
-	bodyBytes, _ := json.Marshal(v) // handle error higher up if needed
+func (ar *RequestBuilder) WithJSONBody(v any) (*RequestBuilder, error) {
+	bodyBytes, err := json.Marshal(v) // handle error higher up if needed
+	if err != nil {
+		return nil, err
+	}
 	ar.Body = bodyBytes
 	ar.Headers[common.HeaderContentType] = common.MIMEApplicationJSON
-	return ar
+	return ar, nil
 
 }
 
