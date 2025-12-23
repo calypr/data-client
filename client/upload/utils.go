@@ -30,13 +30,15 @@ func initMultipartUpload(g3 client.Gen3Interface, furObject common.FileUploadReq
 		return "", "", errors.New("Error has occurred during marshalling data for multipart upload initialization, detailed error message: " + err.Error())
 	}
 
+	cred := g3.GetCredential()
 	resp, err := g3.DoAuthenticatedRequest(
-		g3.GetCredential(),
+		cred,
 		&req.RequestBuilder{
 			Method:  http.MethodPost,
-			Url:     common.FenceDataMultipartInitEndpoint,
+			Url:     cred.APIEndpoint + common.FenceDataMultipartInitEndpoint,
 			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
 			Body:    objectBytes,
+			Token:   cred.AccessToken,
 		},
 	)
 
@@ -67,13 +69,15 @@ func generateMultipartPresignedURL(g3 client.Gen3Interface, key string, uploadID
 		return "", errors.New("Error has occurred during marshalling data for multipart upload presigned url generation, detailed error message: " + err.Error())
 	}
 
+	cred := g3.GetCredential()
 	resp, err := g3.DoAuthenticatedRequest(
-		g3.GetCredential(),
+		cred,
 		&req.RequestBuilder{
-			Url:     common.FenceDataMultipartUploadEndpoint,
+			Url:     cred.APIEndpoint + common.FenceDataMultipartUploadEndpoint,
 			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
 			Method:  http.MethodPost,
 			Body:    objectBytes,
+			Token:   cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -100,13 +104,15 @@ func CompleteMultipartUpload(g3 client.Gen3Interface, key string, uploadID strin
 	}
 
 	// TOOD: error check this, return resp information
+	cred := g3.GetCredential()
 	_, err = g3.DoAuthenticatedRequest(
-		g3.GetCredential(),
+		cred,
 		&req.RequestBuilder{
-			Url:     common.FenceDataMultipartCompleteEndpoint,
+			Url:     cred.APIEndpoint + common.FenceDataMultipartCompleteEndpoint,
 			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
 			Body:    objectBytes,
 			Method:  http.MethodPost,
+			Token:   cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -123,11 +129,13 @@ func generateUploadRequest(g3 client.Gen3Interface, furObject common.FileUploadR
 		if furObject.Bucket != "" {
 			endPointPostfix += "&bucket=" + furObject.Bucket
 		}
+		cred := g3.GetCredential()
 		resp, err := g3.DoAuthenticatedRequest(
 			g3.GetCredential(),
 			&req.RequestBuilder{
-				Url:     endPointPostfix,
+				Url:     cred.APIEndpoint + endPointPostfix,
 				Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+				Token:   cred.AccessToken,
 			},
 		)
 

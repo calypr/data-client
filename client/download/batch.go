@@ -28,7 +28,6 @@ func batchDownload(
 	// ---- prepare download responses + per-file bars ----
 	for i := range batch {
 		fdr := batch[i]
-
 		if err := GetDownloadResponse(g3, &fdr, protocolText); err != nil {
 			errCh <- err
 			continue
@@ -95,7 +94,6 @@ func batchDownload(
 				}
 
 				atomic.AddInt64(&success, 1)
-
 				globalBar.Increment()
 			}
 		}()

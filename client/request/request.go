@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -30,7 +31,7 @@ type RequestInterface interface {
 
 func NewRequestInterface(ctx context.Context, logger logs.Logger) RequestInterface {
 	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 10
+	retryClient.RetryMax = 3
 	retryClient.RetryWaitMin = 1 * time.Second
 	retryClient.RetryWaitMax = 30 * time.Second
 	retryClient.Backoff = retryablehttp.DefaultBackoff
@@ -38,8 +39,12 @@ func NewRequestInterface(ctx context.Context, logger logs.Logger) RequestInterfa
 	retryClient.Logger = nil
 
 	retryClient.HTTPClient = &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   2 * time.Second, // Max time to wait for TCP connect
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 100,
 			IdleConnTimeout:     90 * time.Second,
@@ -78,42 +83,27 @@ func (r *Request) Do(rb *RequestBuilder) (*http.Response, error) {
 		return nil, err
 	}
 
-	oldTimeout := r.RetryClient.HTTPClient.Timeout
-	if rb.Timeout == false {
-		r.RetryClient.HTTPClient.Timeout = 0
-		defer func() { r.RetryClient.HTTPClient.Timeout = oldTimeout }()
-	}
-
 	resp, err := r.RetryClient.Do(retryReq)
 	if err != nil {
-		return nil, errors.New("request failed after retries: " + err.Error())
+		return resp, errors.New("request failed after retries: " + err.Error())
 	}
 
 	return resp, nil
 }
 
 func (r *Request) DoAuthenticated(rb *RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error) {
-	// First attempt with current token (if any)
-	if cred.AccessToken != "" {
-		rb = rb.WithToken(cred.AccessToken)
-	}
-
 	resp, err := r.Do(rb)
 	if err != nil {
-		r.Logs.Println("r.DO RESP: ", resp.StatusCode)
 		return resp, err
 	}
-	r.Logs.Println("RESP: ", resp.StatusCode)
 
 	// Only attempt refresh+retry if we got 401,403/503 AND we have a way to refresh
-	if (resp.StatusCode == 401 || resp.StatusCode == 503) && cred.APIKey != "" {
+	if (resp.StatusCode == 401 || resp.StatusCode == 503 || resp.StatusCode == 403) && cred.APIKey != "" {
 		resp.Body.Close()
 
 		if err := refreshToken(cred); err != nil {
 			return nil, fmt.Errorf("token refresh failed: %w", err)
 		}
-
-		// Retry once with new token
 		rb = rb.WithToken(cred.AccessToken)
 		return r.Do(rb)
 	}

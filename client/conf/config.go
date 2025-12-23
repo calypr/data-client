@@ -31,7 +31,7 @@ type Manager struct {
 	Logger logs.Logger
 }
 
-func NewConfigure(cred *Credential, logs logs.Logger) ManagerInterface {
+func NewConfigure(logs logs.Logger) ManagerInterface {
 	return &Manager{
 		Logger: logs,
 	}
@@ -102,6 +102,8 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 	}
 	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
 
+	fmt.Println("CONFIG PATH: ", configPath)
+	fmt.Println("PROFILE: ", profile)
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("%w Run configure command (with a profile if desired) to set up account credentials \n"+
 			"Example: ./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org", ErrProfileNotFound)

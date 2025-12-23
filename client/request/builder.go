@@ -14,7 +14,6 @@ type RequestBuilder struct {
 	Body    []byte // store as []byte for easy reuse
 	Headers map[string]string
 	Token   string
-	Timeout bool
 }
 
 func (r *Request) New(method, url string) *RequestBuilder {
@@ -49,10 +48,5 @@ func (ar *RequestBuilder) WithBody(body []byte) *RequestBuilder {
 
 func (ar *RequestBuilder) WithHeader(key, value string) *RequestBuilder {
 	ar.Headers[key] = value
-	return ar
-}
-
-func (ar *RequestBuilder) WithTimeout() *RequestBuilder {
-	ar.Timeout = true
 	return ar
 }

@@ -7,35 +7,54 @@ import (
 	"github.com/calypr/data-client/client/logs"
 )
 
+type IndexdResponse struct {
+	Name string
+	Size int64
+}
 type RenamedOrSkippedFileInfo struct {
 	GUID        string
 	OldFilename string
 	NewFilename string
 }
 
-func validateLocalFileStat(logger logs.Logger, downloadPath string, filename string, filesize int64, skipCompleted bool) common.FileDownloadResponseObject {
-	fi, err := os.Stat(downloadPath + filename) // check filename for local existence
+func validateLocalFileStat(
+	logger logs.Logger,
+	fdr *common.FileDownloadResponseObject,
+	filesize int64,
+	skipCompleted bool,
+) {
+	fullPath := fdr.DownloadPath + fdr.Filename
+
+	fi, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // no local file, normal full length download
+			// No local file → full download, nothing special
+			return
 		}
-		logger.Printf("Error occurred when getting information for file \"%s\": %s\n", downloadPath+filename, err.Error())
-		logger.Println("Will try to download the whole file")
-		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename} // errorred when trying to get local FI, normal full length download
+		logger.Printf("Error statting local file \"%s\": %s\n", fullPath, err.Error())
+		logger.Println("Will attempt full download anyway")
+		return
 	}
 
-	// have existing local file and may want to skip, check more conditions
+	localSize := fi.Size()
+
+	// User doesn't want to skip completed files → force full overwrite
 	if !skipCompleted {
-		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Overwrite: true} // not skipping any local files, normal full length download
+		fdr.Overwrite = true
+		return
 	}
 
-	localFilesize := fi.Size()
-	if localFilesize == filesize {
-		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Skip: true} // both filename and filesize matches, consider as completed
+	// Exact match → skip entirely
+	if localSize == filesize {
+		fdr.Skip = true
+		return
 	}
-	if localFilesize > filesize {
-		return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Overwrite: true} // local filesize is greater than INDEXD record, overwrite local existing
+
+	// Local file larger than expected → overwrite fully (corrupted or different file)
+	if localSize > filesize {
+		fdr.Overwrite = true
+		return
 	}
-	// local filesize is less than INDEXD record, try ranged download
-	return common.FileDownloadResponseObject{DownloadPath: downloadPath, Filename: filename, Range: localFilesize}
+
+	fdr.Range = localSize
 }

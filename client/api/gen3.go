@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -21,9 +20,11 @@ import (
 	"github.com/hashicorp/go-version"
 )
 
-func NewFunctions(ctx context.Context, config conf.Manager, request req.RequestInterface) FunctionInterface {
+func NewFunctions(ctx context.Context, config conf.ManagerInterface, request req.RequestInterface, logger logs.Logger) FunctionInterface {
 	return &Functions{
+		Config:  config,
 		Request: request,
+		Logger:  logger,
 	}
 }
 
@@ -60,7 +61,7 @@ func (r *Functions) NewAccessToken(profileConfig *conf.Credential) error {
 			WithBody(bodyBytes),
 	)
 	if err != nil {
-		return fmt.Errorf("Error when calling Request.Do: ", err)
+		return fmt.Errorf("Error when calling Request.Do: %s", err)
 	}
 
 	defer resp.Body.Close()
@@ -146,8 +147,9 @@ func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, e
 	res, err := f.DoAuthenticatedRequest(
 		profileConfig,
 		&req.RequestBuilder{
-			Url:    common.ShepherdVersionEndpoint,
+			Url:    profileConfig.APIEndpoint + common.ShepherdVersionEndpoint,
 			Method: http.MethodGet,
+			Token:  profileConfig.AccessToken,
 		},
 	)
 	if err != nil {
@@ -188,12 +190,6 @@ func (f *Functions) DoAuthenticatedRequest(
 		return nil, errors.New("APIEndpoint is missing in credential")
 	}
 
-	baseURL, err := url.Parse(cred.APIEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("invalid APIEndpoint URL: %w", err)
-	}
-	rb.Url = baseURL.ResolveReference(&url.URL{Path: rb.Url}).String()
-
 	// Define refresh callback (combines NewAccessToken + Save)
 	refreshCallback := func(c *conf.Credential) error {
 		if err := f.NewAccessToken(c); err != nil {
@@ -213,8 +209,10 @@ func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (map[string]
 
 	resp, err := f.DoAuthenticatedRequest(profileConfig,
 		&req.RequestBuilder{
-			Url:    common.FenceUserEndpoint,
-			Method: http.MethodGet},
+			Url:    profileConfig.APIEndpoint + common.FenceUserEndpoint,
+			Method: http.MethodGet,
+			Token:  profileConfig.AccessToken,
+		},
 	)
 	if err != nil {
 		return nil, errors.New("Error occurred when getting response from remote: " + err.Error())
@@ -252,8 +250,10 @@ func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (s
 
 	resp, err := f.DoAuthenticatedRequest(profileConfig,
 		&req.RequestBuilder{
-			Url:    endpoint,
-			Method: http.MethodDelete},
+			Url:    profileConfig.APIEndpoint + "/" + endpoint,
+			Method: http.MethodDelete,
+			Token:  profileConfig.AccessToken,
+		},
 	)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)

@@ -97,23 +97,24 @@ func DownloadMultiple(
 			continue
 		}
 
-		filename := obj.Filename
-		filesize := obj.Filesize
-
+		IdxRsp := &IndexdResponse{
+			Name: obj.Filename,
+			Size: obj.Filesize,
+		}
 		// Query Gen3 only if filename or size missing in manifest
-		if filename == "" || filesize == 0 {
-			filename, filesize = AskGen3ForFileInfo(g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamedFiles)
+		if IdxRsp.Name == "" || IdxRsp.Size == 0 {
+			IdxRsp = AskGen3ForFileInfo(g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamedFiles)
 		}
 
 		fdr := common.FileDownloadResponseObject{
 			DownloadPath: downloadPath,
-			Filename:     filename,
+			Filename:     IdxRsp.Name,
 			GUID:         obj.ObjectID,
 		}
 
 		// Only validate local file if we're not renaming (rename mode always downloads)
 		if !rename {
-			fdr = validateLocalFileStat(g3i.Logger(), downloadPath, filename, filesize, skipCompleted)
+			validateLocalFileStat(g3i.Logger(), &fdr, int64(IdxRsp.Size), skipCompleted)
 		}
 
 		if fdr.Skip {

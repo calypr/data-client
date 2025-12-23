@@ -46,16 +46,23 @@ func (g *Gen3Client) GetCredential() *conf.Credential {
 func NewGen3Interface(ctx context.Context, profile string, logger *logs.TeeLogger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
 	// Note: A tee logger must be passed here otherwise you risk causing panics.
 
-	config := conf.Manager{Logger: logger}
-	client := api.NewFunctions(ctx, config, req.NewRequestInterface(ctx, logger))
+	config := conf.NewConfigure(logger)
 
 	cred, err := config.Load(profile)
 	if err != nil {
 		return nil, err
 	}
+
 	if valid, err := config.IsValid(cred); !valid {
 		return nil, fmt.Errorf("invalid credential: %v", err)
 	}
+
+	client := api.NewFunctions(
+		ctx,
+		config,
+		req.NewRequestInterface(ctx, logger),
+		logger,
+	)
 
 	return &Gen3Client{
 		FunctionInterface: client,

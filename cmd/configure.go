@@ -37,10 +37,9 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			conf := conf.Manager{Logger: logger}
-
+			configure := conf.NewConfigure(logger)
 			if credFile != "" {
-				readCred, err := conf.Import(credFile, "")
+				readCred, err := configure.Import(credFile, "")
 				if err != nil {
 					logger.Fatal(err) // or return proper error
 				}
@@ -52,7 +51,12 @@ func init() {
 				cred.AccessToken = ""
 			}
 			ctx := context.Background()
-			newFunc := api.NewFunctions(ctx, conf, req.NewRequestInterface(ctx, logger))
+			newFunc := api.NewFunctions(
+				ctx,
+				configure,
+				req.NewRequestInterface(ctx, logger),
+				logger,
+			)
 			err := newFunc.ExportCredential(cred)
 			if err != nil {
 				logger.Println(err.Error())

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,20 +32,21 @@ func GetDownloadResponse(g3 client.Gen3Interface, fdr *common.FileDownloadRespon
 }
 
 func resolvePresignedURL(g3 client.Gen3Interface, guid, protocolText string) (string, error) {
-	hasShepherd, _ := g3.CheckForShepherdAPI(g3.GetCredential()) // error already logged upstream
-	if hasShepherd {
+	hasShepherd, err := g3.CheckForShepherdAPI(g3.GetCredential()) // error already logged upstream
+	if err == nil && hasShepherd {
 		return resolveFromShepherd(g3, guid)
 	}
 	return resolveFromFence(g3, guid, protocolText)
 }
 
 func resolveFromShepherd(g3 client.Gen3Interface, guid string) (string, error) {
-	endpoint := common.ShepherdEndpoint + "/objects/" + guid + "/download"
+	cred := g3.GetCredential()
 	r, err := g3.DoAuthenticatedRequest(
 		g3.GetCredential(),
 		&req.RequestBuilder{
-			Url:    endpoint,
+			Url:    cred.APIEndpoint + common.ShepherdEndpoint + "/objects/" + guid + "/download",
 			Method: http.MethodGet,
+			Token:  cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -68,13 +70,14 @@ func resolveFromShepherd(g3 client.Gen3Interface, guid string) (string, error) {
 }
 
 func resolveFromFence(g3 client.Gen3Interface, guid, protocolText string) (string, error) {
-	endpoint := common.FenceDataDownloadEndpoint + "/" + guid + protocolText
-
+	fmt.Println("GUID IN RESOLVE FROM FENCE: ", guid)
+	cred := g3.GetCredential()
 	resp, err := g3.DoAuthenticatedRequest(
 		g3.GetCredential(),
 		&req.RequestBuilder{
-			Url:    endpoint,
+			Url:    cred.APIEndpoint + common.FenceDataDownloadEndpoint + "/" + guid + protocolText,
 			Method: http.MethodGet,
+			Token:  cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -113,7 +116,6 @@ func makeDownloadRequest(g3 client.Gen3Interface, fdr *common.FileDownloadRespon
 			Method:  http.MethodGet,
 			Url:     fdr.URL,
 			Headers: headers,
-			Timeout: true,
 		},
 	)
 	if err != nil {

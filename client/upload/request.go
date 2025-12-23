@@ -30,11 +30,13 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, metadata com
 			return nil, err
 		}
 
-		resp, err := g3.DoAuthenticatedRequest(g3.GetCredential(), &req.RequestBuilder{
+		cred := g3.GetCredential()
+		resp, err := g3.DoAuthenticatedRequest(cred, &req.RequestBuilder{
 			Method:  http.MethodPost,
-			Url:     common.FenceDataUploadEndpoint,
+			Url:     cred.APIEndpoint + common.FenceDataUploadEndpoint,
 			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
 			Body:    body,
+			Token:   cred.AccessToken,
 		})
 		if err != nil {
 			return nil, err
@@ -56,10 +58,12 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, metadata com
 		return nil, err
 	}
 
-	r, err := g3.DoAuthenticatedRequest(g3.GetCredential(), &req.RequestBuilder{
-		Url:    common.ShepherdEndpoint + "/objects",
+	cred := g3.GetCredential()
+	r, err := g3.DoAuthenticatedRequest(cred, &req.RequestBuilder{
+		Url:    cred.APIEndpoint + common.ShepherdEndpoint + "/objects",
 		Method: http.MethodPost,
 		Body:   body,
+		Token:  cred.AccessToken,
 	})
 	if err != nil || r.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("shepherd upload init failed")
