@@ -31,14 +31,14 @@ This method is resilient to network interruptions and supports resume capability
 			defer logCloser()
 
 			// Initialize Gen3 Interface
-			g3i, err := client.NewGen3Interface(context.Background(), profile, logger)
+			g3i, err := client.NewGen3Interface(profile, logger)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
 			// Execute the upload
 			// Note: We use the profile string directly as per the original wrapper signature
-			err = upload.UploadSingleFileWrapper(profile, bucketName, filePath, guid, true)
+			err = upload.UploadSingleFileWrapper(context.Background(), profile, bucketName, filePath, guid, true)
 			if err != nil {
 				g3i.Logger().Fatalf("Upload failed: %s\n", err)
 			}

@@ -1,18 +1,21 @@
 package download
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
-	client "github.com/calypr/data-client/client/client"
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/logs"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
 
 // DownloadMultiple is the public entry point called from g3cmd
 func DownloadMultiple(
+	ctx context.Context,
 	g3i client.Gen3Interface,
 	objects []common.ManifestObject,
 	downloadPath string,
@@ -23,178 +26,141 @@ func DownloadMultiple(
 	numParallel int,
 	skipCompleted bool,
 ) error {
+	logger := g3i.Logger()
+
 	// === Input validation ===
 	if numParallel < 1 {
-		return fmt.Errorf("invalid value for option \"numparallel\": must be a positive integer! Please check your input")
+		return fmt.Errorf("numparallel must be a positive integer")
 	}
 
 	var err error
 	downloadPath, err = common.ParseRootPath(downloadPath)
 	if err != nil {
-		return fmt.Errorf("downloadFile Error: %s", err.Error())
+		return fmt.Errorf("invalid download path: %w", err)
 	}
 	if !strings.HasSuffix(downloadPath, "/") {
 		downloadPath += "/"
 	}
 
 	filenameFormat = strings.ToLower(strings.TrimSpace(filenameFormat))
-
+	if filenameFormat != "original" && filenameFormat != "guid" && filenameFormat != "combined" {
+		return fmt.Errorf("filename-format must be one of: original, guid, combined")
+	}
 	if (filenameFormat == "guid" || filenameFormat == "combined") && rename {
-		g3i.Logger().Println("NOTICE: flag \"rename\" only works if flag \"filename-format\" is \"original\"")
+		logger.Println("NOTICE: rename flag is ignored in guid/combined mode")
 		rename = false
 	}
 
-	if filenameFormat != "original" && filenameFormat != "guid" && filenameFormat != "combined" {
-		return fmt.Errorf("invalid option found! option \"filename-format\" can either be \"original\", \"guid\" or \"combined\" only")
-	}
-
 	// === Warnings and user confirmation ===
-	if filenameFormat == "guid" || filenameFormat == "combined" {
-		g3i.Logger().Printf("WARNING: in \"guid\" or \"combined\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
-		if !noPrompt && !AskForConfirmation(g3i.Logger(), "Proceed?") {
-			g3i.Logger().Fatal("Aborted by user")
-		}
-	} else if !rename {
-		g3i.Logger().Printf("WARNING: flag \"rename\" was set to false in \"original\" mode, duplicated files under \"%s\" will be overwritten\n", downloadPath)
-		if !noPrompt && !AskForConfirmation(g3i.Logger(), "Proceed?") {
-			g3i.Logger().Fatal("Aborted by user")
-		}
-	} else {
-		g3i.Logger().Printf("NOTICE: flag \"rename\" was set to true in \"original\" mode, duplicated files under \"%s\" will be renamed by appending a counter value to the original filenames\n", downloadPath)
+	if err := handleWarningsAndConfirmation(logger, downloadPath, filenameFormat, rename, noPrompt); err != nil {
+		return err // aborted by user
 	}
 
-	// === Setup ===
-	protocolText := ""
-	if protocol != "" {
-		protocolText = "?protocol=" + protocol
-	}
-
+	// === Create download directory ===
 	if err := os.MkdirAll(downloadPath, 0766); err != nil {
-		return fmt.Errorf("cannot create folder %s", downloadPath)
+		return fmt.Errorf("cannot create directory %s: %w", downloadPath, err)
 	}
 
-	// === Prepare phase ===
-	renamedFiles := make([]RenamedOrSkippedFileInfo, 0)
-	skippedFiles := make([]RenamedOrSkippedFileInfo, 0)
-	fdrObjects := make([]common.FileDownloadResponseObject, 0)
+	// === Prepare files (metadata + local validation) ===
+	toDownload, skipped, renamed, err := prepareFiles(ctx, g3i, objects, downloadPath, filenameFormat, rename, skipCompleted, protocol)
+	if err != nil {
+		return err
+	}
 
-	g3i.Logger().Printf("Total number of objects in manifest: %d\n", len(objects))
-	g3i.Logger().Println("Preparing file info for each file, please wait...")
+	logger.Printf("Total objects: %d | To download: %d | Skipped: %d\n",
+		len(objects), len(toDownload), len(skipped))
 
-	fileInfoProgress := mpb.New(mpb.WithOutput(os.Stdout))
-	fileInfoBar := fileInfoProgress.AddBar(int64(len(objects)),
-		mpb.PrependDecorators(
-			decor.Name("Preparing files "),
-			decor.CountersNoUnit("%d / %d"),
-		),
+	// === Download phase ===
+	downloaded, downloadErr := downloadFiles(ctx, g3i, toDownload, numParallel, protocol)
+
+	// === Final summary ===
+	logger.Printf("%d files downloaded successfully.\n", downloaded)
+	printRenamed(logger, renamed)
+	printSkipped(logger, skipped)
+
+	if downloadErr != nil {
+		logger.Printf("Some downloads failed. See errors above.\n")
+	}
+
+	return nil // we log failures but don't fail the whole command unless critical
+}
+
+// handleWarningsAndConfirmation prints warnings and asks for confirmation if needed
+func handleWarningsAndConfirmation(logger logs.Logger, downloadPath, filenameFormat string, rename, noPrompt bool) error {
+	if filenameFormat == "guid" || filenameFormat == "combined" {
+		logger.Printf("WARNING: in %q mode, duplicate files in %q will be overwritten\n", filenameFormat, downloadPath)
+	} else if !rename {
+		logger.Printf("WARNING: rename=false in original mode – duplicates in %q will be overwritten\n", downloadPath)
+	} else {
+		logger.Printf("NOTICE: rename=true in original mode – duplicates in %q will be renamed with a counter\n", downloadPath)
+	}
+
+	if noPrompt {
+		return nil
+	}
+	if !AskForConfirmation(logger, "Proceed? (y/N)") {
+		logger.Fatal("Aborted by user")
+	}
+	return nil
+}
+
+// prepareFiles gathers metadata, checks local files, collects skips/renames
+func prepareFiles(
+	ctx context.Context,
+	g3i client.Gen3Interface,
+	objects []common.ManifestObject,
+	downloadPath, filenameFormat string,
+	rename, skipCompleted bool,
+	protocol string,
+) ([]common.FileDownloadResponseObject, []RenamedOrSkippedFileInfo, []RenamedOrSkippedFileInfo, error) {
+	logger := g3i.Logger()
+	renamed := make([]RenamedOrSkippedFileInfo, 0)
+	skipped := make([]RenamedOrSkippedFileInfo, 0)
+	toDownload := make([]common.FileDownloadResponseObject, 0, len(objects))
+
+	p := mpb.New(mpb.WithOutput(os.Stdout))
+	bar := p.AddBar(int64(len(objects)),
+		mpb.PrependDecorators(decor.Name("Preparing "), decor.CountersNoUnit("%d / %d")),
 		mpb.AppendDecorators(decor.Percentage()),
 	)
 
 	for _, obj := range objects {
 		if obj.ObjectID == "" {
-			g3i.Logger().Println("Found empty object_id (GUID), skipping this entry")
-			fileInfoBar.Increment()
+			logger.Println("Empty GUID, skipping entry")
+			bar.Increment()
 			continue
 		}
 
-		IdxRsp := &IndexdResponse{
-			Name: obj.Filename,
-			Size: obj.Filesize,
-		}
-		// Query Gen3 only if filename or size missing in manifest
-		if IdxRsp.Name == "" || IdxRsp.Size == 0 {
-			IdxRsp = AskGen3ForFileInfo(g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamedFiles)
+		info := &IndexdResponse{Name: obj.Title, Size: obj.Size}
+		var err error
+		if info.Name == "" || info.Size == 0 {
+			// Very strict object id checking
+			info, err = AskGen3ForFileInfo(ctx, g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamed)
+			if err != nil {
+				return nil, nil, nil, err
+			}
 		}
 
 		fdr := common.FileDownloadResponseObject{
 			DownloadPath: downloadPath,
-			Filename:     IdxRsp.Name,
+			Filename:     info.Name,
 			GUID:         obj.ObjectID,
 		}
 
-		// Only validate local file if we're not renaming (rename mode always downloads)
 		if !rename {
-			validateLocalFileStat(g3i.Logger(), &fdr, int64(IdxRsp.Size), skipCompleted)
+			validateLocalFileStat(logger, &fdr, int64(info.Size), skipCompleted)
 		}
 
 		if fdr.Skip {
-			g3i.Logger().Printf("File \"%s\" (GUID: %s) has been skipped because there is a complete local copy\n", fdr.Filename, fdr.GUID)
-			skippedFiles = append(skippedFiles, RenamedOrSkippedFileInfo{
-				GUID:        fdr.GUID,
-				OldFilename: fdr.Filename,
-			})
+			logger.Printf("Skipping %q (GUID: %s) – complete local copy exists\n", fdr.Filename, fdr.GUID)
+			skipped = append(skipped, RenamedOrSkippedFileInfo{GUID: fdr.GUID, OldFilename: fdr.Filename})
 		} else {
-			fdrObjects = append(fdrObjects, fdr)
+			toDownload = append(toDownload, fdr)
 		}
 
-		fileInfoBar.Increment()
+		bar.Increment()
 	}
-	fileInfoProgress.Wait()
-	g3i.Logger().Println("File info prepared successfully")
-
-	// === Download phase ===
-	totalCompleted := 0
-	workers := numParallel
-	if workers > len(fdrObjects) {
-		workers = len(fdrObjects)
-	}
-	if workers < 1 {
-		workers = 1
-	}
-
-	errCh := make(chan error, len(fdrObjects))
-
-	downloadProgress := mpb.New(mpb.WithOutput(os.Stdout))
-
-	downloadBar := downloadProgress.AddBar(
-		int64(len(fdrObjects)),
-		mpb.PrependDecorators(
-			decor.Name("Downloading "),
-			decor.CountersNoUnit("%d / %d"),
-		),
-		mpb.AppendDecorators(
-			decor.Percentage(),
-		),
-	)
-
-	batch := make([]common.FileDownloadResponseObject, 0, workers)
-
-	for _, fdr := range fdrObjects {
-		batch = append(batch, fdr)
-		if len(batch) == workers {
-			totalCompleted += batchDownload(g3i, downloadProgress, downloadBar, batch, protocolText, workers, errCh)
-			batch = batch[:0] // reset batch
-		}
-	}
-	// Download any remaining files
-	if len(batch) > 0 {
-		totalCompleted += batchDownload(g3i, downloadProgress, downloadBar, batch, protocolText, workers, errCh)
-	}
-	downloadProgress.Wait()
-
-	// === Final summary ===
-	g3i.Logger().Printf("%d files downloaded.\n", totalCompleted)
-
-	if len(renamedFiles) > 0 {
-		g3i.Logger().Printf("%d files have been renamed as the following:\n", len(renamedFiles))
-		for _, rfi := range renamedFiles {
-			g3i.Logger().Printf("File \"%s\" (GUID: %s) has been renamed as: %s\n", rfi.OldFilename, rfi.GUID, rfi.NewFilename)
-		}
-	}
-
-	if len(skippedFiles) > 0 {
-		g3i.Logger().Printf("%d files have been skipped\n", len(skippedFiles))
-	}
-
-	var failures []error
-	if len(errCh) > 0 {
-		close(errCh)
-		g3i.Logger().Printf("%d files have encountered an error during downloading, detailed error messages are:\n", len(errCh))
-		for err := range errCh {
-			g3i.Logger().Println(err.Error())
-			failures = append(failures, err)
-		}
-	}
-
-	return nil
+	p.Wait()
+	logger.Println("Preparation complete")
+	return toDownload, skipped, renamed, nil
 }

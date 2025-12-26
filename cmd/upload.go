@@ -34,17 +34,18 @@ func init() {
 			"For the format of the metadata files, see the README.",
 		Run: func(cmd *cobra.Command, args []string) {
 
+			ctx := context.Background()
 			Logger, logCloser := logs.New(profile, logs.WithSucceededLog(), logs.WithScoreboard(), logs.WithFailedLog())
 			defer logCloser()
 			// Instantiate interface to Gen3
-			g3i, err := client.NewGen3Interface(context.Background(), profile, Logger)
+			g3i, err := client.NewGen3Interface(profile, Logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
 			logger := g3i.Logger()
 			if hasMetadata {
-				hasShepherd, err := g3i.CheckForShepherdAPI(g3i.GetCredential())
+				hasShepherd, err := g3i.CheckForShepherdAPI(ctx)
 				if err != nil {
 					logger.Printf("WARNING: Error when checking for Shepherd API: %v", err)
 				} else {
@@ -102,12 +103,12 @@ func init() {
 					if len(batchFURObjects) < workers {
 						batchFURObjects = append(batchFURObjects, furObject)
 					} else {
-						upload.BatchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
 				}
 				if len(batchFURObjects) > 0 {
-					upload.BatchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+					upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 				}
 
 				if len(errCh) > 0 {
@@ -132,7 +133,7 @@ func init() {
 						logger.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
 						continue
 					}
-					upload.UploadSingleFile(g3i, furObject, true)
+					upload.UploadSingleFile(ctx, g3i, furObject, true)
 				}
 			}
 
@@ -145,7 +146,7 @@ func init() {
 				}
 				g3i.Logger().Println("Multipart uploading...")
 				for _, furObject := range multipartObjects {
-					err := upload.MultipartUpload(context.Background(), g3i, furObject, true)
+					err := upload.MultipartUpload(ctx, g3i, furObject, true)
 					if err != nil {
 						g3i.Logger().Println(err.Error())
 					} else {
@@ -154,7 +155,7 @@ func init() {
 				}
 			}
 			if len(g3i.Logger().GetSucceededLogMap()) == 0 {
-				upload.RetryFailedUploads(g3i, g3i.Logger().GetFailedLogMap())
+				upload.RetryFailedUploads(ctx, g3i, g3i.Logger().GetFailedLogMap())
 			}
 			g3i.Logger().Scoreboard().PrintSB()
 		},

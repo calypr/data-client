@@ -16,14 +16,6 @@ type UploadConfig struct {
 	ShowProgress      bool
 }
 
-// ManifestObject represents an object from manifest that downloaded from windmill / data-portal
-type ManifestObject struct {
-	ObjectID  string `json:"object_id"`
-	SubjectID string `json:"subject_id"`
-	Filename  string `json:"file_name"`
-	Filesize  int64  `json:"file_size"`
-}
-
 // InitRequestObject represents the payload that sends to FENCE for getting a singlepart upload presignedURL or init a multipart upload for new object file
 type InitRequestObject struct {
 	Filename string `json:"file_name"`

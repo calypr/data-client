@@ -38,7 +38,7 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog())
 			defer logCloser()
 
-			g3i, err := client.NewGen3Interface(context.Background(), profile, logger)
+			g3i, err := client.NewGen3Interface(profile, logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -78,7 +78,18 @@ func init() {
 				g3i.Logger().Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
 			}
 
-			err = download.DownloadMultiple(g3i, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, numParallel, skipCompleted)
+			err = download.DownloadMultiple(
+				context.Background(),
+				g3i,
+				objects,
+				downloadPath,
+				filenameFormat,
+				rename,
+				noPrompt,
+				protocol,
+				numParallel,
+				skipCompleted,
+			)
 			if err != nil {
 				g3i.Logger().Fatal(err.Error())
 			}

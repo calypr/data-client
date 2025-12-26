@@ -3,8 +3,6 @@ package common
 import (
 	"io"
 	"net/http"
-
-	"github.com/vbauerster/mpb/v8"
 )
 
 type AccessTokenStruct struct {
@@ -18,10 +16,9 @@ type FileUploadRequestObject struct {
 	FileMetadata FileMetadata
 	GUID         string
 	PresignedURL string
-	Request      *http.Request
-	Progress     *mpb.Progress
-	Bar          *mpb.Bar
-	Bucket       string `json:"bucket,omitempty"`
+	//Request      *http.Request
+
+	Bucket string `json:"bucket,omitempty"`
 }
 
 // FileDownloadResponseObject defines a object for file download
@@ -59,6 +56,6 @@ type RetryObject struct {
 type ManifestObject struct {
 	ObjectID  string `json:"object_id"`
 	SubjectID string `json:"subject_id"`
-	Filename  string `json:"file_name"`
-	Filesize  int64  `json:"file_size"`
+	Title     string `json:"title"`
+	Size      int64  `json:"size"`
 }

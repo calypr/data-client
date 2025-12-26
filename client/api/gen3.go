@@ -16,50 +16,57 @@ import (
 	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
-	req "github.com/calypr/data-client/client/request"
+	"github.com/calypr/data-client/client/request"
 	"github.com/hashicorp/go-version"
 )
 
-func NewFunctions(ctx context.Context, config conf.ManagerInterface, request req.RequestInterface, logger logs.Logger) FunctionInterface {
+func NewFunctions(config conf.ManagerInterface, request request.RequestInterface, cred *conf.Credential, logger logs.Logger) FunctionInterface {
 	return &Functions{
-		Config:  config,
-		Request: request,
-		Logger:  logger,
+		RequestInterface: request,
+		Cred:             cred,
+		Config:           config,
+		Logger:           logger,
 	}
 }
 
 type Functions struct {
-	Config  conf.ManagerInterface
-	Request req.RequestInterface
-	Logger  logs.Logger
+	request.RequestInterface
+
+	Cred   *conf.Credential
+	Config conf.ManagerInterface
+	Logger logs.Logger
 }
 
 type FunctionInterface interface {
+	request.RequestInterface
+
+	CheckPrivileges(ctx context.Context) (map[string]any, error)
+	CheckForShepherdAPI(ctx context.Context) (bool, error)
+	DeleteRecord(ctx context.Context, guid string) (string, error)
+	GetPresignedUrl(ctx context.Context, guid, protocolText string) (string, error)
+
 	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
-
-	CheckPrivileges(cred *conf.Credential) (map[string]any, error)
-	CheckForShepherdAPI(cred *conf.Credential) (bool, error)
-	ExportCredential(cred *conf.Credential) error
-
-	DoAuthenticatedRequest(cred *conf.Credential, request *req.RequestBuilder) (*http.Response, error)
-	DeleteRecord(profileConfig *conf.Credential, guid string) (string, error)
+	ExportCredential(ctx context.Context, cred *conf.Credential) error
 }
 
-func (r *Functions) NewAccessToken(profileConfig *conf.Credential) error {
-	if profileConfig.APIKey == "" {
+func (f *Functions) NewAccessToken(ctx context.Context) error {
+	if f.Cred.APIKey == "" {
 		return errors.New("APIKey is required to refresh access token")
 	}
 
-	bodyBytes, err := json.Marshal(map[string]string{"api_key": profileConfig.APIKey})
+	payload, err := json.Marshal(map[string]string{"api_key": f.Cred.APIKey})
 	if err != nil {
 		return err
 	}
+	bodyReader := bytes.NewReader(payload)
 
-	resp, err := r.Request.Do(
-		r.Request.New(http.MethodPost, profileConfig.APIEndpoint+common.FenceAccessTokenEndpoint).
+	resp, err := f.Do(
+		ctx,
+		f.New(http.MethodPost, f.Cred.APIEndpoint+common.FenceAccessTokenEndpoint).
 			WithHeader(common.HeaderContentType, common.MIMEApplicationJSON).
-			WithBody(bodyBytes),
+			WithBody(bodyReader),
 	)
+
 	if err != nil {
 		return fmt.Errorf("Error when calling Request.Do: %s", err)
 	}
@@ -75,12 +82,16 @@ func (r *Functions) NewAccessToken(profileConfig *conf.Credential) error {
 		return errors.New("failed to parse token response: " + err.Error())
 	}
 
-	if result.AccessToken == "" {
-		return errors.New("empty access token in response")
-	}
-
-	profileConfig.AccessToken = result.AccessToken
+	f.Cred.AccessToken = result.AccessToken
 	return nil
+}
+
+func (f *Functions) GetPresignedUrl(ctx context.Context, guid, protocolText string) (string, error) {
+	hasShepherd, err := f.CheckForShepherdAPI(ctx) // error already logged upstream
+	if err == nil && hasShepherd {
+		return f.resolveFromShepherd(ctx, guid)
+	}
+	return f.resolveFromFence(ctx, guid, protocolText)
 }
 
 // Todo: why isn't this calld in every fence response that has a body ? why is this seperated out
@@ -91,7 +102,7 @@ func (f *Functions) ParseFenceURLResponse(resp *http.Response) (FenceResponse, e
 	}
 
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body) // nolint: errcheck
+	buf.ReadFrom(resp.Body)
 	bodyStr := buf.String()
 
 	err := json.Unmarshal(buf.Bytes(), &msg)
@@ -127,29 +138,28 @@ func (f *Functions) ParseFenceURLResponse(resp *http.Response) (FenceResponse, e
 	return msg, nil
 }
 
-func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, error) {
+func (f *Functions) CheckForShepherdAPI(ctx context.Context) (bool, error) {
 	// Check if Shepherd is enabled
-	if profileConfig.UseShepherd == "false" {
+	if f.Cred.UseShepherd == "false" {
 		return false, nil
 	}
-	if profileConfig.UseShepherd != "true" && common.DefaultUseShepherd == false {
+	if f.Cred.UseShepherd != "true" && common.DefaultUseShepherd == false {
 		return false, nil
 	}
 	// If Shepherd is enabled, make sure that the commons has a compatible version of Shepherd deployed.
 	// Compare the version returned from the Shepherd version endpoint with the minimum acceptable Shepherd version.
 	var minShepherdVersion string
-	if profileConfig.MinShepherdVersion == "" {
+	if f.Cred.MinShepherdVersion == "" {
 		minShepherdVersion = common.DefaultMinShepherdVersion
 	} else {
-		minShepherdVersion = profileConfig.MinShepherdVersion
+		minShepherdVersion = f.Cred.MinShepherdVersion
 	}
 
-	res, err := f.DoAuthenticatedRequest(
-		profileConfig,
-		&req.RequestBuilder{
-			Url:    profileConfig.APIEndpoint + common.ShepherdVersionEndpoint,
+	res, err := f.Do(ctx,
+		&request.RequestBuilder{
+			Url:    f.Cred.APIEndpoint + common.ShepherdVersionEndpoint,
 			Method: http.MethodGet,
-			Token:  profileConfig.AccessToken,
+			Token:  f.Cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -179,39 +189,20 @@ func (f *Functions) CheckForShepherdAPI(profileConfig *conf.Credential) (bool, e
 	if ver.GreaterThanOrEqual(minVer) {
 		return true, nil
 	}
-	return false, fmt.Errorf("Shepherd is enabled, but %v does not have correct Shepherd version. (Need Shepherd version >=%v, got %v)", profileConfig.APIEndpoint, minVer, ver)
+	return false, fmt.Errorf("Shepherd is enabled, but %v does not have correct Shepherd version. (Need Shepherd version >=%v, got %v)", f.Cred.APIEndpoint, minVer, ver)
 }
-
-func (f *Functions) DoAuthenticatedRequest(
-	cred *conf.Credential,
-	rb *req.RequestBuilder,
-) (*http.Response, error) {
-	if cred.APIEndpoint == "" {
-		return nil, errors.New("APIEndpoint is missing in credential")
-	}
-
-	// Define refresh callback (combines NewAccessToken + Save)
-	refreshCallback := func(c *conf.Credential) error {
-		if err := f.NewAccessToken(c); err != nil {
-			return err
-		}
-		return f.Config.Save(c)
-	}
-	return f.Request.DoAuthenticated(rb, cred, refreshCallback)
-}
-
-func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (map[string]any, error) {
+func (f *Functions) CheckPrivileges(ctx context.Context) (map[string]any, error) {
 	/*
 	   Return user privileges from specified profile
 	*/
 	var err error
 	var data map[string]any
 
-	resp, err := f.DoAuthenticatedRequest(profileConfig,
-		&req.RequestBuilder{
-			Url:    profileConfig.APIEndpoint + common.FenceUserEndpoint,
+	resp, err := f.Do(ctx,
+		&request.RequestBuilder{
+			Url:    f.Cred.APIEndpoint + common.FenceUserEndpoint,
 			Method: http.MethodGet,
-			Token:  profileConfig.AccessToken,
+			Token:  f.Cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -220,6 +211,7 @@ func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (map[string]
 	defer resp.Body.Close()
 
 	str := ResponseToString(resp)
+	fmt.Println("STR: ", str)
 	err = json.Unmarshal([]byte(str), &data)
 	if err != nil {
 		return nil, errors.New("Error occurred when unmarshalling response: " + err.Error())
@@ -238,21 +230,21 @@ func (f *Functions) CheckPrivileges(profileConfig *conf.Credential) (map[string]
 	return resourceAccess, err
 }
 
-func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (string, error) {
+func (f *Functions) DeleteRecord(ctx context.Context, guid string) (string, error) {
 	endpoint := common.FenceDataEndpoint + "/" + guid
 	msg := ""
-	hasShepherd, err := f.CheckForShepherdAPI(profileConfig)
+	hasShepherd, err := f.CheckForShepherdAPI(ctx)
 	if err != nil {
 		f.Logger.Printf("WARNING: Error checking Shepherd API: %v. Falling back to Fence.\n", err)
 	} else if hasShepherd {
 		endpoint = common.ShepherdEndpoint + "/objects/" + guid
 	}
 
-	resp, err := f.DoAuthenticatedRequest(profileConfig,
-		&req.RequestBuilder{
-			Url:    profileConfig.APIEndpoint + "/" + endpoint,
+	resp, err := f.Do(ctx,
+		&request.RequestBuilder{
+			Url:    f.Cred.APIEndpoint + "/" + endpoint,
 			Method: http.MethodDelete,
-			Token:  profileConfig.AccessToken,
+			Token:  f.Cred.AccessToken,
 		},
 	)
 	if err != nil {
@@ -272,7 +264,7 @@ func (f *Functions) DeleteRecord(profileConfig *conf.Credential, guid string) (s
 
 }
 
-func (f *Functions) ExportCredential(cred *conf.Credential) error {
+func (f *Functions) ExportCredential(ctx context.Context, cred *conf.Credential) error {
 
 	if cred.Profile == "" {
 		return fmt.Errorf("profile name is required")
@@ -297,7 +289,7 @@ func (f *Functions) ExportCredential(cred *conf.Credential) error {
 
 	if cred.APIKey != "" {
 		// Always refresh the access token — ignore any old one that might be in the struct
-		err = f.NewAccessToken(cred)
+		err = f.NewAccessToken(ctx)
 		if err != nil {
 			if strings.Contains(err.Error(), "401") {
 				return fmt.Errorf("authentication failed (401) for %s — your API key is invalid, revoked, or expired", fenceBase)
@@ -326,4 +318,61 @@ func (f *Functions) ExportCredential(cred *conf.Credential) error {
 	}
 
 	return nil
+}
+
+func (f *Functions) ResolveDownloadURL(ctx context.Context, guid string, protocol string) (string, error) {
+	// 1. Check for Shepherd
+	hasShepherd, _ := f.CheckForShepherdAPI(ctx)
+	if hasShepherd {
+		return f.resolveFromShepherd(ctx, guid)
+	}
+
+	// 2. Fallback to Fence
+	return f.resolveFromFence(ctx, guid, protocol)
+}
+
+func (f *Functions) resolveFromShepherd(ctx context.Context, guid string) (string, error) {
+	// We use f.Cred.APIEndpoint because the struct owns the credential state
+	url := fmt.Sprintf("%s%s/objects/%s/download", f.Cred.APIEndpoint, common.ShepherdEndpoint, guid)
+
+	// We call f.Do directly because of method promotion (embedding)
+	resp, err := f.Do(ctx, f.New(http.MethodGet, url))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("shepherd error: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode shepherd response: %w", err)
+	}
+
+	return result.URL, nil
+}
+
+func (f *Functions) resolveFromFence(ctx context.Context, guid, protocolText string) (string, error) {
+	resp, err := f.Do(
+		ctx,
+		&request.RequestBuilder{
+			Url:    f.Cred.APIEndpoint + common.FenceDataDownloadEndpoint + "/" + guid + protocolText,
+			Method: http.MethodGet,
+			Token:  f.Cred.AccessToken,
+		},
+	)
+	if err != nil {
+		return "", errors.New("Failed to get URL from Fence via DoAuthenticatedRequest: " + err.Error())
+	}
+	defer resp.Body.Close()
+
+	msg, err := f.ParseFenceURLResponse(resp)
+	if err != nil || msg.URL == "" {
+		return "", errors.New("Failed to get URL from Fence via ParseFenceURLResponse: " + err.Error())
+	}
+	return msg.URL, nil
 }

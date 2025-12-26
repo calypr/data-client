@@ -62,7 +62,10 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	mockGen3.EXPECT().Logger().Return(logs.NewTeeLogger("", "test", os.Stdout)).AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	info, err := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Error(err)
+	}
 
 	if info.Name != testFileName {
 		t.Errorf("Wanted filename %v, got %v", testFileName, info.Name)
@@ -116,7 +119,10 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	info, err := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Critical fix: check for nil first
 	if info == nil {
@@ -162,7 +168,10 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	mockGen3.EXPECT().Logger().Return(logs.NewTeeLogger("", "test", os.Stdout)).AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	info, err := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if info.Name != testFileName {
 		t.Errorf("Wanted filename %v, got %v", testFileName, info.Name)
@@ -190,7 +199,10 @@ func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
 	mockGen3.EXPECT().Logger().Return(logs.NewTeeLogger("", "test", os.Stdout)).AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	info, err := download.AskGen3ForFileInfo(mockGen3, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if info.Name != testGUID {
 		t.Errorf("Wanted fallback filename %v, got %v", testGUID, info.Name)

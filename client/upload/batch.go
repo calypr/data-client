@@ -1,103 +1,161 @@
 package upload
 
 import (
-	"errors"
+	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
 
-	client "github.com/calypr/data-client/client/client"
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
+	"github.com/calypr/data-client/client/request"
 	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 func InitBatchUploadChannels(numParallel int, inputSliceLen int) (int, chan *http.Response, chan error, []common.FileUploadRequestObject) {
-	getNumberOfWorkers := func(numParallel int, inputSliceLen int) int {
-		workers := numParallel
-		if workers < 1 || workers > inputSliceLen {
-			workers = inputSliceLen
-		}
-		return workers
+	workers := numParallel
+	if workers < 1 || workers > inputSliceLen {
+		workers = inputSliceLen
+	}
+	if workers < 1 {
+		workers = 1
 	}
 
-	workers := getNumberOfWorkers(numParallel, inputSliceLen)
 	respCh := make(chan *http.Response, inputSliceLen)
 	errCh := make(chan error, inputSliceLen)
-	batchFURSlice := make([]common.FileUploadRequestObject, 0)
-	return workers, respCh, errCh, batchFURSlice
+	batchSlice := make([]common.FileUploadRequestObject, 0, workers)
+
+	return workers, respCh, errCh, batchSlice
 }
 
-func BatchUpload(g3i client.Gen3Interface, furObjects []common.FileUploadRequestObject, workers int, respCh chan *http.Response, errCh chan error, bucketName string) {
-	progress := mpb.New(mpb.WithOutput(os.Stdout))
+func BatchUpload(
+	ctx context.Context,
+	g3i client.Gen3Interface,
+	furObjects []common.FileUploadRequestObject,
+	workers int,
+	respCh chan *http.Response,
+	errCh chan error,
+	bucketName string,
+) {
+	if len(furObjects) == 0 {
+		return
+	}
 
+	// Ensure bucket is set
 	for i := range furObjects {
 		if furObjects[i].Bucket == "" {
 			furObjects[i].Bucket = bucketName
 		}
-		if furObjects[i].GUID == "" {
-			resp, err := GeneratePresignedURL(g3i, furObjects[i].Filename, furObjects[i].FileMetadata, bucketName)
-			if err != nil {
-				g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, resp.GUID, 0, false)
-				errCh <- err
-				continue
-			}
-			furObjects[i].PresignedURL = resp.URL
-			furObjects[i].GUID = resp.GUID
-			// update failed log with new guid
-			g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, resp.GUID, 0, false)
-		}
-		file, err := os.Open(furObjects[i].FilePath)
-		if err != nil {
-			g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false)
-			errCh <- errors.New("File open error: " + err.Error())
-			continue
-		}
-		defer file.Close()
-
-		furObjects[i], err = generateUploadRequest(g3i, furObjects[i], file, progress)
-		if err != nil {
-			file.Close()
-			g3i.Logger().Failed(furObjects[i].FilePath, furObjects[i].Filename, furObjects[i].FileMetadata, furObjects[i].GUID, 0, false)
-			errCh <- errors.New("Error occurred during request generation: " + err.Error())
-			continue
-		}
 	}
 
-	furObjectCh := make(chan common.FileUploadRequestObject, len(furObjects))
+	progress := mpb.New(mpb.WithOutput(os.Stdout))
 
-	client := &http.Client{}
-	wg := sync.WaitGroup{}
-	for range workers {
+	workCh := make(chan common.FileUploadRequestObject, len(furObjects))
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
-			for furObject := range furObjectCh {
-				if furObject.Request != nil {
-					resp, err := client.Do(furObject.Request)
+			defer wg.Done()
+			for fur := range workCh {
+				// --- Ensure presigned URL ---
+				if fur.PresignedURL == "" {
+					resp, err := GeneratePresignedURL(ctx, g3i, fur.Filename, fur.FileMetadata, fur.Bucket)
 					if err != nil {
-						g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, "", 0, false)
 						errCh <- err
-					} else {
-						if resp.StatusCode != 200 {
-							g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
-						} else {
-							respCh <- resp
-							g3i.Logger().DeleteFromFailedLog(furObject.FilePath)
-							g3i.Logger().Succeeded(furObject.FilePath, furObject.GUID)
-							g3i.Logger().Scoreboard().IncrementSB(0)
-						}
+						continue
 					}
-				} else if furObject.FilePath != "" {
-					g3i.Logger().Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+					fur.PresignedURL = resp.URL
+					fur.GUID = resp.GUID
+					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, resp.GUID, 0, false) // update log
 				}
+
+				// --- Open file ---
+				file, err := os.Open(fur.FilePath)
+				if err != nil {
+					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					errCh <- fmt.Errorf("file open error: %w", err)
+					continue
+				}
+
+				fi, err := file.Stat()
+				if err != nil {
+					file.Close()
+					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					errCh <- fmt.Errorf("file stat error: %w", err)
+					continue
+				}
+
+				if fi.Size() > common.FileSizeLimit {
+					file.Close()
+					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					errCh <- fmt.Errorf("file size exceeds limit: %s", fur.Filename)
+					continue
+				}
+
+				// --- Progress bar ---
+				bar := progress.AddBar(fi.Size(),
+					mpb.PrependDecorators(
+						decor.Name(fur.Filename+" "),
+						decor.CountersKibiByte("% .1f / % .1f"),
+					),
+					mpb.AppendDecorators(
+						decor.Percentage(),
+						decor.AverageSpeed(decor.SizeB1024(0), " % .1f"),
+					),
+				)
+
+				proxyReader := bar.ProxyReader(file)
+
+				// --- Upload using DoAuthenticatedRequest (no manual http.Request!) ---
+				resp, err := g3i.Do(
+					ctx,
+					&request.RequestBuilder{
+						Method: http.MethodPut,
+						Url:    fur.PresignedURL,
+						Body:   proxyReader,
+					},
+				)
+
+				// Cleanup
+				file.Close()
+				bar.Abort(false)
+
+				if err != nil {
+					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					errCh <- err
+					continue
+				}
+
+				if resp.StatusCode != http.StatusOK {
+					bodyBytes, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					errMsg := fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					errCh <- errMsg
+					continue
+				}
+
+				resp.Body.Close()
+
+				// Success
+				respCh <- resp
+				g3i.Logger().DeleteFromFailedLog(fur.FilePath)
+				g3i.Logger().Succeeded(fur.FilePath, fur.GUID)
+				g3i.Logger().Scoreboard().IncrementSB(0)
 			}
-			wg.Done()
 		}()
 	}
 
-	for i := range furObjects {
-		furObjectCh <- furObjects[i]
+	// Send all work
+	for _, obj := range furObjects {
+		workCh <- obj
 	}
-	close(furObjectCh)
+	close(workCh)
 
 	wg.Wait()
 	progress.Wait()

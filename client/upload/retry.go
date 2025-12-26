@@ -2,14 +2,12 @@ package upload
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
 )
 
 // GetWaitTime calculates exponential backoff with cap
@@ -23,7 +21,7 @@ func GetWaitTime(retryCount int) time.Duration {
 }
 
 // RetryFailedUploads re-uploads previously failed files with exponential backoff
-func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.RetryObject) {
+func RetryFailedUploads(ctx context.Context, g3 client.Gen3Interface, failedMap map[string]common.RetryObject) {
 	logger := g3.Logger()
 	if len(failedMap) == 0 {
 		logger.Println("No failed files to retry.")
@@ -31,15 +29,8 @@ func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.Ret
 	}
 
 	sb := logger.Scoreboard()
-	if sb == nil {
-		var err error
-		sb, err = logs.FromSBContext(context.Background())
-		if err != nil {
-			logger.Println("Scoreboard unavailable:", err)
-		}
-	}
 
-	logger.Println("Starting retry-upload...")
+	logger.Printf("Starting retry-upload for %d failed Uploads", len(failedMap))
 	retryChan := make(chan common.RetryObject, len(failedMap))
 
 	// Queue only non-already-succeeded files
@@ -65,7 +56,10 @@ func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.Ret
 
 		// Clean up old record if exists
 		if ro.GUID != "" {
-			if msg, err := g3.DeleteRecord(g3.GetCredential(), ro.GUID); err == nil {
+			if msg, err := g3.DeleteRecord(
+				ctx,
+				ro.GUID,
+			); err == nil {
 				logger.Println(msg)
 			}
 		}
@@ -86,7 +80,7 @@ func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.Ret
 				FileMetadata: ro.FileMetadata,
 				Bucket:       ro.Bucket,
 			}
-			err = MultipartUpload(context.Background(), g3, req, true)
+			err = MultipartUpload(ctx, g3, req, true)
 			if err == nil {
 				logger.Succeeded(ro.FilePath, req.GUID)
 				if sb != nil {
@@ -96,15 +90,15 @@ func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.Ret
 			}
 		} else {
 			// Retry single-part
-			respObj, err := GeneratePresignedURL(g3, ro.Filename, ro.FileMetadata, ro.Bucket)
+			respObj, err := GeneratePresignedURL(ctx, g3, ro.Filename, ro.FileMetadata, ro.Bucket)
 			if err != nil {
-				handleRetryFailure(g3, ro, retryChan, err)
+				handleRetryFailure(ctx, g3, ro, retryChan, err)
 				continue
 			}
 
 			file, err := os.Open(ro.FilePath)
 			if err != nil {
-				handleRetryFailure(g3, ro, retryChan, err)
+				handleRetryFailure(ctx, g3, ro, retryChan, err)
 				continue
 			}
 			stat, _ := file.Stat()
@@ -124,13 +118,13 @@ func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.Ret
 				PresignedURL: respObj.URL,
 			}
 
-			fur, err = generateUploadRequest(g3, fur, nil, nil)
+			fur, err = generateUploadRequest(ctx, g3, fur, nil, nil)
 			if err != nil {
-				handleRetryFailure(g3, ro, retryChan, err)
+				handleRetryFailure(ctx, g3, ro, retryChan, err)
 				continue
 			}
 
-			err = UploadSingleFile(g3, fur, true)
+			err = UploadSingleFile(ctx, g3, fur, true)
 			if err == nil {
 				logger.Succeeded(ro.FilePath, fur.GUID)
 				if sb != nil {
@@ -141,12 +135,12 @@ func RetryFailedUploads(g3 client.Gen3Interface, failedMap map[string]common.Ret
 		}
 
 		// On failure, requeue if retries remain
-		handleRetryFailure(g3, ro, retryChan, err)
+		handleRetryFailure(ctx, g3, ro, retryChan, err)
 	}
 }
 
 // handleRetryFailure logs failure and requeues if retries remain
-func handleRetryFailure(g3 client.Gen3Interface, ro common.RetryObject, retryChan chan common.RetryObject, err error) {
+func handleRetryFailure(ctx context.Context, g3 client.Gen3Interface, ro common.RetryObject, retryChan chan common.RetryObject, err error) {
 	logger := g3.Logger()
 	logger.Failed(ro.FilePath, ro.Filename, ro.FileMetadata, ro.GUID, ro.RetryCount, ro.Multipart)
 	if err != nil {
@@ -160,7 +154,7 @@ func handleRetryFailure(g3 client.Gen3Interface, ro common.RetryObject, retryCha
 
 	// Max retries reached — final cleanup
 	if ro.GUID != "" {
-		if msg, err := g3.DeleteRecord(g3.GetCredential(), ro.GUID); err == nil {
+		if msg, err := g3.DeleteRecord(ctx, ro.GUID); err == nil {
 			logger.Println("Cleaned up failed record:", msg)
 		} else {
 			logger.Println("Cleanup failed:", err)
@@ -174,27 +168,4 @@ func handleRetryFailure(g3 client.Gen3Interface, ro common.RetryObject, retryCha
 	if len(retryChan) == 0 {
 		close(retryChan)
 	}
-}
-
-// Helper: exponential backoff retry
-func retryWithBackoff(ctx context.Context, attempts int, fn func() error) error {
-	var err error
-	for i := range attempts {
-		if err = fn(); err == nil {
-			return nil
-		}
-		if i == attempts-1 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(backoffDuration(i)):
-		}
-	}
-	return fmt.Errorf("after %d attempts: %w", attempts, err)
-}
-
-func backoffDuration(attempt int) time.Duration {
-	return min(time.Duration(1<<uint(attempt))*200*time.Millisecond, 10*time.Second)
 }

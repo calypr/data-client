@@ -10,11 +10,11 @@
 package mocks
 
 import (
+	context "context"
 	http "net/http"
 	reflect "reflect"
 
-	conf "github.com/calypr/data-client/client/conf"
-	req "github.com/calypr/data-client/client/request"
+	request "github.com/calypr/data-client/client/request"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,40 +43,25 @@ func (m *MockRequestInterface) EXPECT() *MockRequestInterfaceMockRecorder {
 }
 
 // Do mocks base method.
-func (m *MockRequestInterface) Do(arg0 *req.RequestBuilder) (*http.Response, error) {
+func (m *MockRequestInterface) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Do", arg0)
+	ret := m.ctrl.Call(m, "Do", ctx, req)
 	ret0, _ := ret[0].(*http.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Do indicates an expected call of Do.
-func (mr *MockRequestInterfaceMockRecorder) Do(arg0 any) *gomock.Call {
+func (mr *MockRequestInterfaceMockRecorder) Do(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockRequestInterface)(nil).Do), arg0)
-}
-
-// DoAuthenticated mocks base method.
-func (m *MockRequestInterface) DoAuthenticated(rb *req.RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DoAuthenticated", rb, cred, refreshToken)
-	ret0, _ := ret[0].(*http.Response)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// DoAuthenticated indicates an expected call of DoAuthenticated.
-func (mr *MockRequestInterfaceMockRecorder) DoAuthenticated(rb, cred, refreshToken any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoAuthenticated", reflect.TypeOf((*MockRequestInterface)(nil).DoAuthenticated), rb, cred, refreshToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockRequestInterface)(nil).Do), ctx, req)
 }
 
 // New mocks base method.
-func (m *MockRequestInterface) New(method, url string) *req.RequestBuilder {
+func (m *MockRequestInterface) New(method, url string) *request.RequestBuilder {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "New", method, url)
-	ret0, _ := ret[0].(*req.RequestBuilder)
+	ret0, _ := ret[0].(*request.RequestBuilder)
 	return ret0
 }
 

@@ -28,7 +28,7 @@ func init() {
 			)
 			defer closer()
 
-			g3, err := client.NewGen3Interface(context.Background(), profile, Logger)
+			g3, err := client.NewGen3Interface(profile, Logger)
 			if err != nil {
 				Logger.Fatalf("Failed to initialize client: %v", err)
 			}
@@ -44,7 +44,7 @@ func init() {
 				logger.Fatalf("Cannot read failed log: %v", err)
 			}
 
-			upload.RetryFailedUploads(g3, failedMap)
+			upload.RetryFailedUploads(context.Background(), g3, failedMap)
 			sb.PrintSB()
 		},
 	}

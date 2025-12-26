@@ -32,7 +32,7 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithSucceededLog(), logs.WithScoreboard())
 			defer logCloser()
 
-			g3I, err := client.NewGen3Interface(context.Background(), profile, logger)
+			g3I, err := client.NewGen3Interface(profile, logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -42,7 +42,18 @@ func init() {
 					ObjectID: guid,
 				},
 			}
-			err = download.DownloadMultiple(g3I, objects, downloadPath, filenameFormat, rename, noPrompt, protocol, 1, skipCompleted)
+			err = download.DownloadMultiple(
+				context.Background(),
+				g3I,
+				objects,
+				downloadPath,
+				filenameFormat,
+				rename,
+				noPrompt,
+				protocol,
+				1,
+				skipCompleted,
+			)
 			if err != nil {
 				g3I.Logger().Println(err.Error())
 			}

@@ -1,7 +1,10 @@
 package common
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,6 +12,15 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 )
+
+func ToJSONReader(payload any) (io.Reader, error) {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode JSON payload: %w", err)
+	}
+	return &buf, nil
+}
 
 // ParseRootPath parses dirname that has "~" in the beginning
 func ParseRootPath(filePath string) (string, error) {

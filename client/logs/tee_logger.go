@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io" // Added for standard logging methods like Fatal
+	"maps"
 	"os"
 	"sync"
 
@@ -93,9 +94,8 @@ func (t *TeeLogger) GetSucceededLogMap() map[string]string {
 	defer t.succeededMu.Unlock()
 	// Return a copy to prevent external modification
 	copiedMap := make(map[string]string, len(t.succeededMap))
-	for k, v := range t.succeededMap {
-		copiedMap[k] = v
-	}
+	maps.Copy(copiedMap, t.succeededMap)
+
 	return copiedMap
 }
 
@@ -105,9 +105,7 @@ func (t *TeeLogger) GetFailedLogMap() map[string]common.RetryObject {
 	defer t.failedMu.Unlock()
 	// Return a copy to prevent external modification
 	copiedMap := make(map[string]common.RetryObject, len(t.FailedMap))
-	for k, v := range t.FailedMap {
-		copiedMap[k] = v
-	}
+	maps.Copy(copiedMap, t.FailedMap)
 	return copiedMap
 }
 

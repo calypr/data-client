@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,8 +17,8 @@ type PresignedURLResponse struct {
 }
 
 // GeneratePresignedURL handles both Shepherd and Fence fallback
-func GeneratePresignedURL(g3 client.Gen3Interface, filename string, metadata common.FileMetadata, bucket string) (*PresignedURLResponse, error) {
-	hasShepherd, err := g3.CheckForShepherdAPI(g3.GetCredential())
+func GeneratePresignedURL(ctx context.Context, g3 client.Gen3Interface, filename string, metadata common.FileMetadata, bucket string) (*PresignedURLResponse, error) {
+	hasShepherd, err := g3.CheckForShepherdAPI(ctx)
 	if err != nil || !hasShepherd {
 		payload := map[string]string{
 			"file_name": filename,
@@ -25,19 +26,22 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, metadata com
 		if bucket != "" {
 			payload["bucket"] = bucket
 		}
-		body, err := json.Marshal(payload)
+
+		buf, err := common.ToJSONReader(payload)
 		if err != nil {
 			return nil, err
 		}
 
 		cred := g3.GetCredential()
-		resp, err := g3.DoAuthenticatedRequest(cred, &req.RequestBuilder{
-			Method:  http.MethodPost,
-			Url:     cred.APIEndpoint + common.FenceDataUploadEndpoint,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
-			Body:    body,
-			Token:   cred.AccessToken,
-		})
+		resp, err := g3.Do(
+			ctx,
+			&req.RequestBuilder{
+				Method:  http.MethodPost,
+				Url:     cred.APIEndpoint + common.FenceDataUploadEndpoint,
+				Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+				Body:    buf,
+				Token:   cred.AccessToken,
+			})
 		if err != nil {
 			return nil, err
 		}
@@ -53,18 +57,21 @@ func GeneratePresignedURL(g3 client.Gen3Interface, filename string, metadata com
 		Aliases:  metadata.Aliases,
 		Metadata: metadata.Metadata,
 	}
-	body, err := json.Marshal(shepherdPayload)
+
+	reader, err := common.ToJSONReader(shepherdPayload)
 	if err != nil {
 		return nil, err
 	}
 
 	cred := g3.GetCredential()
-	r, err := g3.DoAuthenticatedRequest(cred, &req.RequestBuilder{
-		Url:    cred.APIEndpoint + common.ShepherdEndpoint + "/objects",
-		Method: http.MethodPost,
-		Body:   body,
-		Token:  cred.AccessToken,
-	})
+	r, err := g3.Do(
+		ctx,
+		&req.RequestBuilder{
+			Url:    cred.APIEndpoint + common.ShepherdEndpoint + "/objects",
+			Method: http.MethodPost,
+			Body:   reader,
+			Token:  cred.AccessToken,
+		})
 	if err != nil || r.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("shepherd upload init failed")
 	}

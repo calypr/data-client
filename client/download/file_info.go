@@ -1,38 +1,24 @@
 package download
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
-	req "github.com/calypr/data-client/client/request"
+	"github.com/calypr/data-client/client/request"
 )
 
-// AskGen3ForFileInfo resolves filename and size from Shepherd or Indexd
 func AskGen3ForFileInfo(
-	g3i client.Gen3Interface,
-	guid, protocol, downloadPath, filenameFormat string,
-	rename bool,
-	renamedFiles *[]RenamedOrSkippedFileInfo,
-) *IndexdResponse {
-	IdxRsp, err := resolveFileInfo(g3i, guid, protocol, downloadPath, filenameFormat, rename, renamedFiles)
-	if err != nil {
-		return nil
-	}
-	return IdxRsp
-}
-
-func resolveFileInfo(
+	ctx context.Context,
 	g3i client.Gen3Interface,
 	guid, protocol, downloadPath, filenameFormat string,
 	rename bool,
 	renamedFiles *[]RenamedOrSkippedFileInfo,
 ) (*IndexdResponse, error) {
-	hasShepherd, err := g3i.CheckForShepherdAPI(g3i.GetCredential())
+	hasShepherd, err := g3i.CheckForShepherdAPI(ctx)
 	if err != nil {
 		g3i.Logger().Println("Error checking Shepherd API: " + err.Error())
 		g3i.Logger().Println("Falling back to Indexd...")
@@ -40,19 +26,20 @@ func resolveFileInfo(
 	}
 
 	if hasShepherd {
-		return fetchFromShepherd(g3i, guid, downloadPath, filenameFormat, renamedFiles)
+		return fetchFromShepherd(ctx, g3i, guid, downloadPath, filenameFormat, renamedFiles)
 	}
-	return fetchFromIndexd(g3i, http.MethodGet, guid, protocol, downloadPath, filenameFormat, rename, renamedFiles)
+	return fetchFromIndexd(ctx, g3i, http.MethodGet, guid, protocol, downloadPath, filenameFormat, rename, renamedFiles)
 }
 
 func fetchFromShepherd(
+	ctx context.Context,
 	g3i client.Gen3Interface,
 	guid, downloadPath, filenameFormat string,
 	renamedFiles *[]RenamedOrSkippedFileInfo,
 ) (*IndexdResponse, error) {
 	cred := g3i.GetCredential()
-	res, err := g3i.DoAuthenticatedRequest(cred,
-		&req.RequestBuilder{
+	res, err := g3i.Do(ctx,
+		&request.RequestBuilder{
 			Url:    cred.APIEndpoint + "/" + cred.AccessToken + common.ShepherdEndpoint + "/objects/" + guid,
 			Method: http.MethodGet,
 			Token:  cred.AccessToken,
@@ -76,6 +63,7 @@ func fetchFromShepherd(
 }
 
 func fetchFromIndexd(
+	ctx context.Context,
 	g3i client.Gen3Interface, method,
 	guid, protocol, downloadPath, filenameFormat string,
 	rename bool,
@@ -83,9 +71,9 @@ func fetchFromIndexd(
 ) (*IndexdResponse, error) {
 
 	cred := g3i.GetCredential()
-	resp, err := g3i.DoAuthenticatedRequest(
-		cred,
-		&req.RequestBuilder{
+	resp, err := g3i.Do(
+		ctx,
+		&request.RequestBuilder{
 			Url:    cred.APIEndpoint + common.IndexdIndexEndpoint + "/" + guid,
 			Method: method,
 			Token:  cred.AccessToken,
@@ -105,38 +93,11 @@ func fetchFromIndexd(
 		return &IndexdResponse{guid, msg.Size}, nil
 	}
 
-	baseName := msg.FileName
-	if baseName == "" {
-		baseName = guessFilenameFromURLs(msg.URLs, protocol, g3i.Logger(), guid, renamedFiles)
+	if msg.FileName == "" {
+		return nil, fmt.Errorf("FileName is a required field in Indexd to download the file, but upload record %#v does not contain it", msg)
 	}
 
-	return &IndexdResponse{applyFilenameFormat(baseName, guid, downloadPath, filenameFormat, rename, renamedFiles), msg.Size}, nil
-}
-
-func guessFilenameFromURLs(urls []string, protocol string, logger logs.Logger, guid string, renamedFiles *[]RenamedOrSkippedFileInfo) string {
-	if len(urls) == 0 {
-		logger.Println("No filename or URLs in Indexd record for " + guid)
-		logger.Println("Download likely to fail — check Indexd!")
-		return fallbackToGUID(logger, guid, "original", renamedFiles)
-	}
-
-	url := urls[0]
-	if protocol != "" {
-		for _, u := range urls {
-			if strings.HasPrefix(u, protocol) {
-				url = u
-				break
-			}
-		}
-	}
-
-	parts := strings.Split(url, "/")
-	name := parts[len(parts)-1]
-	if name == "" {
-		logger.Println("Failed to guess filename for " + guid)
-		return fallbackToGUID(logger, guid, "original", renamedFiles)
-	}
-	return name
+	return &IndexdResponse{applyFilenameFormat(msg.FileName, guid, downloadPath, filenameFormat, rename, renamedFiles), msg.Size}, nil
 }
 
 func applyFilenameFormat(baseName, guid, downloadPath, format string, rename bool, renamedFiles *[]RenamedOrSkippedFileInfo) string {
@@ -161,16 +122,4 @@ func applyFilenameFormat(baseName, guid, downloadPath, format string, rename boo
 	default:
 		return baseName
 	}
-}
-
-func fallbackToGUID(logger logs.Logger, guid, format string, renamedFiles *[]RenamedOrSkippedFileInfo) string {
-	logger.Println("Using GUID as filename")
-	if format != "guid" {
-		*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{
-			GUID:        guid,
-			OldFilename: "N/A",
-			NewFilename: guid,
-		})
-	}
-	return guid
 }

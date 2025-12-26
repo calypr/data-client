@@ -40,10 +40,12 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			// Warning message
 			fmt.Printf("Notice: this command uploads to pre-existing GUIDs from a manifest.\nIf you want to upload new files (new GUIDs generated automatically), use \"./data-client upload\" instead.\n\n")
 
+			ctx := context.Background()
+
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
 			defer closer()
 
-			g3i, err := client.NewGen3Interface(context.Background(), profile, logger)
+			g3i, err := client.NewGen3Interface(profile, logger)
 			if err != nil {
 				logger.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
@@ -60,7 +62,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			dataExplorerURL := host.Scheme + "://" + host.Host + "/explorer"
 
 			// Load manifest
-			var objects []upload.ManifestObject
+			var objects []common.ManifestObject
 			manifestBytes, err := os.ReadFile(manifestPath)
 			if err != nil {
 				logger.Fatalf("Failed reading manifest %s: %v\nA valid manifest can be acquired from %s", manifestPath, err, dataExplorerURL)
@@ -101,12 +103,9 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			}
 
 			for _, obj := range objects {
-				filename := obj.Filename
-				if filename == "" {
-					filename = obj.ObjectID // fallback
-				}
+				fmt.Printf("OBJ: %#v\n", obj)
 
-				localFilePath, err := getFullFilePath(absUploadPath, filename)
+				localFilePath, err := getFullFilePath(absUploadPath, obj.Title)
 				if err != nil {
 					logger.Println("Skipping:", err)
 					continue
@@ -122,6 +121,10 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				// GUID comes from manifest → override
 				fur.GUID = obj.ObjectID
 				fur.Bucket = bucketName
+				fmt.Println("FUR FILE PATH: ", fur.FilePath)
+				fmt.Println("LOCAL FILE PATH: ", localFilePath)
+
+				//fur.FilePath = localFilePath
 
 				logger.Println("\t" + localFilePath + " → GUID " + obj.ObjectID)
 				requests = append(requests, fur)
@@ -143,22 +146,22 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 					if len(batchFURObjects) < workers {
 						batchFURObjects = append(batchFURObjects, furObject)
 					} else {
-						upload.BatchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
 					if !forceMultipart && i == len(single)-1 && len(batchFURObjects) > 0 { // upload remainders
-						upload.BatchUpload(g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 					}
 				}
 			} else {
 				for _, req := range single {
-					upload.UploadSingleFile(g3i, req, true)
+					upload.UploadSingleFile(ctx, g3i, req, true)
 				}
 			}
 
 			// Upload multipart files
 			for _, req := range multi {
-				err := upload.MultipartUpload(context.Background(), g3i, req, true)
+				err := upload.MultipartUpload(ctx, g3i, req, true)
 				if err != nil {
 					logger.Println("Multipart upload failed:", err)
 				}
@@ -168,7 +171,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			if len(logger.GetSucceededLogMap()) == 0 {
 				failed := logger.GetFailedLogMap()
 				if len(failed) > 0 {
-					upload.RetryFailedUploads(g3i, failed)
+					upload.RetryFailedUploads(ctx, g3i, failed)
 				}
 			}
 
@@ -187,7 +190,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 	uploadMultipleCmd.MarkFlagRequired("upload-path")
 
 	uploadMultipleCmd.Flags().BoolVar(&batch, "batch", true, "Upload single-part files in parallel")
-	uploadMultipleCmd.Flags().IntVar(&numParallel, "numparallel", 3, "Number of parallel uploads")
+	uploadMultipleCmd.Flags().IntVar(&numParallel, "numparallel", 4, "Number of parallel uploads")
 
 	uploadMultipleCmd.Flags().StringVar(&bucketName, "bucket", "", "Target bucket (defaults to configured DATA_UPLOAD_BUCKET)")
 

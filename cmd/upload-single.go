@@ -2,6 +2,7 @@ package cmd
 
 // Deprecated: Use upload instead.
 import (
+	"context"
 	"log"
 
 	"github.com/calypr/data-client/client/upload"
@@ -20,7 +21,7 @@ func init() {
 		Example: `./data-client upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// initialize transmission logs
-			err := upload.UploadSingleFileWrapper(profile, bucketName, filePath, guid, true)
+			err := upload.UploadSingleFileWrapper(context.Background(), profile, bucketName, filePath, guid, true)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}

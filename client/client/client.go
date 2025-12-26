@@ -7,7 +7,7 @@ import (
 	"github.com/calypr/data-client/client/api"
 	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
-	req "github.com/calypr/data-client/client/request"
+	"github.com/calypr/data-client/client/request"
 )
 
 //go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/client/client Gen3Interface
@@ -43,11 +43,8 @@ func (g *Gen3Client) GetCredential() *conf.Credential {
 
 // NewGen3Interface returns a Gen3Client that embeds the credential and implements Gen3Interface.
 // This eliminates the need to pass credentials around everywhere.
-func NewGen3Interface(ctx context.Context, profile string, logger *logs.TeeLogger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
-	// Note: A tee logger must be passed here otherwise you risk causing panics.
-
+func NewGen3Interface(profile string, logger *logs.TeeLogger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
 	config := conf.NewConfigure(logger)
-
 	cred, err := config.Load(profile)
 	if err != nil {
 		return nil, err
@@ -57,15 +54,15 @@ func NewGen3Interface(ctx context.Context, profile string, logger *logs.TeeLogge
 		return nil, fmt.Errorf("invalid credential: %v", err)
 	}
 
-	client := api.NewFunctions(
-		ctx,
+	apiClient := api.NewFunctions(
 		config,
-		req.NewRequestInterface(ctx, logger),
+		request.NewRequestInterface(logger, cred),
+		cred,
 		logger,
 	)
 
 	return &Gen3Client{
-		FunctionInterface: client,
+		FunctionInterface: apiClient,
 		credential:        cred,
 		logger:            logger,
 	}, nil

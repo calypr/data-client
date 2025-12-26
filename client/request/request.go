@@ -1,13 +1,10 @@
-package req
+package request
 
 //go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/data-client/client/request RequestInterface
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"time"
@@ -25,46 +22,46 @@ type Request struct {
 
 type RequestInterface interface {
 	New(method, url string) *RequestBuilder
-	Do(req *RequestBuilder) (*http.Response, error)
-	DoAuthenticated(rb *RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error)
+	Do(ctx context.Context, req *RequestBuilder) (*http.Response, error)
 }
 
-func NewRequestInterface(ctx context.Context, logger logs.Logger) RequestInterface {
+func NewRequestInterface(
+	logger logs.Logger,
+	cred *conf.Credential,
+) RequestInterface {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 3
-	retryClient.RetryWaitMin = 1 * time.Second
-	retryClient.RetryWaitMax = 30 * time.Second
-	retryClient.Backoff = retryablehttp.DefaultBackoff
-	retryClient.CheckRetry = retryablehttp.DefaultRetryPolicy
-	retryClient.Logger = nil
+	retryClient.Logger = logger
+
+	baseTransport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   2 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+	}
+
+	authTransport := &AuthTransport{
+		Base: baseTransport,
+		Cred: cred,
+	}
 
 	retryClient.HTTPClient = &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   2 * time.Second, // Max time to wait for TCP connect
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     90 * time.Second,
-		},
+		Timeout:   5 * time.Second,
+		Transport: authTransport, // The outer shell is now AuthTransport
 	}
+
 	return &Request{
-		Ctx:         ctx,
 		RetryClient: retryClient,
 		Logs:        logger,
 	}
 }
 
-func (r *Request) Do(rb *RequestBuilder) (*http.Response, error) {
+func (r *Request) Do(ctx context.Context, rb *RequestBuilder) (*http.Response, error) {
 	// Prepare body reader
-	var bodyReader io.Reader
-	if len(rb.Body) > 0 {
-		bodyReader = bytes.NewBuffer(rb.Body)
-	}
 
-	httpReq, err := http.NewRequestWithContext(r.Ctx, rb.Method, rb.Url, bodyReader)
+	httpReq, err := http.NewRequestWithContext(ctx, rb.Method, rb.Url, rb.Body)
 	if err != nil {
 		return nil, errors.New("failed to create HTTP request: " + err.Error())
 	}
@@ -86,26 +83,6 @@ func (r *Request) Do(rb *RequestBuilder) (*http.Response, error) {
 	resp, err := r.RetryClient.Do(retryReq)
 	if err != nil {
 		return resp, errors.New("request failed after retries: " + err.Error())
-	}
-
-	return resp, nil
-}
-
-func (r *Request) DoAuthenticated(rb *RequestBuilder, cred *conf.Credential, refreshToken func(*conf.Credential) error) (*http.Response, error) {
-	resp, err := r.Do(rb)
-	if err != nil {
-		return resp, err
-	}
-
-	// Only attempt refresh+retry if we got 401,403/503 AND we have a way to refresh
-	if (resp.StatusCode == 401 || resp.StatusCode == 503 || resp.StatusCode == 403) && cred.APIKey != "" {
-		resp.Body.Close()
-
-		if err := refreshToken(cred); err != nil {
-			return nil, fmt.Errorf("token refresh failed: %w", err)
-		}
-		rb = rb.WithToken(cred.AccessToken)
-		return r.Do(rb)
 	}
 
 	return resp, nil

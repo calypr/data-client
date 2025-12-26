@@ -1,22 +1,20 @@
 package download
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
-	client "github.com/calypr/data-client/client/client"
+	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	req "github.com/calypr/data-client/client/request"
+	"github.com/calypr/data-client/client/request"
 )
 
 // GetDownloadResponse gets presigned URL and prepares HTTP response
-func GetDownloadResponse(g3 client.Gen3Interface, fdr *common.FileDownloadResponseObject, protocolText string) error {
-	url, err := resolvePresignedURL(g3, fdr.GUID, protocolText)
+func GetDownloadResponse(ctx context.Context, g3 client.Gen3Interface, fdr *common.FileDownloadResponseObject, protocolText string) error {
+	url, err := g3.GetPresignedUrl(ctx, fdr.GUID, protocolText)
 	if err != nil {
 		return err
 	}
@@ -28,68 +26,7 @@ func GetDownloadResponse(g3 client.Gen3Interface, fdr *common.FileDownloadRespon
 		}
 	}
 
-	return makeDownloadRequest(g3, fdr)
-}
-
-func resolvePresignedURL(g3 client.Gen3Interface, guid, protocolText string) (string, error) {
-	hasShepherd, err := g3.CheckForShepherdAPI(g3.GetCredential()) // error already logged upstream
-	if err == nil && hasShepherd {
-		return resolveFromShepherd(g3, guid)
-	}
-	return resolveFromFence(g3, guid, protocolText)
-}
-
-func resolveFromShepherd(g3 client.Gen3Interface, guid string) (string, error) {
-	cred := g3.GetCredential()
-	r, err := g3.DoAuthenticatedRequest(
-		g3.GetCredential(),
-		&req.RequestBuilder{
-			Url:    cred.APIEndpoint + common.ShepherdEndpoint + "/objects/" + guid + "/download",
-			Method: http.MethodGet,
-			Token:  cred.AccessToken,
-		},
-	)
-	if err != nil {
-		return "", err
-	}
-	defer r.Body.Close()
-
-	if r.StatusCode != 200 {
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(r.Body)
-		return "", errors.New("Shepherd non-200: " + strconv.Itoa(r.StatusCode) + " — " + buf.String())
-	}
-
-	var resp struct {
-		URL string `json:"url"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil || resp.URL == "" {
-		return "", errors.New("Failed to parse Shepherd download URL")
-	}
-	return resp.URL, nil
-}
-
-func resolveFromFence(g3 client.Gen3Interface, guid, protocolText string) (string, error) {
-	fmt.Println("GUID IN RESOLVE FROM FENCE: ", guid)
-	cred := g3.GetCredential()
-	resp, err := g3.DoAuthenticatedRequest(
-		g3.GetCredential(),
-		&req.RequestBuilder{
-			Url:    cred.APIEndpoint + common.FenceDataDownloadEndpoint + "/" + guid + protocolText,
-			Method: http.MethodGet,
-			Token:  cred.AccessToken,
-		},
-	)
-	if err != nil {
-		return "", errors.New("Failed to get URL from Fence via DoAuthenticatedRequest: " + err.Error())
-	}
-	defer resp.Body.Close()
-
-	msg, err := g3.ParseFenceURLResponse(resp)
-	if err != nil || msg.URL == "" {
-		return "", errors.New("Failed to get URL from Fence via ParseFenceURLResponse: " + err.Error())
-	}
-	return msg.URL, nil
+	return makeDownloadRequest(ctx, g3, fdr)
 }
 
 func isCloudPresignedURL(url string) bool {
@@ -104,15 +41,15 @@ func supportsRange(url string) bool {
 	return true
 }
 
-func makeDownloadRequest(g3 client.Gen3Interface, fdr *common.FileDownloadResponseObject) error {
+func makeDownloadRequest(ctx context.Context, g3 client.Gen3Interface, fdr *common.FileDownloadResponseObject) error {
 	headers := map[string]string{}
 	if fdr.Range > 0 {
 		headers["Range"] = "bytes=" + strconv.FormatInt(fdr.Range, 10) + "-"
 	}
 
-	resp, err := g3.DoAuthenticatedRequest(
-		g3.GetCredential(),
-		&req.RequestBuilder{
+	resp, err := g3.Do(
+		ctx,
+		&request.RequestBuilder{
 			Method:  http.MethodGet,
 			Url:     fdr.URL,
 			Headers: headers,

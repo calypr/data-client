@@ -24,12 +24,12 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			g3i, err := client.NewGen3Interface(context.Background(), profile, logger)
+			g3i, err := client.NewGen3Interface(profile, logger)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
-			resourceAccess, err := g3i.CheckPrivileges(g3i.GetCredential())
+			resourceAccess, err := g3i.CheckPrivileges(context.Background())
 			if err != nil {
 				g3i.Logger().Fatalf("Fatal authentication error: %s\n", err)
 			} else {
