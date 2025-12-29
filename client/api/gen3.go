@@ -47,6 +47,7 @@ type FunctionInterface interface {
 
 	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
 	ExportCredential(ctx context.Context, cred *conf.Credential) error
+	NewAccessToken(ctx context.Context) error
 }
 
 func (f *Functions) NewAccessToken(ctx context.Context) error {
