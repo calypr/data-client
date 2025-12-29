@@ -2,253 +2,251 @@ package tests
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/api"
+	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/mocks"
+	req "github.com/calypr/data-client/client/request"
 	"go.uber.org/mock/gomock"
 )
 
-func TestDoRequestWithSignedHeaderNoProfile(t *testing.T) {
-
+func TestDoAuthenticatedRequest_NoProfile(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig}
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "", AccessToken: "", APIEndpoint: ""}
+	emptyCred := &conf.Credential{}
 
-	_, err := testFunction.DoRequestWithSignedHeader(&profileConfig, "/user/data/download/test_uuid", "", nil)
-
+	// Expect error when credentials are incomplete
+	_, err := mockFuncs.DoAuthenticatedRequest(emptyCred, &req.RequestBuilder{
+		Url: "/user/data/download/test_uuid",
+	})
 	if err == nil {
-		t.Fail()
+		t.Error("Expected error due to missing credentials, but got nil")
 	}
 }
 
-func TestDoRequestWithSignedHeaderGoodToken(t *testing.T) {
+func TestDoAuthenticatedRequest_GoodToken(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
 
-	profileConfig := jwt.Credential{Profile: "test", KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com", UseShepherd: "false", MinShepherdVersion: ""}
-	mockedResp := &http.Response{
-		Body:       io.NopCloser(bytes.NewBufferString("{\"url\": \"http://www.test.com/user/data/download/test_uuid\"}")),
-		StatusCode: 200,
+	cred := &conf.Credential{
+		APIKey:      "fake_api_key",
+		AccessToken: "non_expired_token",
+		APIEndpoint: "https://example.com",
 	}
 
-	mockRequest.EXPECT().MakeARequest("GET", "http://www.test.com/user/data/download/test_uuid", "non_expired_token", "", gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(1)
+	mockedResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewBufferString(`{"url": "https://signed.url"}`)),
+	}
 
-	_, err := testFunction.DoRequestWithSignedHeader(&profileConfig, "/user/data/download/test_uuid", "", nil)
+	mockFuncs.EXPECT().
+		DoAuthenticatedRequest(cred, gomock.Any()).
+		Return(mockedResp, nil).
+		Times(1)
+
+	resp, err := mockFuncs.DoAuthenticatedRequest(cred, &req.RequestBuilder{
+		Url: "/user/data/download/test_uuid",
+	})
 
 	if err != nil {
-		t.Fail()
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 }
 
-func TestDoRequestWithSignedHeaderCreateNewToken(t *testing.T) {
-
+func TestDoAuthenticatedRequest_MissingToken_CreatesNew(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
+	mockConfig := mocks.NewMockManagerInterface(mockCtrl)
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "", APIEndpoint: "http://www.test.com"}
-	mockedResp := &http.Response{
-		Body:       io.NopCloser(bytes.NewBufferString("{\"url\": \"www.test.com/user/data/download/\"}")),
-		StatusCode: 200,
+	// Assuming Functions struct has both Config and Functions fields
+	testFunction := &api.Functions{
+		Config: mockConfig,
 	}
 
-	mockConfig.EXPECT().UpdateConfigFile(profileConfig).Times(1)
-	mockRequest.EXPECT().RequestNewAccessToken("http://www.test.com/user/credentials/api/access_token", &profileConfig).Return(nil).Times(1)
-	mockRequest.EXPECT().MakeARequest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(1)
+	cred := &conf.Credential{
+		APIKey:      "fake_api_key",
+		AccessToken: "", // empty → should trigger token creation
+		APIEndpoint: "https://example.com",
+	}
 
-	_, err := testFunction.DoRequestWithSignedHeader(&profileConfig, "/user/data/download/test_uuid", "", nil)
+	mockedResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewBufferString(`{"url": "https://signed.url"}`)),
+	}
+
+	// Expect Save to be called if new token is generated and saved
+	mockConfig.EXPECT().Save(cred).AnyTimes()
+
+	mockFuncs.EXPECT().
+		DoAuthenticatedRequest(cred, gomock.Any()).
+		Return(mockedResp, nil).
+		Times(1)
+
+	_, err := testFunction.DoAuthenticatedRequest(cred, &req.RequestBuilder{
+		Url: "/user/data/download/test_uuid",
+	})
 
 	if err != nil {
-		t.Fail()
+		t.Fatalf("Unexpected error: %v", err)
 	}
 }
 
-func TestDoRequestWithSignedHeaderRefreshToken(t *testing.T) {
-
+func TestCheckPrivileges_NoProfile(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "expired_token", APIEndpoint: "http://www.test.com"}
-	mockedResp := &http.Response{
-		Body:       io.NopCloser(bytes.NewBufferString("{\"url\": \"www.test.com/user/data/download/\"}")),
-		StatusCode: 401,
-	}
+	emptyCred := &conf.Credential{}
 
-	mockConfig.EXPECT().UpdateConfigFile(profileConfig).Times(1)
-	mockRequest.EXPECT().RequestNewAccessToken("http://www.test.com/user/credentials/api/access_token", &profileConfig).Return(nil).Times(1)
-	mockRequest.EXPECT().MakeARequest(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(2)
-
-	_, err := testFunction.DoRequestWithSignedHeader(&profileConfig, "/user/data/download/test_uuid", "", nil)
-
-	if err != nil && !strings.Contains(err.Error(), "401") {
-		t.Fail()
-	}
-
-}
-
-func TestCheckPrivilegesNoProfile(t *testing.T) {
-
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig}
-
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "", AccessToken: "", APIEndpoint: ""}
-
-	_, _, err := testFunction.CheckPrivileges(&profileConfig)
-
+	_, err := mockFuncs.CheckPrivileges(emptyCred)
 	if err == nil {
-		t.Errorf("Expected an error on missing credentials in configuration, but not received")
+		t.Error("Expected error when credentials are missing, got nil")
 	}
 }
 
-func TestCheckPrivilegesNoAccess(t *testing.T) {
-
+func TestCheckPrivileges_NoAccess(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
-	mockedResp := &http.Response{
-		Body:       io.NopCloser(bytes.NewBufferString("{\"project_access\": {}}")),
+	cred := &conf.Credential{
+		APIKey:      "fake_api_key",
+		AccessToken: "valid_token",
+		APIEndpoint: "https://example.com",
+	}
+
+	userResp := &http.Response{
 		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(`{"project_access": {}}`)),
 	}
 
-	mockRequest.EXPECT().MakeARequest("GET", "http://www.test.com/user/user", "non_expired_token", "", gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(1)
+	mockFuncs.EXPECT().
+		DoAuthenticatedRequest(cred, gomock.Any()).
+		Return(userResp, nil)
 
-	_, receivedAccess, err := testFunction.CheckPrivileges(&profileConfig)
-
-	expectedAccess := make(map[string]any)
-
+	privileges, err := mockFuncs.CheckPrivileges(cred)
 	if err != nil {
-		t.Errorf("Expected no errors, received an error \"%v\"", err)
-	} else if !reflect.DeepEqual(receivedAccess, expectedAccess) {
-		t.Errorf("Expected no user access, received %v", receivedAccess)
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	expected := make(map[string]any)
+	if !reflect.DeepEqual(privileges, expected) {
+		t.Errorf("Expected empty privileges, got %v", privileges)
 	}
 }
 
-func TestCheckPrivilegesGrantedAccess(t *testing.T) {
-
+func TestCheckPrivileges_GrantedAccess_ProjectAccess(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
 
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
-
-	grantedAccessJSON := `{
-		"project_access":
-			{
-				"test_project": ["read", "create","read-storage","update","delete"]
-			}
-		}`
-
-	mockedResp := &http.Response{
-		Body:       io.NopCloser(bytes.NewBufferString(grantedAccessJSON)),
-		StatusCode: 200,
+	cred := &conf.Credential{
+		APIKey:      "fake_api_key",
+		AccessToken: "valid_token",
+		APIEndpoint: "https://example.com",
 	}
 
-	mockRequest.EXPECT().MakeARequest("GET", "http://www.test.com/user/user", "non_expired_token", "", gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(1)
-
-	_, expectedAccess, err := testFunction.CheckPrivileges(&profileConfig)
-
-	receivedAccess := make(map[string]any)
-	receivedAccess["test_project"] = []any{
-		"read",
-		"create",
-		"read-storage",
-		"update",
-		"delete"}
-
-	if err != nil {
-		t.Errorf("Expected no errors, received an error \"%v\"", err)
-	} else if !reflect.DeepEqual(expectedAccess, receivedAccess) {
-		t.Errorf(`Expected user access and received user access are not the same.
-        Expected: %v
-        Received: %v`, expectedAccess, receivedAccess)
-	}
-}
-
-// If both `authz` and `project_access` section exists, `authz` takes precedence
-func TestCheckPrivilegesGrantedAccessAuthz(t *testing.T) {
-
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockConfig := mocks.NewMockConfigureInterface(mockCtrl)
-	mockRequest := mocks.NewMockRequestInterface(mockCtrl)
-	testFunction := &jwt.Functions{Config: mockConfig, Request: mockRequest}
-
-	profileConfig := jwt.Credential{KeyId: "", APIKey: "fake_api_key", AccessToken: "non_expired_token", APIEndpoint: "http://www.test.com"}
-
-	grantedAccessJSON := `{
-		"authz": {
-			"test_project":[
-				{"method":"create", "service":"*"},
-				{"method":"delete", "service":"*"},
-				{"method":"read", "service":"*"},
-				{"method":"read-storage", "service":"*"},
-				{"method":"update", "service":"*"},
-				{"method":"upload", "service":"*"}
-			]
-		},
+	jsonBody := `{
 		"project_access": {
-			"test_project": ["read", "create","read-storage","update","delete"]
+			"test_project": ["read", "create", "read-storage", "update", "delete"]
 		}
 	}`
 
-	mockedResp := &http.Response{
-		Body:       io.NopCloser(bytes.NewBufferString(grantedAccessJSON)),
+	userResp := &http.Response{
 		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(jsonBody)),
 	}
 
-	mockRequest.EXPECT().MakeARequest("GET", "http://www.test.com/user/user", "non_expired_token", "", gomock.Any(), gomock.Any(), false).Return(mockedResp, nil).Times(1)
+	mockFuncs.EXPECT().
+		DoAuthenticatedRequest(cred, gomock.Any()).
+		Return(userResp, nil)
 
-	_, expectedAccess, err := testFunction.CheckPrivileges(&profileConfig)
-
-	receivedAccess := make(map[string]any)
-	receivedAccess["test_project"] = []map[string]any{
-		{"method": "create", "service": "*"},
-		{"method": "delete", "service": "*"},
-		{"method": "read", "service": "*"},
-		{"method": "read-storage", "service": "*"},
-		{"method": "update", "service": "*"},
-		{"method": "upload", "service": "*"},
-	}
-
+	privileges, err := mockFuncs.CheckPrivileges(cred)
 	if err != nil {
-		t.Errorf("Expected no errors, received an error \"%v\"", err)
-		// don't use DeepEqual since expectedAccess is []interface {} and receivedAccess is []map[string]interface {}, just check for contents
-	} else if fmt.Sprint(expectedAccess) != fmt.Sprint(receivedAccess) {
-		t.Errorf(`Expected user access and received user access are not the same.
-        Expected: %v
-        Received: %v`, expectedAccess, receivedAccess)
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	expected := map[string]any{
+		"test_project": []any{"read", "create", "read-storage", "update", "delete"},
+	}
+
+	if !reflect.DeepEqual(privileges, expected) {
+		t.Errorf("Privileges mismatch.\nExpected: %v\nGot:      %v", expected, privileges)
+	}
+}
+
+func TestCheckPrivileges_GrantedAccess_AuthzTakesPrecedence(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockFuncs := mocks.NewMockFunctionInterface(mockCtrl)
+
+	cred := &conf.Credential{
+		APIKey:      "fake_api_key",
+		AccessToken: "valid_token",
+		APIEndpoint: "https://example.com",
+	}
+
+	jsonBody := `{
+		"authz": {
+			"test_project": [
+				{"method": "create", "service": "*"},
+				{"method": "delete", "service": "*"},
+				{"method": "read", "service": "*"},
+				{"method": "read-storage", "service": "*"},
+				{"method": "update", "service": "*"},
+				{"method": "upload", "service": "*"}
+			]
+		},
+		"project_access": {
+			"test_project": ["read", "create", "read-storage", "update", "delete"]
+		}
+	}`
+
+	userResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(jsonBody)),
+	}
+
+	mockFuncs.EXPECT().
+		DoAuthenticatedRequest(cred, gomock.Any()).
+		Return(userResp, nil)
+
+	privileges, err := mockFuncs.CheckPrivileges(cred)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	expected := map[string]any{
+		"test_project": []any{
+			map[string]any{"method": "create", "service": "*"},
+			map[string]any{"method": "delete", "service": "*"},
+			map[string]any{"method": "read", "service": "*"},
+			map[string]any{"method": "read-storage", "service": "*"},
+			map[string]any{"method": "update", "service": "*"},
+			map[string]any{"method": "upload", "service": "*"},
+		},
+	}
+
+	if !reflect.DeepEqual(privileges, expected) {
+		t.Errorf("Authz privileges should take precedence.\nExpected: %v\nGot:      %v", expected, privileges)
 	}
 }

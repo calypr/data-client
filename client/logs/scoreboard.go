@@ -1,15 +1,10 @@
 package logs
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"text/tabwriter"
 )
-
-type key int
-
-const scoreboardKey key = 0
 
 // Scoreboard holds retry statistics
 type Scoreboard struct {
@@ -72,17 +67,4 @@ func (s *Scoreboard) PrintSB() {
 	}
 	fmt.Fprintf(w, "TOTAL\t%d\n", total)
 	w.Flush()
-}
-
-// Context helpers — so you don't have to pass scoreboard around
-
-func NewSBContext(parent context.Context, sb *Scoreboard) context.Context {
-	return context.WithValue(parent, scoreboardKey, sb)
-}
-
-func FromSBContext(ctx context.Context) (*Scoreboard, error) {
-	if sb, ok := ctx.Value(scoreboardKey).(*Scoreboard); ok {
-		return sb, nil
-	}
-	return nil, fmt.Errorf("Scoreboard is not of type Scoreboard")
 }

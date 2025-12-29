@@ -1,112 +1,25 @@
 package common
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/go-multierror"
-	"github.com/vbauerster/mpb/v8"
 )
 
-// DefaultUseShepherd sets whether gen3client will attempt to use the Shepherd / Object Management API
-// endpoints if available.
-// The user can override this default using the `data-client configure` command.
-const DefaultUseShepherd = false
-
-// DefaultMinShepherdVersion is the minimum version of Shepherd that the gen3client will use.
-// Before attempting to use Shepherd, the client will check for Shepherd's version, and if the version is
-// below this number the gen3client will instead warn the user and fall back to fence/indexd.
-// The user can override this default using the `data-client configure` command.
-const DefaultMinShepherdVersion = "2.0.0"
-
-// ShepherdEndpoint is the endpoint postfix for SHEPHERD / the Object Management API
-const ShepherdEndpoint = "/mds"
-
-// ShepherdVersionEndpoint is the endpoint used to check what version of Shepherd a commons has deployed
-const ShepherdVersionEndpoint = "/mds/version"
-
-// IndexdIndexEndpoint is the endpoint postfix for INDEXD index
-const IndexdIndexEndpoint = "/index/index"
-
-// FenceUserEndpoint is the endpoint postfix for FENCE user
-const FenceUserEndpoint = "/user/user"
-
-// FenceDataEndpoint is the endpoint postfix for FENCE data
-const FenceDataEndpoint = "/user/data"
-
-// FenceAccessTokenEndpoint is the endpoint postfix for FENCE access token
-const FenceAccessTokenEndpoint = "/user/credentials/api/access_token"
-
-// FenceDataUploadEndpoint is the endpoint postfix for FENCE data upload
-const FenceDataUploadEndpoint = FenceDataEndpoint + "/upload"
-
-// FenceDataDownloadEndpoint is the endpoint postfix for FENCE data download
-const FenceDataDownloadEndpoint = FenceDataEndpoint + "/download"
-
-// FenceDataMultipartInitEndpoint is the endpoint postfix for FENCE multipart init
-const FenceDataMultipartInitEndpoint = FenceDataEndpoint + "/multipart/init"
-
-// FenceDataMultipartUploadEndpoint is the endpoint postfix for FENCE multipart upload
-const FenceDataMultipartUploadEndpoint = FenceDataEndpoint + "/multipart/upload"
-
-// FenceDataMultipartCompleteEndpoint is the endpoint postfix for FENCE multipart complete
-const FenceDataMultipartCompleteEndpoint = FenceDataEndpoint + "/multipart/complete"
-
-// PathSeparator is os dependent path separator char
-const PathSeparator = string(os.PathSeparator)
-
-// DefaultTimeout is used to set timeout value for http client
-const DefaultTimeout = 120 * time.Second
-
-// FileUploadRequestObject defines a object for file upload
-type FileUploadRequestObject struct {
-	FilePath     string
-	Filename     string
-	FileMetadata FileMetadata
-	GUID         string
-	PresignedURL string
-	Request      *http.Request
-	Progress     *mpb.Progress
-	Bar          *mpb.Bar
-	Bucket       string `json:"bucket,omitempty"`
-}
-
-// FileDownloadResponseObject defines a object for file download
-type FileDownloadResponseObject struct {
-	DownloadPath string
-	Filename     string
-	GUID         string
-	URL          string
-	Range        int64
-	Overwrite    bool
-	Skip         bool
-	Response     *http.Response
-	Writer       io.Writer
-}
-
-// FileMetadata defines the metadata accepted by the new object management API, Shepherd
-type FileMetadata struct {
-	Authz   []string `json:"authz"`
-	Aliases []string `json:"aliases"`
-	// Metadata is an encoded JSON string of any arbitrary metadata the user wishes to upload.
-	Metadata map[string]any `json:"metadata"`
-}
-
-// RetryObject defines a object for retry upload
-type RetryObject struct {
-	FilePath     string
-	Filename     string
-	FileMetadata FileMetadata
-	GUID         string
-	RetryCount   int
-	Multipart    bool
-	Bucket       string
+func ToJSONReader(payload any) (io.Reader, error) {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode JSON payload: %w", err)
+	}
+	return &buf, nil
 }
 
 // ParseRootPath parses dirname that has "~" in the beginning
