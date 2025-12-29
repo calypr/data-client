@@ -49,20 +49,25 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 	}
 	filename := filepath.Base(filePath)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		if enableLogs {
+			sb := g3i.Logger().Scoreboard()
+			sb.IncrementSB(len(sb.Counts))
+			sb.PrintSB()
+		}
 		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
-		sb.PrintSB()
 		return fmt.Errorf("[ERROR] The file you specified \"%s\" does not exist locally\n", filePath)
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
-		sb.PrintSB()
+		if enableLogs {
+			sb := g3i.Logger().Scoreboard()
+			sb.IncrementSB(len(sb.Counts))
+			sb.PrintSB()
+		}
 		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
 		g3i.Logger().Println("File open error: " + err.Error())
+
 		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s\n", filePath, err.Error())
 	}
 	defer file.Close()
@@ -71,11 +76,12 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 
 	furObject, err = generateUploadRequest(ctx, g3i, furObject, file, nil)
 	if err != nil {
-		file.Close()
+		if enableLogs {
+			sb := g3i.Logger().Scoreboard()
+			sb.IncrementSB(len(sb.Counts))
+			sb.PrintSB()
+		}
 		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, common.FileMetadata{}, furObject.GUID, 0, false)
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
-		sb.PrintSB()
 		g3i.Logger().Fatalf("Error occurred during request generation: %s", err.Error())
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
 	}
@@ -86,12 +92,15 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 
 	_, err = uploadPart(ctx, furObject.PresignedURL, bytes.NewReader(jsonData), int64(len(jsonData)))
 	if err != nil {
-		sb := g3i.Logger().Scoreboard()
-		sb.IncrementSB(len(sb.Counts))
+		if enableLogs {
+			sb := g3i.Logger().Scoreboard()
+			sb.IncrementSB(len(sb.Counts))
+		}
 		return fmt.Errorf("[ERROR] Error uploading file %s: %s\n", filePath, err.Error())
-	} else {
-		g3i.Logger().Scoreboard().IncrementSB(0)
 	}
-	g3i.Logger().Scoreboard().PrintSB()
+	if enableLogs {
+		g3i.Logger().Scoreboard().IncrementSB(0)
+		g3i.Logger().Scoreboard().PrintSB()
+	}
 	return nil
 }
