@@ -43,7 +43,7 @@ type FunctionInterface interface {
 	CheckPrivileges(ctx context.Context) (map[string]any, error)
 	CheckForShepherdAPI(ctx context.Context) (bool, error)
 	DeleteRecord(ctx context.Context, guid string) (string, error)
-	GetPresignedUrl(ctx context.Context, guid, protocolText string) (string, error)
+	GetDownloadPresignedUrl(ctx context.Context, guid, protocolText string) (string, error)
 
 	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
 	ExportCredential(ctx context.Context, cred *conf.Credential) error
@@ -86,7 +86,7 @@ func (f *Functions) NewAccessToken(ctx context.Context) error {
 	return nil
 }
 
-func (f *Functions) GetPresignedUrl(ctx context.Context, guid, protocolText string) (string, error) {
+func (f *Functions) GetDownloadPresignedUrl(ctx context.Context, guid, protocolText string) (string, error) {
 	hasShepherd, err := f.CheckForShepherdAPI(ctx) // error already logged upstream
 	if err == nil && hasShepherd {
 		return f.resolveFromShepherd(ctx, guid)
@@ -211,7 +211,6 @@ func (f *Functions) CheckPrivileges(ctx context.Context) (map[string]any, error)
 	defer resp.Body.Close()
 
 	str := ResponseToString(resp)
-	fmt.Println("STR: ", str)
 	err = json.Unmarshal([]byte(str), &data)
 	if err != nil {
 		return nil, errors.New("Error occurred when unmarshalling response: " + err.Error())
@@ -242,7 +241,7 @@ func (f *Functions) DeleteRecord(ctx context.Context, guid string) (string, erro
 
 	resp, err := f.Do(ctx,
 		&request.RequestBuilder{
-			Url:    f.Cred.APIEndpoint + "/" + endpoint,
+			Url:    f.Cred.APIEndpoint + endpoint,
 			Method: http.MethodDelete,
 			Token:  f.Cred.AccessToken,
 		},
@@ -261,7 +260,6 @@ func (f *Functions) DeleteRecord(ctx context.Context, guid string) (string, erro
 		}
 	}
 	return msg, nil
-
 }
 
 func (f *Functions) ExportCredential(ctx context.Context, cred *conf.Credential) error {
@@ -320,17 +318,6 @@ func (f *Functions) ExportCredential(ctx context.Context, cred *conf.Credential)
 	return nil
 }
 
-func (f *Functions) ResolveDownloadURL(ctx context.Context, guid string, protocol string) (string, error) {
-	// 1. Check for Shepherd
-	hasShepherd, _ := f.CheckForShepherdAPI(ctx)
-	if hasShepherd {
-		return f.resolveFromShepherd(ctx, guid)
-	}
-
-	// 2. Fallback to Fence
-	return f.resolveFromFence(ctx, guid, protocol)
-}
-
 func (f *Functions) resolveFromShepherd(ctx context.Context, guid string) (string, error) {
 	// We use f.Cred.APIEndpoint because the struct owns the credential state
 	url := fmt.Sprintf("%s%s/objects/%s/download", f.Cred.APIEndpoint, common.ShepherdEndpoint, guid)
@@ -374,5 +361,6 @@ func (f *Functions) resolveFromFence(ctx context.Context, guid, protocolText str
 	if err != nil || msg.URL == "" {
 		return "", errors.New("Failed to get URL from Fence via ParseFenceURLResponse: " + err.Error())
 	}
+
 	return msg.URL, nil
 }

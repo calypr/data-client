@@ -31,7 +31,7 @@ func init() {
 		Use:     "download-multiple",
 		Short:   "Download multiple of files from a specified manifest",
 		Long:    `Get presigned URLs for multiple of files specified in a manifest file and then download all of them.`,
-		Example: `./data-client download-multiple --profile=<profile-name> --manifest=<path-to-manifest/manifest.json> --download-path=<path-to-file-dir/>`,
+		Example: `./data-client download-multiple --profile <profile-name> --manifest <path-to-manifest/manifest.json> --download-path <path-to-file-dir/>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 

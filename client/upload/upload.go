@@ -3,41 +3,87 @@ package upload
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/client/request"
 	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
-func UploadSingleFileWrapper(ctx context.Context, profile, bucket, filePath, guid string, progress bool) error {
-	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
-	defer closer()
+// Upload is a unified catch-all function that automatically chooses between
+// single-part and multipart upload based on file size.
+func Upload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
+	g3.Logger().Printf("Processing Upload Request for: %s\n", req.FilePath)
 
-	g3, err := client.NewGen3Interface(
-		profile,
-		logger,
-	)
+	file, err := os.Open(req.FilePath)
 	if err != nil {
-		fmt.Println("HELLO WE HERE: ", err)
-		return fmt.Errorf("failed to initialize Gen3 interface: %w", err)
+		return fmt.Errorf("cannot open file %s: %w", req.FilePath, err)
 	}
+	defer file.Close()
 
-	absPath, err := common.GetAbsolutePath(filePath)
+	stat, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("invalid file path: %w", err)
+		return fmt.Errorf("cannot stat file: %w", err)
 	}
 
-	fileInfo := common.FileUploadRequestObject{
-		FilePath:     absPath,
-		Filename:     filepath.Base(absPath),
-		GUID:         guid,
-		FileMetadata: common.FileMetadata{},
+	fileSize := stat.Size()
+	if fileSize == 0 {
+		return fmt.Errorf("file is empty: %s", req.Filename)
 	}
 
-	return MultipartUpload(ctx, g3, fileInfo, progress)
+	// Use Single-Part if file is smaller than 5GB (or your defined limit)
+	if fileSize < 5*common.GB {
+		g3.Logger().Printf("File size %d bytes (< 5GB), performing single-part upload\n", fileSize)
+		UploadSingle(ctx, g3.GetCredential().Profile, req.GUID, req.FilePath, req.Bucket, true)
+	}
+	g3.Logger().Printf("File size %d bytes (>= 5GB), performing multipart upload\n", fileSize)
+	return MultipartUpload(ctx, g3, req, file, showProgress)
+}
+
+func performSinglePartUpload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
+	// 1. Get the Presigned URL
+	respObj, err := GeneratePresignedUploadURL(ctx, g3, req.Filename, req.FileMetadata, req.Bucket)
+	if err != nil {
+		return fmt.Errorf("failed to generate single-part URL: %w", err)
+	}
+
+	req.GUID = respObj.GUID
+	req.PresignedURL = respObj.URL
+
+	// 2. Open file and setup progress
+	file, _ := os.Open(req.FilePath)
+	defer file.Close()
+
+	var body io.Reader = file
+	var p *mpb.Progress
+	if showProgress {
+		p = mpb.New(mpb.WithOutput(os.Stdout))
+		fi, _ := file.Stat()
+		bar := p.AddBar(fi.Size(),
+			mpb.PrependDecorators(decor.Name(req.Filename+" ")),
+			mpb.AppendDecorators(decor.Percentage()),
+		)
+		body = bar.ProxyReader(file)
+	}
+
+	resp, err := g3.Do(ctx, &request.RequestBuilder{
+		Method: http.MethodPut,
+		Url:    req.PresignedURL,
+		Body:   body,
+	})
+
+	if p != nil {
+		p.Wait()
+	}
+
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("single-part upload failed")
+	}
+	return nil
 }
 
 // UploadSingleFile handles single-part upload with progress
@@ -53,7 +99,7 @@ func UploadSingleFile(ctx context.Context, g3 client.Gen3Interface, req common.F
 		return fmt.Errorf("file exceeds 5GB limit")
 	}
 
-	respObj, err := GeneratePresignedURL(ctx, g3, req.Filename, req.FileMetadata, req.Bucket)
+	respObj, err := GeneratePresignedUploadURL(ctx, g3, req.Filename, req.FileMetadata, req.Bucket)
 	if err != nil {
 		return err
 	}
@@ -75,5 +121,5 @@ func UploadSingleFile(ctx context.Context, g3 client.Gen3Interface, req common.F
 		return err
 	}
 
-	return MultipartUpload(ctx, g3, fur, showProgress)
+	return MultipartUpload(ctx, g3, fur, file, showProgress)
 }

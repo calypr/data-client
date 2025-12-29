@@ -35,10 +35,6 @@ func RetryFailedUploads(ctx context.Context, g3 client.Gen3Interface, failedMap 
 
 	// Queue only non-already-succeeded files
 	for _, ro := range failedMap {
-		if common.AlreadySucceededFromFile(ro.FilePath) {
-			logger.Printf("Already uploaded successfully in another run: %s — skipping\n", ro.FilePath)
-			continue
-		}
 		retryChan <- ro
 	}
 
@@ -64,13 +60,17 @@ func RetryFailedUploads(ctx context.Context, g3 client.Gen3Interface, failedMap 
 			}
 		}
 
+		file, err := os.Open(ro.FilePath)
+		if err != nil {
+			continue
+		}
+
 		// Ensure filename is set
 		if ro.Filename == "" {
 			absPath, _ := common.GetAbsolutePath(ro.FilePath)
 			ro.Filename = filepath.Base(absPath)
 		}
 
-		var err error
 		if ro.Multipart {
 			// Retry multipart
 			req := common.FileUploadRequestObject{
@@ -80,7 +80,7 @@ func RetryFailedUploads(ctx context.Context, g3 client.Gen3Interface, failedMap 
 				FileMetadata: ro.FileMetadata,
 				Bucket:       ro.Bucket,
 			}
-			err = MultipartUpload(ctx, g3, req, true)
+			err = MultipartUpload(ctx, g3, req, file, true)
 			if err == nil {
 				logger.Succeeded(ro.FilePath, req.GUID)
 				if sb != nil {
@@ -90,7 +90,7 @@ func RetryFailedUploads(ctx context.Context, g3 client.Gen3Interface, failedMap 
 			}
 		} else {
 			// Retry single-part
-			respObj, err := GeneratePresignedURL(ctx, g3, ro.Filename, ro.FileMetadata, ro.Bucket)
+			respObj, err := GeneratePresignedUploadURL(ctx, g3, ro.Filename, ro.FileMetadata, ro.Bucket)
 			if err != nil {
 				handleRetryFailure(ctx, g3, ro, retryChan, err)
 				continue

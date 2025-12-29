@@ -28,6 +28,7 @@ type RequestInterface interface {
 func NewRequestInterface(
 	logger logs.Logger,
 	cred *conf.Credential,
+	conf conf.ManagerInterface,
 ) RequestInterface {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 3
@@ -35,20 +36,23 @@ func NewRequestInterface(
 
 	baseTransport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout:   2 * time.Second,
+			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
 	}
 
 	authTransport := &AuthTransport{
-		Base: baseTransport,
-		Cred: cred,
+		Base:    baseTransport,
+		Cred:    cred,
+		Manager: conf,
 	}
 
 	retryClient.HTTPClient = &http.Client{
-		Timeout:   5 * time.Second,
+		Timeout:   0,
 		Transport: authTransport, // The outer shell is now AuthTransport
 	}
 
@@ -74,6 +78,9 @@ func (r *Request) Do(ctx context.Context, rb *RequestBuilder) (*http.Response, e
 		httpReq.Header.Set("Authorization", "Bearer "+rb.Token)
 	}
 
+	if rb.PartSize != 0 {
+		httpReq.ContentLength = rb.PartSize
+	}
 	// Convert to retryablehttp.Request
 	retryReq, err := retryablehttp.FromRequest(httpReq)
 	if err != nil {

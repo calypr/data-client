@@ -56,7 +56,7 @@ func NewGen3Interface(profile string, logger *logs.TeeLogger, opts ...func(*Gen3
 
 	apiClient := api.NewFunctions(
 		config,
-		request.NewRequestInterface(logger, cred),
+		request.NewRequestInterface(logger, cred, config),
 		cred,
 		logger,
 	)

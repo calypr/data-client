@@ -18,9 +18,6 @@ func (t *AuthTransport) NewAccessToken(ctx context.Context) error {
 		return errors.New("APIKey is required to refresh access token")
 	}
 
-	// Important: Use t.Base (the raw transport) for the refresh call.
-	// If you use an http.Client that points back to AuthTransport,
-	// you will trigger an infinite loop/deadlock.
 	refreshClient := &http.Client{Transport: t.Base}
 
 	payload := map[string]string{"api_key": t.Cred.APIKey}
@@ -51,15 +48,17 @@ func (t *AuthTransport) NewAccessToken(ctx context.Context) error {
 		return err
 	}
 
-	// Thread-safe update of the credential
 	t.mu.Lock()
 	t.Cred.AccessToken = result.AccessToken
+	if t.Manager != nil {
+		t.Manager.Save(t.Cred)
+	}
 	t.mu.Unlock()
-
 	return nil
 }
 
 type AuthTransport struct {
+	Manager   conf.ManagerInterface
 	Base      http.RoundTripper
 	Cred      *conf.Credential
 	mu        sync.RWMutex
@@ -67,32 +66,20 @@ type AuthTransport struct {
 }
 
 func (t *AuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// 1. Thread-safe read of the current token
-	t.mu.RLock()
-	token := t.Cred.AccessToken
-	t.mu.RUnlock()
 
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	// 2. Execute the request
 	resp, err := t.Base.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Check for auth failure
-	if resp.StatusCode == http.StatusUnauthorized {
-		resp.Body.Close() // Must close the body before retrying
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadGateway {
+		resp.Body.Close()
 
-		// 4. Critical: tryRefresh handles the "Thundering Herd" problem
-		newToken, refreshErr := t.tryRefresh(req.Context(), token)
+		newToken, refreshErr := t.tryRefresh(req.Context())
 		if refreshErr != nil {
 			return nil, refreshErr
 		}
 
-		// 5. Retry the request with the new token
 		retryReq := req.Clone(req.Context())
 		retryReq.Header.Set("Authorization", "Bearer "+newToken)
 		return t.Base.RoundTrip(retryReq)
@@ -101,21 +88,11 @@ func (t *AuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-func (t *AuthTransport) tryRefresh(ctx context.Context, failedToken string) (string, error) {
+func (t *AuthTransport) tryRefresh(ctx context.Context) (string, error) {
 	// Only one goroutine can enter this block
 	t.refreshMu.Lock()
 	defer t.refreshMu.Unlock()
 
-	// Double-Check: Has someone else refreshed it while we were waiting for the lock?
-	t.mu.RLock()
-	currentToken := t.Cred.AccessToken
-	t.mu.RUnlock()
-
-	if currentToken != failedToken && currentToken != "" {
-		return currentToken, nil // Success, someone else did the work!
-	}
-
-	// If we are here, we are the designated "refresher"
 	if err := t.NewAccessToken(ctx); err != nil {
 		return "", err
 	}

@@ -16,9 +16,7 @@ type FileUploadRequestObject struct {
 	FileMetadata FileMetadata
 	GUID         string
 	PresignedURL string
-	//Request      *http.Request
-
-	Bucket string `json:"bucket,omitempty"`
+	Bucket       string `json:"bucket,omitempty"`
 }
 
 // FileDownloadResponseObject defines a object for file download

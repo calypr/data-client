@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
-	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/calypr/data-client/client/client"
+	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/data-client/client/logs"
 	"github.com/calypr/data-client/client/upload"
 	"github.com/spf13/cobra"
@@ -30,18 +32,41 @@ This method is resilient to network interruptions and supports resume capability
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			// Initialize Gen3 Interface
-			g3i, err := client.NewGen3Interface(profile, logger)
+			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
+			defer closer()
+
+			g3, err := client.NewGen3Interface(
+				profile,
+				logger,
+			)
+
 			if err != nil {
-				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
+				logger.Fatalf("failed to initialize Gen3 interface: %w", err)
 			}
 
-			// Execute the upload
-			// Note: We use the profile string directly as per the original wrapper signature
-			err = upload.UploadSingleFileWrapper(context.Background(), profile, bucketName, filePath, guid, true)
+			absPath, err := common.GetAbsolutePath(filePath)
 			if err != nil {
-				g3i.Logger().Fatalf("Upload failed: %s\n", err)
+				logger.Fatalf("invalid file path: %w", err)
 			}
+
+			fileInfo := common.FileUploadRequestObject{
+				FilePath:     absPath,
+				Filename:     filepath.Base(absPath),
+				GUID:         guid,
+				FileMetadata: common.FileMetadata{},
+			}
+
+			file, err := os.Open(absPath)
+			if err != nil {
+				logger.Fatalf("cannot open file %s: %w", absPath, err)
+			}
+			defer file.Close()
+
+			err = upload.MultipartUpload(context.Background(), g3, fileInfo, file, true)
+			if err != nil {
+				logger.Fatal(err)
+			}
+
 		},
 	}
 

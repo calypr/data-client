@@ -4,12 +4,10 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
@@ -24,7 +22,6 @@ func init() {
 	var uploadPath string
 	var batch bool
 	var numParallel int
-	var forceMultipart bool
 	var includeSubDirName bool
 
 	uploadMultipleCmd := &cobra.Command{
@@ -35,7 +32,7 @@ This command is for uploading to existing GUIDs (e.g., from a downloaded manifes
 For new uploads (new GUIDs generated), use "data-client upload" instead.
 
 Options to run multipart uploads for large files and parallel batch uploading are available.`,
-		Example: `./data-client upload-multiple --profile=<profile-name> --manifest=<path-to-manifest/manifest.json> --upload-path=<path-to-file-dir/> --bucket=<bucket-name> --force-multipart --batch`,
+		Example: `./data-client upload-multiple --profile=<profile-name> --manifest=<path-to-manifest/manifest.json> --upload-path=<path-to-file-dir/> --bucket=<bucket-name> --batch`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Warning message
 			fmt.Printf("Notice: this command uploads to pre-existing GUIDs from a manifest.\nIf you want to upload new files (new GUIDs generated automatically), use \"./data-client upload\" instead.\n\n")
@@ -80,32 +77,8 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			var requests []common.FileUploadRequestObject
 			logger.Println("\nProcessing manifest entries...")
 
-			getFullFilePath := func(filePath string, filename string) (string, error) {
-				filePath, err := common.GetAbsolutePath(filePath)
-				if err != nil {
-					return "", err
-				}
-				fi, err := os.Stat(filePath)
-				if err != nil {
-					return "", err
-				}
-				switch mode := fi.Mode(); {
-				case mode.IsDir():
-					if strings.HasSuffix(filePath, "/") {
-						return filePath + filename, nil
-					}
-					return filePath + "/" + filename, nil
-				case mode.IsRegular():
-					return "", errors.New("in manifest upload mode filePath must be a dir")
-				default:
-					return "", errors.New("full file path creation unsuccessful")
-				}
-			}
-
 			for _, obj := range objects {
-				fmt.Printf("OBJ: %#v\n", obj)
-
-				localFilePath, err := getFullFilePath(absUploadPath, obj.Title)
+				localFilePath := filepath.Join(absUploadPath, obj.Title)
 				if err != nil {
 					logger.Println("Skipping:", err)
 					continue
@@ -121,10 +94,6 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				// GUID comes from manifest → override
 				fur.GUID = obj.ObjectID
 				fur.Bucket = bucketName
-				fmt.Println("FUR FILE PATH: ", fur.FilePath)
-				fmt.Println("LOCAL FILE PATH: ", localFilePath)
-
-				//fur.FilePath = localFilePath
 
 				logger.Println("\t" + localFilePath + " → GUID " + obj.ObjectID)
 				requests = append(requests, fur)
@@ -136,7 +105,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			}
 
 			// Classify single vs multipart
-			single, multi := upload.SeparateSingleAndMultipartUploads(g3i, requests, forceMultipart)
+			single, multi := upload.SeparateSingleAndMultipartUploads(g3i, requests)
 
 			// Upload single-part files
 			if batch {
@@ -149,19 +118,26 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
-					if !forceMultipart && i == len(single)-1 && len(batchFURObjects) > 0 { // upload remainders
+					if i == len(single)-1 && len(batchFURObjects) > 0 {
 						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
 					}
 				}
 			} else {
 				for _, req := range single {
-					upload.UploadSingleFile(ctx, g3i, req, true)
+					upload.UploadSingle(ctx, profileConfig.Profile, req.GUID, req.FilePath, req.Bucket, true)
 				}
 			}
 
 			// Upload multipart files
 			for _, req := range multi {
-				err := upload.MultipartUpload(ctx, g3i, req, true)
+
+				file, err := os.Open(req.FilePath)
+				if err != nil {
+					g3i.Logger().Printf("Error opening file %s : %v", req.FilePath, err)
+					continue
+				}
+
+				err = upload.MultipartUpload(ctx, g3i, req, file, true)
 				if err != nil {
 					logger.Println("Multipart upload failed:", err)
 				}
@@ -194,7 +170,6 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 
 	uploadMultipleCmd.Flags().StringVar(&bucketName, "bucket", "", "Target bucket (defaults to configured DATA_UPLOAD_BUCKET)")
 
-	uploadMultipleCmd.Flags().BoolVar(&forceMultipart, "force-multipart", false, "Force multipart upload for files >=5MB")
 	uploadMultipleCmd.Flags().BoolVar(&includeSubDirName, "include-subdirname", true, "Include subdirectory names in object key")
 
 	RootCmd.AddCommand(uploadMultipleCmd)

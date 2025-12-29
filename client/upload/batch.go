@@ -63,7 +63,7 @@ func BatchUpload(
 			for fur := range workCh {
 				// --- Ensure presigned URL ---
 				if fur.PresignedURL == "" {
-					resp, err := GeneratePresignedURL(ctx, g3i, fur.Filename, fur.FileMetadata, fur.Bucket)
+					resp, err := GeneratePresignedUploadURL(ctx, g3i, fur.Filename, fur.FileMetadata, fur.Bucket)
 					if err != nil {
 						g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, "", 0, false)
 						errCh <- err
@@ -151,7 +151,6 @@ func BatchUpload(
 		}()
 	}
 
-	// Send all work
 	for _, obj := range furObjects {
 		workCh <- obj
 	}

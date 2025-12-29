@@ -13,11 +13,8 @@ import (
 	"github.com/calypr/data-client/client/logs"
 )
 
-func SeparateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []common.FileUploadRequestObject, forceMultipart bool) ([]common.FileUploadRequestObject, []common.FileUploadRequestObject) {
+func SeparateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []common.FileUploadRequestObject) ([]common.FileUploadRequestObject, []common.FileUploadRequestObject) {
 	fileSizeLimit := common.FileSizeLimit
-	if forceMultipart {
-		fileSizeLimit = common.MinMultipartChunkSize
-	}
 
 	var singlepartObjects []common.FileUploadRequestObject
 	var multipartObjects []common.FileUploadRequestObject

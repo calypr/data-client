@@ -53,7 +53,7 @@ func init() {
 
 			newFunc := api.NewFunctions(
 				configure,
-				req.NewRequestInterface(logger, cred),
+				req.NewRequestInterface(logger, cred, configure),
 				cred,
 				logger,
 			)

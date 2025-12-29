@@ -16,9 +16,3 @@ func LoadFailedLog(path string) (map[string]RetryObject, error) {
 	}
 	return m, nil
 }
-
-func AlreadySucceededFromFile(filePath string) bool {
-	// Simple: check if any succeeded log contains this path
-	// Or just return false — safer to re-upload than skip
-	return false
-}

@@ -129,7 +129,6 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		t.Fatal("AskGen3ForFileInfo returned nil when both Shepherd and Indexd failed. Expected fallback FileInfo with Name = GUID")
 	}
 
-	fmt.Println("INFO: ", info)
 	if info.Name != testGUID {
 		t.Errorf("Wanted fallback filename %v, got %v", testGUID, info.Name)
 	}

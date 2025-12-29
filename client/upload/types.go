@@ -2,6 +2,11 @@ package upload
 
 import "github.com/calypr/data-client/client/common"
 
+type PresignedURLResponse struct {
+	GUID string `json:"guid"`
+	URL  string `json:"upload_url"`
+}
+
 type MultipartPartObject struct {
 	PartNumber int    `json:"PartNumber"`
 	ETag       string `json:"ETag"`

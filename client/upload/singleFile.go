@@ -84,7 +84,7 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 		return fmt.Errorf("failed to marshal furObject: %w", err)
 	}
 
-	_, err = uploadPart(ctx, g3i, furObject.PresignedURL, bytes.NewReader(jsonData))
+	_, err = uploadPart(ctx, furObject.PresignedURL, bytes.NewReader(jsonData), int64(len(jsonData)))
 	if err != nil {
 		sb := g3i.Logger().Scoreboard()
 		sb.IncrementSB(len(sb.Counts))

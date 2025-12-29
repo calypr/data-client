@@ -9,11 +9,12 @@ import (
 // New addition to your request package
 type RequestBuilder struct {
 	//Req     *Request // the underlying retry client holder
-	Method  string
-	Url     string
-	Body    io.Reader // store as []byte for easy reuse
-	Headers map[string]string
-	Token   string
+	Method   string
+	Url      string
+	Body     io.Reader // store as []byte for easy reuse
+	Headers  map[string]string
+	Token    string
+	PartSize int64
 }
 
 func (r *Request) New(method, url string) *RequestBuilder {
