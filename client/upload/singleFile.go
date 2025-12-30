@@ -1,9 +1,7 @@
 package upload
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -48,15 +46,6 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 		filePath = filePaths[0]
 	}
 	filename := filepath.Base(filePath)
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		if enableLogs {
-			sb := g3i.Logger().Scoreboard()
-			sb.IncrementSB(len(sb.Counts))
-			sb.PrintSB()
-		}
-		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
-		return fmt.Errorf("[ERROR] The file you specified \"%s\" does not exist locally\n", filePath)
-	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -72,6 +61,12 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 	}
 	defer file.Close()
 
+	fi, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+	fileSize := fi.Size()
+
 	furObject := common.FileUploadRequestObject{FilePath: filePath, Filename: filename, GUID: guid, Bucket: bucketName}
 
 	furObject, err = generateUploadRequest(ctx, g3i, furObject, file, nil)
@@ -85,19 +80,15 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 		g3i.Logger().Fatalf("Error occurred during request generation: %s", err.Error())
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
 	}
-	jsonData, err := json.Marshal(furObject)
-	if err != nil {
-		return fmt.Errorf("failed to marshal furObject: %w", err)
-	}
 
-	_, err = uploadPart(ctx, furObject.PresignedURL, bytes.NewReader(jsonData), int64(len(jsonData)))
+	_, err = uploadPart(ctx, furObject.PresignedURL, file, fileSize)
 	if err != nil {
 		if enableLogs {
-			sb := g3i.Logger().Scoreboard()
-			sb.IncrementSB(len(sb.Counts))
+			g3i.Logger().Scoreboard().IncrementSB(1) // Increment failure
 		}
-		return fmt.Errorf("[ERROR] Error uploading file %s: %s\n", filePath, err.Error())
+		return fmt.Errorf("[ERROR] Error uploading file content for %s: %w", filePath, err)
 	}
+
 	if enableLogs {
 		g3i.Logger().Scoreboard().IncrementSB(0)
 		g3i.Logger().Scoreboard().PrintSB()
