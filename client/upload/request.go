@@ -102,12 +102,12 @@ func generateUploadRequest(ctx context.Context, g3 client.Gen3Interface, furObje
 			},
 		)
 		if err != nil {
-			return furObject, errors.New("Upload error: " + err.Error())
+			return furObject, fmt.Errorf("Upload error: %w", err)
 		}
 
 		msg, err := g3.ParseFenceURLResponse(resp)
 		if err != nil && !strings.Contains(err.Error(), "No GUID found") {
-			return furObject, errors.New("Upload error: " + err.Error())
+			return furObject, fmt.Errorf("Upload error: %w", err)
 		}
 		if msg.URL == "" {
 			return furObject, errors.New("Upload error: error in generating presigned URL for " + furObject.Filename)
