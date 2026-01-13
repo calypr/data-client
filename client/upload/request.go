@@ -101,6 +101,9 @@ func generateUploadRequest(ctx context.Context, g3 client.Gen3Interface, furObje
 				Method:  http.MethodGet,
 			},
 		)
+		if err != nil {
+			return furObject, errors.New("Upload error: " + err.Error())
+		}
 
 		msg, err := g3.ParseFenceURLResponse(resp)
 		if err != nil && !strings.Contains(err.Error(), "No GUID found") {
