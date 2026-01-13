@@ -27,4 +27,5 @@
 
 # Build artifacts
 /build/
+/bin/
 checksums.txt
