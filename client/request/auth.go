@@ -66,38 +66,25 @@ type AuthTransport struct {
 }
 
 func (t *AuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.RLock()
+	token := t.Cred.AccessToken
+	t.mu.RUnlock()
 
-	resp, err := t.Base.RoundTrip(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadGateway {
-		resp.Body.Close()
-
-		newToken, refreshErr := t.tryRefresh(req.Context())
-		if refreshErr != nil {
-			return nil, refreshErr
-		}
-
-		retryReq := req.Clone(req.Context())
-		retryReq.Header.Set("Authorization", "Bearer "+newToken)
-		return t.Base.RoundTrip(retryReq)
-	}
-
-	return resp, nil
+	// Just add the header and pass it down
+	req.Header.Set("Authorization", "Bearer "+token)
+	return t.Base.RoundTrip(req)
 }
 
-func (t *AuthTransport) tryRefresh(ctx context.Context) (string, error) {
-	// Only one goroutine can enter this block
+func (t *AuthTransport) refreshOnce(ctx context.Context) error {
 	t.refreshMu.Lock()
 	defer t.refreshMu.Unlock()
 
-	if err := t.NewAccessToken(ctx); err != nil {
-		return "", err
-	}
-
 	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.Cred.AccessToken, nil
+	if t.Cred.AccessToken != "" {
+		t.mu.RUnlock()
+		return nil
+	}
+	t.mu.RUnlock()
+
+	return t.NewAccessToken(ctx)
 }

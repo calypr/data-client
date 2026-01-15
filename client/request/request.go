@@ -5,9 +5,7 @@ package request
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
-	"time"
 
 	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
@@ -16,7 +14,6 @@ import (
 
 type Request struct {
 	Logs        logs.Logger
-	Ctx         context.Context
 	RetryClient *retryablehttp.Client
 }
 
@@ -30,20 +27,7 @@ func NewRequestInterface(
 	cred *conf.Credential,
 	conf conf.ManagerInterface,
 ) RequestInterface {
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = logger
-
-	baseTransport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-	}
+	baseTransport := &http.Transport{ /* ... your config ... */ }
 
 	authTransport := &AuthTransport{
 		Base:    baseTransport,
@@ -51,9 +35,24 @@ func NewRequestInterface(
 		Manager: conf,
 	}
 
-	retryClient.HTTPClient = &http.Client{
-		Timeout:   0,
-		Transport: authTransport, // The outer shell is now AuthTransport
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 3
+	retryClient.Logger = logger
+	retryClient.HTTPClient.Transport = authTransport
+
+	retryClient.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
+		shouldRetry, retryErr :=
+			retryablehttp.DefaultRetryPolicy(ctx, resp, err)
+
+		if resp != nil &&
+			(resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadGateway) {
+			err := authTransport.refreshOnce(ctx)
+			if err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		return shouldRetry, retryErr
 	}
 
 	return &Request{
