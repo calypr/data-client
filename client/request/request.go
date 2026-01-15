@@ -5,7 +5,9 @@ package request
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/calypr/data-client/client/conf"
 	"github.com/calypr/data-client/client/logs"
@@ -27,18 +29,29 @@ func NewRequestInterface(
 	cred *conf.Credential,
 	conf conf.ManagerInterface,
 ) RequestInterface {
-	baseTransport := &http.Transport{ /* ... your config ... */ }
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 3
+	retryClient.Logger = logger
+	baseTransport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	}
 
 	authTransport := &AuthTransport{
 		Base:    baseTransport,
 		Cred:    cred,
 		Manager: conf,
 	}
-
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
-	retryClient.Logger = logger
-	retryClient.HTTPClient.Transport = authTransport
+	retryClient.HTTPClient = &http.Client{
+		Timeout:   0,
+		Transport: authTransport,
+	}
 
 	retryClient.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
 		shouldRetry, retryErr :=
