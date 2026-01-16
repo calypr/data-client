@@ -32,6 +32,8 @@ func NewRequestInterface(
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 5
 	retryClient.Logger = logger
+	retryClient.RetryWaitMin = 5 * time.Second
+	retryClient.RetryWaitMax = 15 * time.Second
 	baseTransport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   5 * time.Second,
