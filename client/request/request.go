@@ -30,7 +30,7 @@ func NewRequestInterface(
 	conf conf.ManagerInterface,
 ) RequestInterface {
 	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 3
+	retryClient.RetryMax = 5
 	retryClient.Logger = logger
 	baseTransport := &http.Transport{
 		DialContext: (&net.Dialer{

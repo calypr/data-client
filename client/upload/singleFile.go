@@ -77,7 +77,7 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 			sb.PrintSB()
 		}
 		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, common.FileMetadata{}, furObject.GUID, 0, false)
-		g3i.Logger().Fatalf("Error occurred during request generation: %s", err.Error())
+		g3i.Logger().Printf("Error occurred during request generation: %s", err.Error())
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
 	}
 
