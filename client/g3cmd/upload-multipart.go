@@ -22,10 +22,19 @@ import (
 )
 
 const (
-	minChunkSize         = 5 * 1024 * 1024 // S3 minimum part size
-	maxMultipartParts    = 10000
+	// minChunkSize is the minimum chunk/part size for multipart uploads (5 MB)
+	// This is enforced by AWS S3 for all parts except the last part
+	minChunkSize = 5 * 1024 * 1024 // 5 MB - S3 minimum part size
+
+	// maxMultipartParts is the maximum number of parts allowed in a single multipart upload
+	// This is an AWS S3 limitation
+	maxMultipartParts = 10000
+
+	// maxConcurrentUploads is the number of parallel workers uploading parts concurrently
 	maxConcurrentUploads = 10
-	maxRetries           = 5
+
+	// maxRetries is the maximum number of retry attempts per part upload
+	maxRetries = 5
 )
 
 func NewUploadMultipartCmd() *cobra.Command {
@@ -39,7 +48,13 @@ func NewUploadMultipartCmd() *cobra.Command {
 		Use:   "upload-multipart",
 		Short: "Upload a single file using multipart upload",
 		Long: `Uploads a large file to object storage using multipart upload.
-This method is resilient to network interruptions and supports resume capability.`,
+This method is resilient to network interruptions and supports resume capability.
+
+The file is automatically split into chunks (parts) for upload:
+  - Files ≤ 512 MB: 32 MB chunks
+  - Files > 512 MB: Dynamically calculated chunks (minimum 5 MB, maximum 10,000 parts)
+
+Up to 10 parts are uploaded concurrently with automatic retry for failed parts.`,
 		Example: `./data-client upload-multipart --profile=myprofile --file-path=./large.bam
 ./data-client upload-multipart --profile=myprofile --file-path=./data.bam --guid=existing-guid`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -87,7 +102,16 @@ func UploadSingleFile(profile, bucket, filePath, guid string) error {
 	return MultipartUpload(context.TODO(), g3, fileInfo, bucket, true)
 }
 
-// MultipartUpload is now clean, context-aware, and uses modern progress bars
+// MultipartUpload handles uploading large files by splitting them into multiple parts.
+// This method is resilient to network interruptions and supports concurrent uploads.
+//
+// The file is divided into chunks (parts) whose size is automatically determined by
+// optimalChunkSize() based on the file size. The chunk size ranges from 32 MB for
+// smaller files to larger sizes for files approaching the 5 TB limit, always staying
+// within AWS S3's constraint of maximum 10,000 parts per upload.
+//
+// Up to maxConcurrentUploads (10) parts are uploaded in parallel, with automatic
+// retry logic for failed parts.
 func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, bucketName string, showProgress bool) error {
 	g3.Logger().Printf("File Upload Request: %#v\n", req)
 
@@ -262,7 +286,28 @@ func backoffDuration(attempt int) time.Duration {
 	return min(time.Duration(1<<uint(attempt))*200*time.Millisecond, 10*time.Second)
 }
 
-// Choose optimal chunk size
+// optimalChunkSize determines the ideal chunk/part size for multipart upload based on file size.
+// The chunk size (also known as "message size" or "part size") affects upload performance and
+// must comply with S3 constraints.
+//
+// Calculation logic:
+//   - For files ≤ 512 MB: Returns 32 MB chunks for optimal performance
+//   - For files > 512 MB: Calculates fileSize/maxMultipartParts, with minimum of 5 MB
+//   - Enforces minimum of 5 MB (S3 requirement for all parts except the last)
+//   - Rounds up to nearest MB for alignment
+//
+// This results in:
+//   - Files ≤ 512 MB: 32 MB chunks
+//   - Files 512 MB - 48.83 GB: 5 MB chunks (minimum enforced)
+//   - Files > 48.83 GB: Dynamically calculated to stay under 10,000 parts
+//
+// Examples:
+//   - 100 MB file  → 32 MB chunks (4 parts)
+//   - 1 GB file    → 5 MB chunks (~205 parts)
+//   - 10 GB file   → 5 MB chunks (~2,048 parts)
+//   - 50 GB file   → 6 MB chunks (~8,534 parts)
+//   - 100 GB file  → 11 MB chunks (~9,310 parts)
+//   - 1 TB file    → 105 MB chunks (~9,987 parts)
 func optimalChunkSize(fileSize int64) int64 {
 	if fileSize <= 512*1024*1024 {
 		return 32 * 1024 * 1024 // 32MB for smaller files

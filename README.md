@@ -90,3 +90,28 @@ The metadata file should be a JSON file in the format:
 The `aliases` and `metadata` properties are optional. Some Gen3 data commons require the `authz` property to be specified in order to upload a data file.
 
 If you do not know what `authz` to use, you can look at your `Profile` tab or `/identity` page of the Gen3 data commons you are uploading to. You will see a list of _authz resources_ in the format `/example/authz/resource`: these are the authz resources you have access to.
+
+## Multipart Upload
+
+The `data-client` supports multipart upload for large files, which splits files into smaller chunks (parts) for more reliable uploads with resume capability.
+
+### Chunk Size (Message Size) in Multipart Uploads
+
+When uploading files using multipart upload, the file is divided into chunks (also referred to as "parts" or "messages"). The chunk size is automatically determined based on the file size:
+
+- **For files ≤ 512 MB**: 32 MB chunks
+- **For files 512 MB - 48.83 GB**: 5 MB chunks (S3 minimum)
+- **For files > 48.83 GB**: Dynamically calculated to stay within S3's limit of 10,000 parts per upload
+  - Minimum chunk size: 5 MB (S3 requirement)
+  - Maximum number of parts: 10,000
+  - Chunk sizes are rounded up to the nearest MB for efficiency
+
+**Example chunk sizes:**
+- 100 MB file → 32 MB chunks (4 parts)
+- 1 GB file → 5 MB chunks (~205 parts)
+- 10 GB file → 5 MB chunks (~2,048 parts)
+- 50 GB file → 6 MB chunks (~8,534 parts)
+- 100 GB file → 11 MB chunks (~9,310 parts)
+- 1 TB file → 105 MB chunks (~9,987 parts)
+
+The multipart upload process runs up to 10 concurrent part uploads for optimal performance, with automatic retry logic for failed parts.
