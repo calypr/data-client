@@ -298,8 +298,10 @@ func backoffDuration(attempt int) time.Duration {
 //
 // This results in:
 //   - Files ≤ 512 MB: 32 MB chunks
-//   - Files 512 MB - 48.83 GB: 5 MB chunks (minimum enforced)
-//   - Files > 48.83 GB: Dynamically calculated to stay under 10,000 parts
+//   - Files 512 MB - ~49 GB: 5 MB chunks (minimum enforced)
+//     The ~49 GB threshold (10,000 parts × 5 MB) is where files exceed S3's
+//     10,000 part limit when using the minimum chunk size
+//   - Files > ~49 GB: Dynamically calculated to stay under 10,000 parts
 //
 // Examples:
 //   - 100 MB file  → 32 MB chunks (4 parts)

@@ -100,8 +100,9 @@ The `data-client` supports multipart upload for large files, which splits files 
 When uploading files using multipart upload, the file is divided into chunks (also referred to as "parts" or "messages"). The chunk size is automatically determined based on the file size:
 
 - **For files ≤ 512 MB**: 32 MB chunks
-- **For files 512 MB - 48.83 GB**: 5 MB chunks (S3 minimum)
-- **For files > 48.83 GB**: Dynamically calculated to stay within S3's limit of 10,000 parts per upload
+- **For files 512 MB - ~49 GB**: 5 MB chunks (S3 minimum)
+  - This threshold (~49 GB = 10,000 parts × 5 MB) is where files hit the S3 limit of 10,000 parts when using the minimum chunk size
+- **For files > ~49 GB**: Dynamically calculated to stay within S3's limit of 10,000 parts per upload
   - Minimum chunk size: 5 MB (S3 requirement)
   - Maximum number of parts: 10,000
   - Chunk sizes are rounded up to the nearest MB for efficiency
