@@ -85,5 +85,5 @@ const (
 	MaxMultipartParts    = 10000
 	MaxConcurrentUploads = 10
 	MaxRetries           = 5
-	MinChunkSize         = 5 * 1024 * 1024
+	MinChunkSize         = 10 * 1024 * 1024
 )
