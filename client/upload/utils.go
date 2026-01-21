@@ -154,14 +154,14 @@ func OptimalChunkSize(fileSize int64) int64 {
 		return 10 * common.MB
 
 	case fileSize <= 10*common.GB:
-		return scaleLinear(fileSize, 1*common.GB+1, 10*common.GB, 25*common.MB, 128*common.MB)
+		return scaleLinear(fileSize, 1*common.GB, 10*common.GB, 25*common.MB, 128*common.MB)
 
 	case fileSize <= 100*common.GB:
 		return 256 * common.MB
 
 	default:
 		// Scale for very large files; cap scaling at 1 TB for ratio purposes
-		return scaleLinear(fileSize, 100*common.GB+1, 1000*common.GB, 512*common.MB, 1024*common.MB)
+		return scaleLinear(fileSize, 100*common.GB, 1000*common.GB, 512*common.MB, 1024*common.MB)
 	}
 }
 
