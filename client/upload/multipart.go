@@ -60,18 +60,22 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 	key := fmt.Sprintf("%s/%s", finalGUID, req.Filename)
 	g3.Logger().Printf("Initialized Upload: ID=%s, Key=%s\n", uploadID, key)
 
-	optimalChunkSize := func(fSize int64) int64 {
-		if fSize <= 512*common.MB {
-			return 32 * common.MB
-		}
-		chunkSize := fSize / common.MaxMultipartParts
-		if chunkSize < common.MinChunkSize {
-			chunkSize = common.MinChunkSize
-		}
-		return ((chunkSize + common.MB - 1) / common.MB) * common.MB
-	}
+	//optimalChunkSize := func(fSize int64) int64 {
+	//	if fSize <= 512*common.MB {
+	//		return 32 * common.MB
+	//	}
+	//	chunkSize := fSize / common.MaxMultipartParts
+	//	if chunkSize < common.MinChunkSize {
+	//		chunkSize = common.MinChunkSize
+	//	}
+	//	return ((chunkSize + common.MB - 1) / common.MB) * common.MB
+	//}
+	//
+	//chunkSize := optimalChunkSize(fileSize)
+	//
+	
+	chunkSize := OptimalChunkSize(fileSize)
 
-	chunkSize := optimalChunkSize(fileSize)
 	numChunks := int((fileSize + chunkSize - 1) / chunkSize)
 
 	chunks := make(chan int, numChunks)

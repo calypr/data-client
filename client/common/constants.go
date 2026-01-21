@@ -1,7 +1,11 @@
 package common
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -85,5 +89,50 @@ const (
 	MaxMultipartParts    = 10000
 	MaxConcurrentUploads = 10
 	MaxRetries           = 5
-	MinChunkSize         = 10 * 1024 * 1024
+	// MinChunkSize         = 10 * 1024 * 1024
 )
+
+var (
+	// MinChunkSize is configurable via git config and initialized in init()
+	MinChunkSize int64
+)
+
+func init() {
+	v, err := GetLfsCustomTransferInt("lfs.customtransfer.drs.multipart-min-chunk-size", 10)
+	if err != nil {
+		MinChunkSize = int64(10) * MB
+		//fmt.Fprintln(os.Stderr, "WARNING: DATA-CLIENT could not read git config for lfs.customtransfer.drs.multipart-min-chunk-size, using default 10MB:", err)
+		return
+	}
+
+	MinChunkSize = int64(v) * MB
+	//fmt.Fprintln(os.Stderr, "INFO: DATA-CLIENT read git config for lfs.customtransfer.drs.multipart-min-chunk-size:", MinChunkSize)
+
+}
+
+func GetLfsCustomTransferInt(key string, defaultValue int64) (int64, error) {
+	defaultText := strconv.FormatInt(defaultValue, 10)
+	// TODO cache or get all the configs at once?
+	cmd := exec.Command("git", "config", "--get", "--default", defaultText, key)
+	output, err := cmd.Output()
+	if err != nil {
+		return defaultValue, fmt.Errorf("error reading git config %s: %v", key, err)
+	}
+
+	value := strings.TrimSpace(string(output))
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return defaultValue, fmt.Errorf("invalid int value for %s: >%q<", key, value)
+	}
+
+	if parsed < 0 {
+		return defaultValue, fmt.Errorf("invalid negative int value for %s: %d", key, parsed)
+	}
+
+	if parsed == 0 || parsed > 500 {
+		return defaultValue, fmt.Errorf("invalid int value for %s: %d. Must be between 1 and 500", key, parsed)
+	}
+
+	return parsed, nil
+}
