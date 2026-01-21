@@ -80,7 +80,7 @@ const (
 
 	// MultipartFileSizeLimit is the maximun single file size for multipart upload (5TB)
 	MultipartFileSizeLimit = 5 * TB
-	MinMultipartChunkSize  = 5 * MB
+	MinMultipartChunkSize  = 10 * MB
 
 	// MaxRetryCount is the maximum retry number per record
 	MaxRetryCount = 5
@@ -101,12 +101,10 @@ func init() {
 	v, err := GetLfsCustomTransferInt("lfs.customtransfer.drs.multipart-min-chunk-size", 10)
 	if err != nil {
 		MinChunkSize = int64(10) * MB
-		//fmt.Fprintln(os.Stderr, "WARNING: DATA-CLIENT could not read git config for lfs.customtransfer.drs.multipart-min-chunk-size, using default 10MB:", err)
 		return
 	}
 
 	MinChunkSize = int64(v) * MB
-	//fmt.Fprintln(os.Stderr, "INFO: DATA-CLIENT read git config for lfs.customtransfer.drs.multipart-min-chunk-size:", MinChunkSize)
 
 }
 

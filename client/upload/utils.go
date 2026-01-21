@@ -148,6 +148,7 @@ func OptimalChunkSize(fileSize int64) int64 {
 	switch {
 	case fileSize <= 100*common.MB:
 		// Single PUT: return whole file size
+
 		return fileSize
 
 	case fileSize <= 1*common.GB:
