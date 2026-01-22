@@ -19,7 +19,7 @@ const (
 	MB
 	// GB is gigabytes
 	GB
-	// TB is terrabytes
+	// TB is terabytes
 	TB
 )
 const (
