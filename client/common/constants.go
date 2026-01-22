@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -18,7 +19,7 @@ const (
 	MB
 	// GB is gigabytes
 	GB
-	// TB is terrabytes
+	// TB is terabytes
 	TB
 )
 const (
@@ -75,10 +76,10 @@ const (
 	HeaderContentType   = "Content-Type"
 	MIMEApplicationJSON = "application/json"
 
-	// FileSizeLimit is the maximun single file size for non-multipart upload (5GB)
+	// FileSizeLimit is the maximum single file size for non-multipart upload (5GB)
 	FileSizeLimit = 5 * GB
 
-	// MultipartFileSizeLimit is the maximun single file size for multipart upload (5TB)
+	// MultipartFileSizeLimit is the maximum single file size for multipart upload (5TB)
 	MultipartFileSizeLimit = 5 * TB
 	MinMultipartChunkSize  = 10 * MB
 
@@ -89,7 +90,6 @@ const (
 	MaxMultipartParts    = 10000
 	MaxConcurrentUploads = 10
 	MaxRetries           = 5
-	// MinChunkSize         = 10 * 1024 * 1024
 )
 
 var (
@@ -100,12 +100,12 @@ var (
 func init() {
 	v, err := GetLfsCustomTransferInt("lfs.customtransfer.drs.multipart-min-chunk-size", 10)
 	if err != nil {
+		log.Printf("Warning: Could not read git config for multipart-min-chunk-size, using default (10 MB): %v\n", err)
 		MinChunkSize = int64(10) * MB
 		return
 	}
 
 	MinChunkSize = int64(v) * MB
-
 }
 
 func GetLfsCustomTransferInt(key string, defaultValue int64) (int64, error) {
@@ -121,7 +121,7 @@ func GetLfsCustomTransferInt(key string, defaultValue int64) (int64, error) {
 
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		return defaultValue, fmt.Errorf("invalid int value for %s: >%q<", key, value)
+		return defaultValue, fmt.Errorf("invalid int value for %s: %q", key, value)
 	}
 
 	if parsed < 0 {

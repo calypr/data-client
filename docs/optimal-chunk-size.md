@@ -30,6 +30,39 @@
 
 ## NEW
 
+OptimalChunkSize determines the ideal chunk/part size for multipart upload based on file size.
+The chunk size (also known as "message size" or "part size") affects upload performance and
+must comply with S3 constraints.
+
+Calculation logic:
+  - For files ≤ 100 MB: Returns the file size itself (single PUT, no multipart)
+  - For files > 100 MB and ≤ 1 GB: Returns 10 MB chunks
+  - For files > 1 GB and ≤ 10 GB: Scales linearly between 25 MB and 128 MB
+  - For files > 10 GB and ≤ 100 GB: Returns 256 MB chunks
+  - For files > 100 GB: Scales linearly between 512 MB and 1024 MB (capped at 1 TB for ratio purposes)
+  - All chunk sizes are rounded down to the nearest MB
+  - Minimum chunk size is 1 MB (for zero or negative input)
+
+This results in:
+  - Files ≤ 100 MB: Single PUT upload
+  - Files 100 MB - 1 GB: 10 MB chunks
+  - Files 1 GB - 10 GB: 25-128 MB chunks (scaled)
+  - Files 10 GB - 100 GB: 256 MB chunks
+  - Files > 100 GB: 512-1024 MB chunks (scaled)
+
+Examples:
+  - 100 MB file  → 100 MB chunk (1 part, single PUT)
+  - 500 MB file  → 10 MB chunks (50 parts)
+  - 1 GB file    → 10 MB chunks (103 parts)
+  - 5 GB file    → 70 MB chunks (74 parts, scaled)
+  - 10 GB file   → 128 MB chunks (80 parts)
+  - 50 GB file   → 256 MB chunks (200 parts)
+  - 100 GB file  → 256 MB chunks (400 parts)
+  - 500 GB file  → 739 MB chunks (693 parts, scaled)
+  - 1 TB file    → 1024 MB chunks (1024 parts)
+
+### Testing
+
 
 ```bash
 go test ./client/upload -run '^TestOptimalChunkSize$' -v
@@ -60,7 +93,7 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: `1`
 
 4. `100 MB + 1 B`
-    - chunk: `10 MB` (> 100 MB \- <= 1 GB)
+    - chunk: `10 MB` (> 100 MB - <= 1 GB)
     - parts: ceil((100 MB + 1 B) / 10 MB) = `11`
 
 5. `500 MB`
@@ -72,7 +105,7 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: ceil(1024 / 10) = `103`
 
 7. `1 GB + 1 B`
-    - chunk: `25 MB` (start of 1 GB \- 10 GB scaled range)
+    - chunk: `25 MB` (start of 1 GB - 10 GB scaled range)
     - parts: ceil((1024 MB + 1 B) / 25 MB) = `41`
 
 8. `5 GB` (5120 MB)
@@ -80,11 +113,11 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: ceil(5120 / 70) = `74`
 
 9. `10 GB` (10240 MB)
-    - chunk: `128 MB` (end of 1 GB \- 10 GB scaled range)
+    - chunk: `128 MB` (end of 1 GB - 10 GB scaled range)
     - parts: `80`
 
 10. `10 GB + 1 B`
-    - chunk: `256 MB` (> 10 GB \- <= 100 GB fixed)
+    - chunk: `256 MB` (> 10 GB - <= 100 GB fixed)
     - parts: ceil((10240 MB + 1 B) / 256 MB) = `41`
 
 11. `50 GB` (51200 MB)
@@ -96,7 +129,7 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: `400`
 
 13. `100 GB + 1 B`
-    - chunk: `512 MB` (start of \> 100 GB scaled range)
+    - chunk: `512 MB` (start of > 100 GB scaled range)
     - parts: ceil((102400 MB + 1 B) / 512 MB) = `201`
 
 14. `500 GB` (512000 MB)
@@ -108,9 +141,9 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: 1,048,576 / 1024 = `1024`
 
 Test design notes (concise)
-1. Use table\-driven subtests in `client/upload/utils_test.go`. Include fields: name, `fileSize int64`, `wantChunk int64`, `wantParts int64`.
+1. Use table-driven subtests in `client/upload/utils_test.go`. Include fields: name, `fileSize int64`, `wantChunk int64`, `wantParts int64`.
 2. For scaled cases assert: MB alignment, clamped to min/max, and exact `wantParts`. Use integer arithmetic for parts.
-3. Add explicit boundary triples for each threshold: exact, \-1 byte, \+1 byte.
+3. Add explicit boundary triples for each threshold: exact, -1 byte, +1 byte.
 4. Include negative and zero cases to verify fallback behavior.
 5. Keep tests deterministic and fast (no external deps).
 
