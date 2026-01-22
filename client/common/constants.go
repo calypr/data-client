@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -99,6 +100,7 @@ var (
 func init() {
 	v, err := GetLfsCustomTransferInt("lfs.customtransfer.drs.multipart-min-chunk-size", 10)
 	if err != nil {
+		log.Printf("Warning: Could not read git config for multipart-min-chunk-size, using default (10 MB): %v\n", err)
 		MinChunkSize = int64(10) * MB
 		return
 	}

@@ -30,6 +30,39 @@
 
 ## NEW
 
+OptimalChunkSize determines the ideal chunk/part size for multipart upload based on file size.
+The chunk size (also known as "message size" or "part size") affects upload performance and
+must comply with S3 constraints.
+
+Calculation logic:
+  - For files ≤ 100 MB: Returns the file size itself (single PUT, no multipart)
+  - For files > 100 MB and ≤ 1 GB: Returns 10 MB chunks
+  - For files > 1 GB and ≤ 10 GB: Scales linearly between 25 MB and 128 MB
+  - For files > 10 GB and ≤ 100 GB: Returns 256 MB chunks
+  - For files > 100 GB: Scales linearly between 512 MB and 1024 MB (capped at 1 TB for ratio purposes)
+  - All chunk sizes are rounded down to the nearest MB
+  - Minimum chunk size is 1 MB (for zero or negative input)
+
+This results in:
+  - Files ≤ 100 MB: Single PUT upload
+  - Files 100 MB - 1 GB: 10 MB chunks
+  - Files 1 GB - 10 GB: 25-128 MB chunks (scaled)
+  - Files 10 GB - 100 GB: 256 MB chunks
+  - Files > 100 GB: 512-1024 MB chunks (scaled)
+
+Examples:
+  - 100 MB file  → 100 MB chunk (1 part, single PUT)
+  - 500 MB file  → 10 MB chunks (50 parts)
+  - 1 GB file    → 10 MB chunks (103 parts)
+  - 5 GB file    → 70 MB chunks (74 parts, scaled)
+  - 10 GB file   → 128 MB chunks (80 parts)
+  - 50 GB file   → 256 MB chunks (200 parts)
+  - 100 GB file  → 256 MB chunks (400 parts)
+  - 500 GB file  → 739 MB chunks (693 parts, scaled)
+  - 1 TB file    → 1024 MB chunks (1024 parts)
+
+### Testing
+
 
 ```bash
 go test ./client/upload -run '^TestOptimalChunkSize$' -v
