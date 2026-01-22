@@ -75,10 +75,10 @@ const (
 	HeaderContentType   = "Content-Type"
 	MIMEApplicationJSON = "application/json"
 
-	// FileSizeLimit is the maximun single file size for non-multipart upload (5GB)
+	// FileSizeLimit is the maximum single file size for non-multipart upload (5GB)
 	FileSizeLimit = 5 * GB
 
-	// MultipartFileSizeLimit is the maximun single file size for multipart upload (5TB)
+	// MultipartFileSizeLimit is the maximum single file size for multipart upload (5TB)
 	MultipartFileSizeLimit = 5 * TB
 	MinMultipartChunkSize  = 10 * MB
 
@@ -89,7 +89,6 @@ const (
 	MaxMultipartParts    = 10000
 	MaxConcurrentUploads = 10
 	MaxRetries           = 5
-	// MinChunkSize         = 10 * 1024 * 1024
 )
 
 var (
@@ -105,7 +104,6 @@ func init() {
 	}
 
 	MinChunkSize = int64(v) * MB
-
 }
 
 func GetLfsCustomTransferInt(key string, defaultValue int64) (int64, error) {
@@ -121,7 +119,7 @@ func GetLfsCustomTransferInt(key string, defaultValue int64) (int64, error) {
 
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		return defaultValue, fmt.Errorf("invalid int value for %s: >%q<", key, value)
+		return defaultValue, fmt.Errorf("invalid int value for %s: %q", key, value)
 	}
 
 	if parsed < 0 {

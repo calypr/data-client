@@ -60,7 +60,7 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: `1`
 
 4. `100 MB + 1 B`
-    - chunk: `10 MB` (> 100 MB \- <= 1 GB)
+    - chunk: `10 MB` (> 100 MB - <= 1 GB)
     - parts: ceil((100 MB + 1 B) / 10 MB) = `11`
 
 5. `500 MB`
@@ -72,7 +72,7 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: ceil(1024 / 10) = `103`
 
 7. `1 GB + 1 B`
-    - chunk: `25 MB` (start of 1 GB \- 10 GB scaled range)
+    - chunk: `25 MB` (start of 1 GB - 10 GB scaled range)
     - parts: ceil((1024 MB + 1 B) / 25 MB) = `41`
 
 8. `5 GB` (5120 MB)
@@ -80,11 +80,11 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: ceil(5120 / 70) = `74`
 
 9. `10 GB` (10240 MB)
-    - chunk: `128 MB` (end of 1 GB \- 10 GB scaled range)
+    - chunk: `128 MB` (end of 1 GB - 10 GB scaled range)
     - parts: `80`
 
 10. `10 GB + 1 B`
-    - chunk: `256 MB` (> 10 GB \- <= 100 GB fixed)
+    - chunk: `256 MB` (> 10 GB - <= 100 GB fixed)
     - parts: ceil((10240 MB + 1 B) / 256 MB) = `41`
 
 11. `50 GB` (51200 MB)
@@ -96,7 +96,7 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: `400`
 
 13. `100 GB + 1 B`
-    - chunk: `512 MB` (start of \> 100 GB scaled range)
+    - chunk: `512 MB` (start of > 100 GB scaled range)
     - parts: ceil((102400 MB + 1 B) / 512 MB) = `201`
 
 14. `500 GB` (512000 MB)
@@ -108,9 +108,9 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: 1,048,576 / 1024 = `1024`
 
 Test design notes (concise)
-1. Use table\-driven subtests in `client/upload/utils_test.go`. Include fields: name, `fileSize int64`, `wantChunk int64`, `wantParts int64`.
+1. Use table-driven subtests in `client/upload/utils_test.go`. Include fields: name, `fileSize int64`, `wantChunk int64`, `wantParts int64`.
 2. For scaled cases assert: MB alignment, clamped to min/max, and exact `wantParts`. Use integer arithmetic for parts.
-3. Add explicit boundary triples for each threshold: exact, \-1 byte, \+1 byte.
+3. Add explicit boundary triples for each threshold: exact, -1 byte, +1 byte.
 4. Include negative and zero cases to verify fallback behavior.
 5. Keep tests deterministic and fast (no external deps).
 

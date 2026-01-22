@@ -11,49 +11,97 @@ func TestOptimalChunkSize(t *testing.T) {
 		name          string
 		fileSize      int64
 		wantChunkSize int64
-		wantChunks    int64
+		wantParts     int64
 	}{
+		{
+			name:          "0 bytes",
+			fileSize:      0,
+			wantChunkSize: 1 * common.MB,
+			wantParts:     0,
+		},
+		{
+			name:          "1MB",
+			fileSize:      1 * common.MB,
+			wantChunkSize: 1 * common.MB,
+			wantParts:     1,
+		},
 		{
 			name:          "100MB",
 			fileSize:      100 * common.MB,
 			wantChunkSize: 100 * common.MB,
-			wantChunks:    1,
+			wantParts:     1,
+		},
+		{
+			name:          "100MB+1B",
+			fileSize:      100*common.MB + 1,
+			wantChunkSize: 10 * common.MB,
+			wantParts:     11,
+		},
+		{
+			name:          "500MB",
+			fileSize:      500 * common.MB,
+			wantChunkSize: 10 * common.MB,
+			wantParts:     50,
 		},
 		{
 			name:          "1GB",
 			fileSize:      1 * common.GB,
 			wantChunkSize: 10 * common.MB,
-			wantChunks:    103,
+			wantParts:     103,
+		},
+		{
+			name:          "1GB+1B",
+			fileSize:      1*common.GB + 1,
+			wantChunkSize: 25 * common.MB,
+			wantParts:     41,
 		},
 		{
 			name:          "5GB",
 			fileSize:      5 * common.GB,
 			wantChunkSize: 70 * common.MB,
-			wantChunks:    74,
+			wantParts:     74,
 		},
 		{
 			name:          "10GB",
 			fileSize:      10 * common.GB,
 			wantChunkSize: 128 * common.MB,
-			wantChunks:    80,
+			wantParts:     80,
+		},
+		{
+			name:          "10GB+1B",
+			fileSize:      10*common.GB + 1,
+			wantChunkSize: 256 * common.MB,
+			wantParts:     41,
 		},
 		{
 			name:          "50GB",
 			fileSize:      50 * common.GB,
 			wantChunkSize: 256 * common.MB,
-			wantChunks:    200,
+			wantParts:     200,
 		},
 		{
 			name:          "100GB",
 			fileSize:      100 * common.GB,
 			wantChunkSize: 256 * common.MB,
-			wantChunks:    400,
+			wantParts:     400,
+		},
+		{
+			name:          "100GB+1B",
+			fileSize:      100*common.GB + 1,
+			wantChunkSize: 512 * common.MB,
+			wantParts:     201,
+		},
+		{
+			name:          "500GB",
+			fileSize:      500 * common.GB,
+			wantChunkSize: 739 * common.MB,
+			wantParts:     693,
 		},
 		{
 			name:          "1TB",
 			fileSize:      1 * common.TB,
 			wantChunkSize: 1 * common.GB,
-			wantChunks:    1024,
+			wantParts:     1024,
 		},
 	}
 
@@ -64,9 +112,12 @@ func TestOptimalChunkSize(t *testing.T) {
 				t.Fatalf("chunk size = %d, want %d", chunkSize, tt.wantChunkSize)
 			}
 
-			chunks := (tt.fileSize + chunkSize - 1) / chunkSize
-			if chunks != tt.wantChunks {
-				t.Fatalf("chunks = %d, want %d", chunks, tt.wantChunks)
+			parts := int64(0)
+			if tt.fileSize > 0 && chunkSize > 0 {
+				parts = (tt.fileSize + chunkSize - 1) / chunkSize
+			}
+			if parts != tt.wantParts {
+				t.Fatalf("parts = %d, want %d", parts, tt.wantParts)
 			}
 		})
 	}
