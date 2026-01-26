@@ -118,6 +118,15 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 			if bar != nil {
 				bar.IncrInt64(size)
 			}
+			err = req.Progress(common.ProgressEvent{
+				Event:          "progress",
+				Oid:            req.OID,
+				BytesSinceLast: size,
+				BytesSoFar:     int64(partNum) * chunkSize,
+			})
+			if err != nil {
+				g3.Logger().Printf("progress callback error: %v", err)
+			}
 			mu.Unlock()
 		}
 	}
