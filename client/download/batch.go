@@ -40,7 +40,18 @@ func downloadFiles(
 	// Scoreboard: maxRetries = 0 for now (no retry logic yet)
 	sb := logs.NewSB(0, logger)
 
-	p := mpb.New(mpb.WithOutput(os.Stdout))
+	useProgressBars := true
+	for _, fdr := range files {
+		if fdr.Progress != nil {
+			useProgressBars = false
+			break
+		}
+	}
+
+	var p *mpb.Progress
+	if useProgressBars {
+		p = mpb.New(mpb.WithOutput(os.Stdout))
+	}
 
 	var eg errgroup.Group
 	eg.SetLimit(numParallel)
@@ -101,29 +112,46 @@ func downloadFiles(
 
 			// Progress bar for this file
 			total := fdr.Response.ContentLength + fdr.Range
-			bar := p.AddBar(total,
-				mpb.PrependDecorators(
-					decor.Name(truncateFilename(fdr.Filename, 40)+" "),
-					decor.CountersKibiByte("% .1f / % .1f"),
-				),
-				mpb.AppendDecorators(
-					decor.Percentage(),
-					decor.AverageSpeed(decor.SizeB1024(0), "% .1f"),
-				),
-			)
+			var writer io.Writer = file
+			var bar *mpb.Bar
+			var tracker *progressWriter
 
-			if fdr.Range > 0 {
-				bar.SetCurrent(fdr.Range)
+			if useProgressBars {
+				bar = p.AddBar(total,
+					mpb.PrependDecorators(
+						decor.Name(truncateFilename(fdr.Filename, 40)+" "),
+						decor.CountersKibiByte("% .1f / % .1f"),
+					),
+					mpb.AppendDecorators(
+						decor.Percentage(),
+						decor.AverageSpeed(decor.SizeB1024(0), "% .1f"),
+					),
+				)
+
+				if fdr.Range > 0 {
+					bar.SetCurrent(fdr.Range)
+				}
+
+				writer = bar.ProxyWriter(file)
+			} else if fdr.Progress != nil {
+				tracker = newProgressWriter(file, fdr.Progress, resolveDownloadOID(*fdr), total)
+				writer = tracker
 			}
-
-			writer := bar.ProxyWriter(file)
 
 			_, copyErr := io.Copy(writer, fdr.Response.Body)
 			_ = fdr.Response.Body.Close()
 			_ = file.Close()
 
+			if tracker != nil {
+				if finalizeErr := tracker.Finalize(); finalizeErr != nil && copyErr == nil {
+					copyErr = finalizeErr
+				}
+			}
+
 			if copyErr != nil {
-				bar.Abort(true)
+				if bar != nil {
+					bar.Abort(true)
+				}
 				err = fmt.Errorf("download failed for %s: %w", fdr.Filename, copyErr)
 				return err
 			}
@@ -134,7 +162,9 @@ func downloadFiles(
 
 	// Wait for all downloads
 	_ = eg.Wait()
-	p.Wait()
+	if p != nil {
+		p.Wait()
+	}
 
 	// Combine errors
 	var combinedError error

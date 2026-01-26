@@ -124,7 +124,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				}
 			} else {
 				for _, req := range single {
-					upload.UploadSingle(ctx, profileConfig.Profile, req.GUID, req.FilePath, req.Bucket, true)
+					upload.UploadSingle(ctx, profileConfig.Profile, req.GUID, req.GUID, req.FilePath, req.Bucket, true, nil)
 				}
 			}
 
