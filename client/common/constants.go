@@ -1,7 +1,12 @@
 package common
 
 import (
+	"fmt"
+	"log"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,7 +19,7 @@ const (
 	MB
 	// GB is gigabytes
 	GB
-	// TB is terrabytes
+	// TB is terabytes
 	TB
 )
 const (
@@ -71,12 +76,12 @@ const (
 	HeaderContentType   = "Content-Type"
 	MIMEApplicationJSON = "application/json"
 
-	// FileSizeLimit is the maximun single file size for non-multipart upload (5GB)
+	// FileSizeLimit is the maximum single file size for non-multipart upload (5GB)
 	FileSizeLimit = 5 * GB
 
-	// MultipartFileSizeLimit is the maximun single file size for multipart upload (5TB)
+	// MultipartFileSizeLimit is the maximum single file size for multipart upload (5TB)
 	MultipartFileSizeLimit = 5 * TB
-	MinMultipartChunkSize  = 5 * MB
+	MinMultipartChunkSize  = 10 * MB
 
 	// MaxRetryCount is the maximum retry number per record
 	MaxRetryCount = 5
@@ -85,5 +90,47 @@ const (
 	MaxMultipartParts    = 10000
 	MaxConcurrentUploads = 10
 	MaxRetries           = 5
-	MinChunkSize         = 5 * 1024 * 1024
 )
+
+var (
+	// MinChunkSize is configurable via git config and initialized in init()
+	MinChunkSize int64
+)
+
+func init() {
+	v, err := GetLfsCustomTransferInt("lfs.customtransfer.drs.multipart-min-chunk-size", 10)
+	if err != nil {
+		log.Printf("Warning: Could not read git config for multipart-min-chunk-size, using default (10 MB): %v\n", err)
+		MinChunkSize = int64(10) * MB
+		return
+	}
+
+	MinChunkSize = int64(v) * MB
+}
+
+func GetLfsCustomTransferInt(key string, defaultValue int64) (int64, error) {
+	defaultText := strconv.FormatInt(defaultValue, 10)
+	// TODO cache or get all the configs at once?
+	cmd := exec.Command("git", "config", "--get", "--default", defaultText, key)
+	output, err := cmd.Output()
+	if err != nil {
+		return defaultValue, fmt.Errorf("error reading git config %s: %v", key, err)
+	}
+
+	value := strings.TrimSpace(string(output))
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return defaultValue, fmt.Errorf("invalid int value for %s: %q", key, value)
+	}
+
+	if parsed < 0 {
+		return defaultValue, fmt.Errorf("invalid negative int value for %s: %d", key, parsed)
+	}
+
+	if parsed == 0 || parsed > 500 {
+		return defaultValue, fmt.Errorf("invalid int value for %s: %d. Must be between 1 and 500", key, parsed)
+	}
+
+	return parsed, nil
+}
