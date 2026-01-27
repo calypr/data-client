@@ -110,13 +110,6 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 		return fmt.Errorf("[ERROR] Error uploading file content for %s: %w", filePath, err)
 	}
 
-	_ = progressCallback(common.ProgressEvent{
-		Event:          "progress",
-		Oid:            resolveUploadOID(furObject),
-		BytesSoFar:     fileSize,
-		BytesSinceLast: fileSize,
-	})
-
 	if enableLogs {
 		g3i.Logger().Scoreboard().IncrementSB(0)
 		g3i.Logger().Scoreboard().PrintSB()
