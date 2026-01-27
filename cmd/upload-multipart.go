@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
-	"github.com/calypr/data-client/client/upload"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -41,12 +41,12 @@ This method is resilient to network interruptions and supports resume capability
 			)
 
 			if err != nil {
-				logger.Fatalf("failed to initialize Gen3 interface: %w", err)
+				logger.Fatalf("failed to initialize Gen3 interface: %v", err)
 			}
 
 			absPath, err := common.GetAbsolutePath(filePath)
 			if err != nil {
-				logger.Fatalf("invalid file path: %w", err)
+				logger.Fatalf("invalid file path: %v", err)
 			}
 
 			fileInfo := common.FileUploadRequestObject{
@@ -58,7 +58,7 @@ This method is resilient to network interruptions and supports resume capability
 
 			file, err := os.Open(absPath)
 			if err != nil {
-				logger.Fatalf("cannot open file %s: %w", absPath, err)
+				logger.Fatalf("cannot open file %s: %v", absPath, err)
 			}
 			defer file.Close()
 

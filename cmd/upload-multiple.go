@@ -9,10 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
-	"github.com/calypr/data-client/client/upload"
+	"github.com/calypr/data-client/common"
+	client "github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -79,10 +79,6 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 
 			for _, obj := range objects {
 				localFilePath := filepath.Join(absUploadPath, obj.Title)
-				if err != nil {
-					logger.Println("Skipping:", err)
-					continue
-				}
 
 				fur, err := upload.ProcessFilename(logger, absUploadPath, localFilePath, obj.ObjectID, includeSubDirName, false)
 				if err != nil {
@@ -124,7 +120,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				}
 			} else {
 				for _, req := range single {
-					upload.UploadSingle(ctx, profileConfig.Profile, req.GUID, req.FilePath, req.Bucket, true)
+					upload.UploadSingle(ctx, profileConfig.Profile, req.GUID, req.GUID, req.FilePath, req.Bucket, true, nil)
 				}
 			}
 

@@ -6,8 +6,8 @@ import (
 	"log"
 	"sort"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ func init() {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
-			resourceAccess, err := g3i.CheckPrivileges(context.Background())
+			resourceAccess, err := g3i.Fence().CheckPrivileges(context.Background())
 			if err != nil {
 				g3i.Logger().Fatalf("Fatal authentication error: %s\n", err)
 			} else {

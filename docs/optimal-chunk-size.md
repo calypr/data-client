@@ -1,5 +1,4 @@
 
-
 # Engineering note — Optimal Chunk Size Calculation for Multipart Uploads
 
 ## OLD:
@@ -65,7 +64,7 @@ Examples:
 
 
 ```bash
-go test ./client/upload -run '^TestOptimalChunkSize$' -v
+go test ./upload -run '^TestOptimalChunkSize$' -v
 
 ```
 
@@ -141,12 +140,12 @@ Parameterized test cases (file size ⇒ expected chunk ⇒ expected parts)
     - parts: 1,048,576 / 1024 = `1024`
 
 Test design notes (concise)
-1. Use table-driven subtests in `client/upload/utils_test.go`. Include fields: name, `fileSize int64`, `wantChunk int64`, `wantParts int64`.
+1. Use table-driven subtests in `upload/utils_test.go`. Include fields: name, `fileSize int64`, `wantChunk int64`, `wantParts int64`.
 2. For scaled cases assert: MB alignment, clamped to min/max, and exact `wantParts`. Use integer arithmetic for parts.
 3. Add explicit boundary triples for each threshold: exact, -1 byte, +1 byte.
 4. Include negative and zero cases to verify fallback behavior.
 5. Keep tests deterministic and fast (no external deps).
 
 Execution
-- Run from repo root: `go test ./client/upload -v`
-- Run single test: `go test ./client/upload -run '^TestOptimalChunkSize$' -v`
+- Run from repo root: `go test ./upload -v`
+- Run single test: `go test ./upload -run '^TestOptimalChunkSize$' -v`

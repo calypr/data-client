@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
-	"github.com/calypr/data-client/client/upload"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +44,7 @@ func init() {
 
 			logger := g3i.Logger()
 			if hasMetadata {
-				hasShepherd, err := g3i.CheckForShepherdAPI(ctx)
+				hasShepherd, err := g3i.Fence().CheckForShepherdAPI(ctx)
 				if err != nil {
 					logger.Printf("WARNING: Error when checking for Shepherd API: %v", err)
 				} else {

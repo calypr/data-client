@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/calypr/data-client/client/api"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/conf"
-	"github.com/calypr/data-client/client/logs"
-	req "github.com/calypr/data-client/client/request"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +36,7 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			configure := conf.NewConfigure(logger)
+			configure := conf.NewConfigure(logger.Logger)
 			if credFile != "" {
 				readCred, err := configure.Import(credFile, "")
 				if err != nil {
@@ -51,13 +50,8 @@ func init() {
 				cred.AccessToken = ""
 			}
 
-			newFunc := api.NewFunctions(
-				configure,
-				req.NewRequestInterface(logger, cred, configure),
-				cred,
-				logger,
-			)
-			err := newFunc.ExportCredential(context.Background(), cred)
+			g3i := client.NewGen3InterfaceFromCredential(cred, logger)
+			err := g3i.ExportCredential(context.Background(), cred)
 			if err != nil {
 				logger.Println(err.Error())
 			}
