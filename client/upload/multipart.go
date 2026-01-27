@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	client "github.com/calypr/data-client/client/client"
 	"github.com/calypr/data-client/client/common"
@@ -75,6 +76,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		mu           sync.Mutex
 		parts        []MultipartPartObject
 		uploadErrors []error
+		totalBytes   int64 // Atomic counter for monotonically increasing BytesSoFar
 	)
 
 	// 3. Worker logic
@@ -117,6 +119,18 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 			})
 			if bar != nil {
 				bar.IncrInt64(size)
+			}
+			if req.Progress != nil {
+				currentTotal := atomic.AddInt64(&totalBytes, size)
+				err = req.Progress(common.ProgressEvent{
+					Event:          "progress",
+					Oid:            req.OID,
+					BytesSinceLast: size,
+					BytesSoFar:     currentTotal,
+				})
+				if err != nil {
+					g3.Logger().Printf("progress callback error: %v", err)
+				}
 			}
 			mu.Unlock()
 		}

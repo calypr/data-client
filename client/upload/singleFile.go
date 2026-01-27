@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/calypr/data-client/client/logs"
 )
 
-func UploadSingle(ctx context.Context, profile string, guid string, filePath string, bucketName string, enableLogs bool) error {
+func UploadSingle(ctx context.Context, profile string, guid string, oid string, filePath string, bucketName string, enableLogs bool, progressCallback common.ProgressCallback) error {
 
 	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
 	if enableLogs {
@@ -67,9 +68,17 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 	}
 	fileSize := fi.Size()
 
-	furObject := common.FileUploadRequestObject{FilePath: filePath, Filename: filename, GUID: guid, Bucket: bucketName}
+	furObject := common.FileUploadRequestObject{
+		FilePath: filePath,
+		Filename: filename,
+		GUID:     guid,
+		OID:      oid,
+		Bucket:   bucketName,
+		Progress: progressCallback,
+	}
 
 	furObject, err = generateUploadRequest(ctx, g3i, furObject, file, nil)
+
 	if err != nil {
 		if enableLogs {
 			sb := g3i.Logger().Scoreboard()
@@ -81,7 +90,19 @@ func UploadSingle(ctx context.Context, profile string, guid string, filePath str
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
 	}
 
-	_, err = uploadPart(ctx, furObject.PresignedURL, file, fileSize)
+	var reader io.Reader = file
+	var progressTracker *progressReader
+	if furObject.Progress != nil {
+		progressTracker = newProgressReader(file, furObject.Progress, resolveUploadOID(furObject), fileSize)
+		reader = progressTracker
+	}
+
+	_, err = uploadPart(ctx, furObject.PresignedURL, reader, fileSize)
+	if progressTracker != nil {
+		if finalizeErr := progressTracker.Finalize(); finalizeErr != nil && err == nil {
+			err = finalizeErr
+		}
+	}
 	if err != nil {
 		if enableLogs {
 			g3i.Logger().Scoreboard().IncrementSB(1) // Increment failure
