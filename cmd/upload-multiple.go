@@ -38,6 +38,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			fmt.Printf("Notice: this command uploads to pre-existing GUIDs from a manifest.\nIf you want to upload new files (new GUIDs generated automatically), use \"./data-client upload\" instead.\n\n")
 
 			ctx := context.Background()
+			noopProgress := func(common.ProgressEvent) error { return nil }
 
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
 			defer closer()
@@ -90,6 +91,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				// GUID comes from manifest → override
 				fur.GUID = obj.ObjectID
 				fur.Bucket = bucketName
+				fur.Progress = noopProgress
 
 				logger.Println("\t" + localFilePath + " → GUID " + obj.ObjectID)
 				requests = append(requests, fur)

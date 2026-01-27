@@ -79,6 +79,7 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 	}
 
 	furObject, err = generateUploadRequest(ctx, g3i, furObject, file, nil)
+
 	if err != nil {
 		if enableLogs {
 			sb := g3i.Logger().Scoreboard()

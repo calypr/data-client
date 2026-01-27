@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-
 	"sync/atomic"
 
 	"github.com/calypr/data-client/common"
