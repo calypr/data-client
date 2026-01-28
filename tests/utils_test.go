@@ -56,8 +56,8 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if mockFDRObj.URL != mockDownloadURL {
-		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.URL)
+	if mockFDRObj.PresignedURL != mockDownloadURL {
+		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.PresignedURL)
 	}
 }
 
@@ -99,8 +99,8 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if mockFDRObj.URL != mockDownloadURL {
-		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.URL)
+	if mockFDRObj.PresignedURL != mockDownloadURL {
+		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.PresignedURL)
 	}
 }
 

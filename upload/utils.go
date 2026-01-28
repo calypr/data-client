@@ -20,21 +20,21 @@ func SeparateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []commo
 	var multipartObjects []common.FileUploadRequestObject
 
 	for _, object := range objects {
-		fi, err := os.Stat(object.FilePath)
+		fi, err := os.Stat(object.SourcePath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				g3i.Logger().Printf("The file you specified \"%s\" does not exist locally\n", object.FilePath)
+				g3i.Logger().Printf("The file you specified \"%s\" does not exist locally\n", object.SourcePath)
 			} else {
 				g3i.Logger().Println("File stat error: " + err.Error())
 			}
-			g3i.Logger().Failed(object.FilePath, object.Filename, object.FileMetadata, object.GUID, 0, false)
+			g3i.Logger().Failed(object.SourcePath, object.ObjectKey, object.FileMetadata, object.GUID, 0, false)
 			continue
 		}
 		if fi.IsDir() {
 			continue
 		}
-		if _, ok := g3i.Logger().GetSucceededLogMap()[object.FilePath]; ok {
-			g3i.Logger().Println("File \"" + object.FilePath + "\" found in history. Skipping.")
+		if _, ok := g3i.Logger().GetSucceededLogMap()[object.SourcePath]; ok {
+			g3i.Logger().Println("File \"" + object.SourcePath + "\" found in history. Skipping.")
 			continue
 		}
 		if fi.Size() > common.MultipartFileSizeLimit {
@@ -102,7 +102,7 @@ func ProcessFilename(logger logs.Logger, uploadPath string, filePath string, obj
 			logger.Printf("WARNING: File metadata is enabled, but could not find the metadata file %v for file %v. Execute `data-client upload --help` for more info on file metadata.\n", metadataFilePath, filePath)
 		}
 	}
-	return common.FileUploadRequestObject{FilePath: filePath, Filename: filename, FileMetadata: metadata, GUID: objectId}, nil
+	return common.FileUploadRequestObject{SourcePath: filePath, ObjectKey: filename, FileMetadata: metadata, GUID: objectId}, nil
 }
 
 // FormatSize helps to parse a int64 size into string

@@ -9,17 +9,16 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/common"
-	client "github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/g3client"
 )
 
 // DownloadSingleWithProgress downloads a single object while emitting progress events.
 func DownloadSingleWithProgress(
 	ctx context.Context,
-	g3i client.Gen3Interface,
+	g3i g3client.Gen3Interface,
 	guid string,
 	downloadPath string,
 	protocol string,
-	oid string,
 	progress common.ProgressCallback,
 ) error {
 	var err error
@@ -41,7 +40,6 @@ func DownloadSingleWithProgress(
 		DownloadPath: downloadPath,
 		Filename:     info.Name,
 		GUID:         guid,
-		OID:          oid,
 		Progress:     progress,
 	}
 
@@ -78,7 +76,7 @@ func DownloadSingleWithProgress(
 	var writer io.Writer = file
 	var tracker *progressWriter
 	if fdr.Progress != nil {
-		tracker = newProgressWriter(file, fdr.Progress, resolveDownloadOID(fdr), total)
+		tracker = newProgressWriter(file, fdr.Progress, fdr.GUID, total)
 		writer = tracker
 	}
 
@@ -93,5 +91,52 @@ func DownloadSingleWithProgress(
 	if copyErr != nil {
 		return fmt.Errorf("download failed for %s: %w", fdr.Filename, copyErr)
 	}
+	return nil
+}
+
+// DownloadToPath downloads a single object by GUID to a specific destination file path.
+// It bypasses the name lookup from Gen3 and uses the provided dstPath directly.
+func DownloadToPath(
+	ctx context.Context,
+	g3i g3client.Gen3Interface,
+	guid string,
+	dstPath string,
+	hash string, // Content hash (e.g. SHA256) for progress tracking
+	progress common.ProgressCallback,
+) error {
+	fdr := common.FileDownloadResponseObject{
+		GUID:     guid,
+		Progress: progress,
+	}
+
+	if err := GetDownloadResponse(ctx, g3i, &fdr, ""); err != nil {
+		return err
+	}
+	defer fdr.Response.Body.Close()
+
+	if dir := filepath.Dir(dstPath); dir != "." {
+		if err := os.MkdirAll(dir, 0766); err != nil {
+			return fmt.Errorf("mkdir for %s: %w", dstPath, err)
+		}
+	}
+
+	file, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("create local file %s: %w", dstPath, err)
+	}
+	defer file.Close()
+
+	var writer io.Writer = file
+	if fdr.Progress != nil {
+		total := fdr.Response.ContentLength
+		tracker := newProgressWriter(file, fdr.Progress, hash, total)
+		writer = tracker
+		defer tracker.Finalize()
+	}
+
+	if _, err := io.Copy(writer, fdr.Response.Body); err != nil {
+		return fmt.Errorf("copy to %s: %w", dstPath, err)
+	}
+
 	return nil
 }

@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/download"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/spf13/cobra"
 )
@@ -32,14 +32,14 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithSucceededLog(), logs.WithScoreboard())
 			defer logCloser()
 
-			g3I, err := client.NewGen3Interface(profile, logger)
+			g3I, err := g3client.NewGen3Interface(profile, logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
 			objects := []common.ManifestObject{
 				common.ManifestObject{
-					ObjectID: guid,
+					GUID: guid,
 				},
 			}
 			err = download.DownloadMultiple(

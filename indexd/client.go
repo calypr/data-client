@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
-	"log/slog"
-
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/indexd/drs"
 	"github.com/calypr/data-client/request"
 )
@@ -34,6 +35,8 @@ type IndexdInterface interface {
 	DeleteRecordsByProject(ctx context.Context, projectId string) error
 	DeleteRecordByHash(ctx context.Context, hashValue string, projectId string) error
 	RegisterRecord(ctx context.Context, record *drs.DRSObject) (*drs.DRSObject, error)
+	UpsertIndexdRecord(ctx context.Context, url string, sha256 string, fileSize int64, projectId string) (*drs.DRSObject, error)
+	AddURL(ctx context.Context, fClient fence.FenceInterface, s3URL, sha256, awsAccessKey, awsSecretKey, region, endpoint string, s3Client *s3.Client) (S3Meta, error)
 }
 
 // IndexdClient implements IndexdInterface

@@ -1,4 +1,4 @@
-package client
+package g3client
 
 import (
 	"context"
@@ -123,6 +123,32 @@ func (g *Gen3Client) ExportCredential(ctx context.Context, cred *conf.Credential
 	return nil
 }
 
+// EnsureValidCredential checks if the credential is valid and refreshes it if the access token is expired but the API key is valid.
+// It accepts an optional fClient; if nil, it will initialize one internally if needed for refresh.
+func EnsureValidCredential(ctx context.Context, cred *conf.Credential, config conf.ManagerInterface, logger *logs.Gen3Logger, fClient fence.FenceInterface) error {
+	if valid, err := config.IsCredentialValid(cred); !valid {
+		if strings.Contains(err.Error(), "access_token is invalid but api_key is valid") {
+			// Try to refresh the token
+			if fClient == nil {
+				reqInterface := request.NewRequestInterface(logger.Logger, cred, config)
+				fClient = fence.NewFenceClient(reqInterface, cred, logger.Logger)
+			}
+			newToken, refreshErr := fClient.NewAccessToken(ctx)
+			if refreshErr == nil {
+				cred.AccessToken = newToken
+				err = config.Save(cred)
+				if err != nil {
+					logger.Warn(fmt.Sprintf("Failed to save refreshed token: %v", err))
+				}
+				return nil
+			}
+			return fmt.Errorf("failed to refresh access token: %v (original error: %v)", refreshErr, err)
+		}
+		return fmt.Errorf("invalid credential: %v", err)
+	}
+	return nil
+}
+
 // NewGen3Interface returns a Gen3Client that embeds the credential and implements Gen3Interface.
 func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
 	config := conf.NewConfigure(logger.Logger)
@@ -131,12 +157,13 @@ func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...func(*Gen
 		return nil, err
 	}
 
-	if valid, err := config.IsValid(cred); !valid {
-		return nil, fmt.Errorf("invalid credential: %v", err)
-	}
-
 	reqInterface := request.NewRequestInterface(logger.Logger, cred, config)
 	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
+
+	if err := EnsureValidCredential(context.Background(), cred, config, logger, fClient); err != nil {
+		return nil, err
+	}
+
 	iClient := indexd.NewIndexdClient(reqInterface, cred, logger.Logger)
 
 	return &Gen3Client{

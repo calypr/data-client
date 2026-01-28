@@ -24,7 +24,7 @@ If no profile is specified, "default" profile is used for authentication.`,
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			g3i, err := client.NewGen3Interface(profile, logger)
+			g3i, err := g3client.NewGen3Interface(profile, logger)
 			if err != nil {
 				logger.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}

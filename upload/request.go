@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	client "github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
+	client "github.com/calypr/data-client/g3client"
 	req "github.com/calypr/data-client/request"
 	"github.com/vbauerster/mpb/v8"
 )
@@ -63,23 +63,23 @@ func GeneratePresignedUploadURL(ctx context.Context, g3 client.Gen3Interface, fi
 // GenerateUploadRequest helps preparing the HTTP request for upload and the progress bar for single part upload
 func generateUploadRequest(ctx context.Context, g3 client.Gen3Interface, furObject common.FileUploadRequestObject, file *os.File, progress *mpb.Progress) (common.FileUploadRequestObject, error) {
 	if furObject.PresignedURL == "" {
-		msg, err := g3.Fence().GetUploadPresignedUrl(ctx, furObject.GUID, furObject.Filename, furObject.Bucket)
+		msg, err := g3.Fence().GetUploadPresignedUrl(ctx, furObject.GUID, furObject.ObjectKey, furObject.Bucket)
 		if err != nil && !strings.Contains(err.Error(), "No GUID found") {
 			return furObject, fmt.Errorf("Upload error: %w", err)
 		}
 		if msg.URL == "" {
-			return furObject, errors.New("Upload error: error in generating presigned URL for " + furObject.Filename)
+			return furObject, errors.New("Upload error: error in generating presigned URL for " + furObject.ObjectKey)
 		}
 		furObject.PresignedURL = msg.URL
 	}
 
 	fi, err := file.Stat()
 	if err != nil {
-		return furObject, errors.New("File stat error for file" + furObject.Filename + ", file may be missing or unreadable because of permissions.\n")
+		return furObject, errors.New("File stat error for file" + furObject.ObjectKey + ", file may be missing or unreadable because of permissions.\n")
 	}
 
 	if fi.Size() > common.FileSizeLimit {
-		return furObject, errors.New("The file size of file " + furObject.Filename + " exceeds the limit allowed and cannot be uploaded. The maximum allowed file size is " + FormatSize(common.FileSizeLimit) + ".\n")
+		return furObject, errors.New("The file size of file " + furObject.ObjectKey + " exceeds the limit allowed and cannot be uploaded. The maximum allowed file size is " + FormatSize(common.FileSizeLimit) + ".\n")
 	}
 
 	return furObject, err

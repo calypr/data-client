@@ -29,7 +29,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 
 	fileSize := stat.Size()
 	if fileSize == 0 {
-		return fmt.Errorf("file is empty: %s", req.Filename)
+		return fmt.Errorf("file is empty: %s", req.ObjectKey)
 	}
 
 	var p *mpb.Progress
@@ -38,7 +38,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		p = mpb.New(mpb.WithOutput(os.Stdout))
 		bar = p.AddBar(fileSize,
 			mpb.PrependDecorators(
-				decor.Name(req.Filename+" "),
+				decor.Name(req.ObjectKey+" "),
 				decor.CountersKibiByte("%.1f / %.1f"),
 			),
 			mpb.AppendDecorators(
@@ -56,7 +56,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 
 	// 2. Construct the S3 Key correctly
 	// Ensure finalGUID is not empty to avoid a leading slash
-	key := fmt.Sprintf("%s/%s", finalGUID, req.Filename)
+	key := fmt.Sprintf("%s/%s", finalGUID, req.ObjectKey)
 	g3.Logger().Info("Initialized Upload", "id", uploadID, "key", key)
 
 	chunkSize := OptimalChunkSize(fileSize)
@@ -158,13 +158,13 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		return fmt.Errorf("failed to complete multipart upload: %w", err)
 	}
 
-	g3.Logger().Info("Successfully uploaded", "file", req.Filename, "key", key)
-	g3.Logger().Succeeded(req.FilePath, req.GUID)
+	g3.Logger().Info("Successfully uploaded", "file", req.ObjectKey, "key", key)
+	g3.Logger().Succeeded(req.SourcePath, req.GUID)
 	return nil
 }
 
 func initMultipartUpload(ctx context.Context, g3 client.Gen3Interface, furObject common.FileUploadRequestObject, bucketName string) (string, string, error) {
-	msg, err := g3.Fence().InitMultipartUpload(ctx, furObject.Filename, bucketName, furObject.GUID)
+	msg, err := g3.Fence().InitMultipartUpload(ctx, furObject.ObjectKey, bucketName, furObject.GUID)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {

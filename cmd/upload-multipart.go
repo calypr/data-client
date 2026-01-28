@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
@@ -35,7 +35,7 @@ This method is resilient to network interruptions and supports resume capability
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
 			defer closer()
 
-			g3, err := client.NewGen3Interface(
+			g3, err := g3client.NewGen3Interface(
 				profile,
 				logger,
 			)
@@ -50,8 +50,8 @@ This method is resilient to network interruptions and supports resume capability
 			}
 
 			fileInfo := common.FileUploadRequestObject{
-				FilePath:     absPath,
-				Filename:     filepath.Base(absPath),
+				SourcePath:   absPath,
+				ObjectKey:    filepath.Base(absPath),
 				GUID:         guid,
 				FileMetadata: common.FileMetadata{},
 			}

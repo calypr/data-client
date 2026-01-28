@@ -46,7 +46,8 @@ type ManagerInterface interface {
 	Save(cred *Credential) error
 
 	EnsureExists() error
-	IsValid(*Credential) (bool, error)
+	IsCredentialValid(*Credential) (bool, error)
+	IsTokenValid(string) (bool, error)
 }
 
 func (man *Manager) configPath() (string, error) {

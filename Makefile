@@ -10,9 +10,13 @@ MAIN_PACKAGE := .
 # The directory where the final binary will be placed
 BIN_DIR := ./bin
 
+# Coverage thresholds
+COVERAGE_THRESHOLD := 30
+PACKAGE_COVERAGE_THRESHOLD := 20
+
 # --- Targets ---
 
-.PHONY: all build test generate tidy clean help
+.PHONY: all build test test-coverage coverage-html coverage-check generate tidy clean help
 
 # The default target run when you type 'make'
 all: build
@@ -28,6 +32,24 @@ test:
 	@echo "--> Running all tests..."
 	@go test -v ./...
 
+## test-coverage: Runs tests with coverage profiling
+test-coverage:
+	@echo "--> Running tests with coverage..."
+	@go test -coverprofile=coverage.out -covermode=atomic ./...
+	@echo "--> Coverage report generated: coverage.out"
+	@go tool cover -func=coverage.out | tail -1
+
+## coverage-html: Generates HTML coverage report
+coverage-html: test-coverage
+	@echo "--> Generating HTML coverage report..."
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "--> HTML coverage report generated: coverage.html"
+
+## coverage-check: Verifies coverage meets minimum thresholds
+coverage-check: test-coverage
+	@echo "--> Checking coverage thresholds..."
+	@./scripts/check-coverage.sh $(COVERAGE_THRESHOLD) $(PACKAGE_COVERAGE_THRESHOLD)
+
 ## generate: Runs go generate commands to create mocks, embedded assets, etc.
 generate:
 	@echo "--> Running code generation (go generate)..."
@@ -39,8 +61,9 @@ tidy:
 	@go mod tidy
 	@go fmt ./...
 
-## clean: Removes the compiled binary
+## clean: Removes the compiled binary and coverage files
 clean:
 	@echo "--> Cleaning up..."
 	@rm -f $(BIN_DIR)/$(TARGET_NAME)
+	@rm -f coverage.out coverage.html
 

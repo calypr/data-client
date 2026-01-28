@@ -15,6 +15,7 @@ type RequestBuilder struct {
 	Headers  map[string]string
 	Token    string
 	PartSize int64
+	SkipAuth bool
 }
 
 func (r *Request) New(method, url string) *RequestBuilder {
@@ -50,5 +51,10 @@ func (ar *RequestBuilder) WithBody(body io.Reader) *RequestBuilder {
 
 func (ar *RequestBuilder) WithHeader(key, value string) *RequestBuilder {
 	ar.Headers[key] = value
+	return ar
+}
+
+func (ar *RequestBuilder) WithSkipAuth(skip bool) *RequestBuilder {
+	ar.SkipAuth = skip
 	return ar
 }

@@ -2,18 +2,16 @@ package upload
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/calypr/data-client/common"
 	client "github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 )
 
-func UploadSingle(ctx context.Context, profile string, guid string, oid string, filePath string, bucketName string, enableLogs bool, progressCallback common.ProgressCallback) error {
+func UploadSingle(ctx context.Context, profile string, req common.FileUploadRequestObject, enableLogs bool) error {
 
 	logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog())
 	if enableLogs {
@@ -36,19 +34,12 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 		return fmt.Errorf("failed to parse config on profile %s: %w", profile, err)
 	}
 
-	filePaths, err := common.ParseFilePaths(filePath, false)
-	if len(filePaths) > 1 {
-		return errors.New("more than 1 file location has been found. Do not use \"*\" in file path or provide a folder as file path")
-	}
-	if err != nil {
-		return errors.New("file path parsing error: " + err.Error())
-	}
-	if len(filePaths) == 1 {
-		filePath = filePaths[0]
-	}
-	filename := filepath.Base(filePath)
+	// Helper to handle * in path if it was passed, though optimally caller handles this.
+	// We will trust the SourcePath in the request object mostly, but for safety we can check existence.
+	// But commonly parsing happens before creating the object usually.
+	// Let's assume req.SourcePath is a single valid file path for now as per design.
 
-	file, err := os.Open(filePath)
+	file, err := os.Open(req.SourcePath)
 	if err != nil {
 		if enableLogs {
 			sb := g3i.Logger().Scoreboard()
@@ -57,9 +48,9 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 				sb.PrintSB()
 			}
 		}
-		g3i.Logger().Failed(filePath, filename, common.FileMetadata{}, "", 0, false)
-		g3i.Logger().Error("File open error", "file", filePath, "error", err)
-		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s\n", filePath, err.Error())
+		g3i.Logger().Failed(req.SourcePath, req.ObjectKey, common.FileMetadata{}, "", 0, false)
+		g3i.Logger().Error("File open error", "file", req.SourcePath, "error", err)
+		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s\n", req.SourcePath, err.Error())
 	}
 	defer file.Close()
 
@@ -69,17 +60,7 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 	}
 	fileSize := fi.Size()
 
-	furObject := common.FileUploadRequestObject{
-		FilePath: filePath,
-		Filename: filename,
-		GUID:     guid,
-		OID:      oid,
-		Bucket:   bucketName,
-		Progress: progressCallback,
-	}
-
-	furObject, err = generateUploadRequest(ctx, g3i, furObject, file, nil)
-
+	furObject, err := generateUploadRequest(ctx, g3i, req, file, nil)
 	if err != nil {
 		if enableLogs {
 			sb := g3i.Logger().Scoreboard()
@@ -88,9 +69,9 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 				sb.PrintSB()
 			}
 		}
-		g3i.Logger().Failed(furObject.FilePath, furObject.Filename, common.FileMetadata{}, furObject.GUID, 0, false)
-		g3i.Logger().Error("Error occurred during request generation", "file", filePath, "error", err)
-		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", filePath, err.Error())
+		g3i.Logger().Failed(req.SourcePath, req.ObjectKey, common.FileMetadata{}, req.GUID, 0, false)
+		g3i.Logger().Error("Error occurred during request generation", "file", req.SourcePath, "error", err)
+		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", req.SourcePath, err.Error())
 	}
 
 	var reader io.Reader = file
@@ -107,8 +88,7 @@ func UploadSingle(ctx context.Context, profile string, guid string, oid string, 
 		}
 	}
 	if enableLogs {
-		g3i.Logger().Succeeded(filePath, guid)
-		// g3i.Logger().Info("Upload successful", "file", filePath) // Already logged by Succeeded? No.
+		g3i.Logger().Succeeded(req.SourcePath, req.GUID)
 		sb := g3i.Logger().Scoreboard()
 		if sb != nil {
 			sb.IncrementSB(0)

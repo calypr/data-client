@@ -88,6 +88,10 @@ func (r *Request) Do(ctx context.Context, rb *RequestBuilder) (*http.Response, e
 		httpReq.Header.Add(key, value)
 	}
 
+	if rb.SkipAuth {
+		httpReq.Header.Set("X-Skip-Auth", "true")
+	}
+
 	if rb.Token != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+rb.Token)
 	}

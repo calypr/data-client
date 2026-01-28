@@ -16,11 +16,11 @@ import (
 // Upload is a unified catch-all function that automatically chooses between
 // single-part and multipart upload based on file size.
 func Upload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
-	g3.Logger().Printf("Processing Upload Request for: %s\n", req.FilePath)
+	g3.Logger().Printf("Processing Upload Request for: %s\n", req.SourcePath)
 
-	file, err := os.Open(req.FilePath)
+	file, err := os.Open(req.SourcePath)
 	if err != nil {
-		return fmt.Errorf("cannot open file %s: %w", req.FilePath, err)
+		return fmt.Errorf("cannot open file %s: %w", req.SourcePath, err)
 	}
 	defer file.Close()
 
@@ -31,13 +31,13 @@ func Upload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadR
 
 	fileSize := stat.Size()
 	if fileSize == 0 {
-		return fmt.Errorf("file is empty: %s", req.Filename)
+		return fmt.Errorf("file is empty: %s", req.ObjectKey)
 	}
 
 	// Use Single-Part if file is smaller than 5GB (or your defined limit)
 	if fileSize < 5*common.GB {
 		g3.Logger().Printf("File size %d bytes (< 5GB), performing single-part upload\n", fileSize)
-		return UploadSingle(ctx, g3.GetCredential().Profile, req.GUID, req.OID, req.FilePath, req.Bucket, true, req.Progress)
+		return UploadSingle(ctx, g3.GetCredential().Profile, req, true)
 	}
 	g3.Logger().Printf("File size %d bytes (>= 5GB), performing multipart upload\n", fileSize)
 	return MultipartUpload(ctx, g3, req, file, showProgress)
@@ -45,7 +45,7 @@ func Upload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadR
 
 // UploadSingleFile handles single-part upload with progress
 func UploadSingleFile(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
-	file, err := os.Open(req.FilePath)
+	file, err := os.Open(req.SourcePath)
 	if err != nil {
 		return err
 	}
@@ -56,9 +56,8 @@ func UploadSingleFile(ctx context.Context, g3 client.Gen3Interface, req common.F
 		return fmt.Errorf("file exceeds 5GB limit")
 	}
 
-	respObj, err := GeneratePresignedUploadURL(ctx, g3, req.Filename, req.FileMetadata, req.Bucket)
-	if err != nil {
-		return err
+	if fi.Size() > common.FileSizeLimit {
+		return fmt.Errorf("file exceeds 5GB limit")
 	}
 
 	// Generate request with progress bar
@@ -67,15 +66,8 @@ func UploadSingleFile(ctx context.Context, g3 client.Gen3Interface, req common.F
 		p = mpb.New(mpb.WithOutput(os.Stdout))
 	}
 
-	fur, err := generateUploadRequest(ctx, g3, common.FileUploadRequestObject{
-		FilePath:     req.FilePath,
-		Filename:     req.Filename,
-		PresignedURL: respObj.URL,
-		GUID:         respObj.GUID,
-		Bucket:       req.Bucket,
-		Progress:     req.Progress,
-		OID:          req.OID,
-	}, file, p)
+	// Populate PresignedURL and GUID if missing
+	fur, err := generateUploadRequest(ctx, g3, req, file, p)
 	if err != nil {
 		return err
 	}
@@ -134,12 +126,45 @@ func RegisterAndUploadFile(ctx context.Context, g3 client.Gen3Interface, drsObje
 	}
 
 	// 3. Upload File
+	uploadFilename := filepath.Base(filePath)
+
+	// Attempt to determine the correct upload filename from the registered object's URL.
+	// git-drs registers s3://bucket/GUID/SHA, so we want to upload to "SHA", not "filename.ext".
+	if res != nil && len(res.AccessMethods) > 0 {
+		for _, am := range res.AccessMethods {
+			if am.Type == "s3" && am.AccessURL.URL != "" {
+				// Parse s3://bucket/guid/sha -> sha
+				parts := strings.Split(am.AccessURL.URL, "/")
+				if len(parts) > 0 {
+					candidate := parts[len(parts)-1]
+					if candidate != "" {
+						uploadFilename = candidate
+					}
+				}
+				break
+			}
+		}
+	} else if len(drsObject.AccessMethods) > 0 {
+		// Fallback to checking the input object if res didn't have methods (unlikely for upsert=false)
+		for _, am := range drsObject.AccessMethods {
+			if am.Type == "s3" && am.AccessURL.URL != "" {
+				parts := strings.Split(am.AccessURL.URL, "/")
+				if len(parts) > 0 {
+					candidate := parts[len(parts)-1]
+					if candidate != "" {
+						uploadFilename = candidate
+					}
+				}
+				break
+			}
+		}
+	}
+
 	req := common.FileUploadRequestObject{
-		FilePath: filePath,
-		Filename: filepath.Base(filePath),
-		GUID:     drsObject.Id,
-		OID:      drsObject.Id,
-		Bucket:   bucketName,
+		SourcePath: filePath,
+		ObjectKey:  uploadFilename,
+		GUID:       drsObject.Id,
+		Bucket:     bucketName,
 	}
 
 	// Use Upload function which handles single/multipart selection

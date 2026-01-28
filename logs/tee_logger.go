@@ -139,7 +139,7 @@ func (t *Gen3Logger) writeFailedSync(e common.RetryObject) {
 	defer t.failedMu.Unlock()
 
 	// Store the FileMetadata part in the map
-	t.FailedMap[e.FilePath] = e
+	t.FailedMap[e.SourcePath] = e
 
 	data, _ := json.MarshalIndent(t.FailedMap, "", "  ")
 	os.WriteFile(t.failedPath, data, 0644)
@@ -158,8 +158,8 @@ func (t *Gen3Logger) writeSucceededSync(path, guid string) {
 func (t *Gen3Logger) Failed(filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool) {
 	if t.failedPath != "" {
 		t.writeFailedSync(common.RetryObject{
-			FilePath:     filePath,
-			Filename:     filename,
+			SourcePath:   filePath,
+			ObjectKey:    filename,
 			FileMetadata: metadata,
 			GUID:         guid,
 			RetryCount:   retryCount,

@@ -10,16 +10,16 @@ import (
 type progressWriter struct {
 	writer     io.Writer
 	onProgress common.ProgressCallback
-	oid        string
+	hash       string
 	total      int64
 	bytesSoFar int64
 }
 
-func newProgressWriter(writer io.Writer, onProgress common.ProgressCallback, oid string, total int64) *progressWriter {
+func newProgressWriter(writer io.Writer, onProgress common.ProgressCallback, hash string, total int64) *progressWriter {
 	return &progressWriter{
 		writer:     writer,
 		onProgress: onProgress,
-		oid:        oid,
+		hash:       hash,
 		total:      total,
 	}
 }
@@ -31,7 +31,7 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 		pw.bytesSoFar += delta
 		if progressErr := pw.onProgress(common.ProgressEvent{
 			Event:          "progress",
-			Oid:            pw.oid,
+			Oid:            pw.hash,
 			BytesSoFar:     pw.bytesSoFar,
 			BytesSinceLast: delta,
 		}); progressErr != nil {
@@ -48,7 +48,7 @@ func (pw *progressWriter) Finalize() error {
 		if pw.onProgress != nil {
 			_ = pw.onProgress(common.ProgressEvent{
 				Event:          "progress",
-				Oid:            pw.oid,
+				Oid:            pw.hash,
 				BytesSoFar:     pw.bytesSoFar,
 				BytesSinceLast: delta,
 			})
@@ -56,14 +56,4 @@ func (pw *progressWriter) Finalize() error {
 		return fmt.Errorf("download incomplete: %d/%d bytes", pw.bytesSoFar-delta, pw.total)
 	}
 	return nil
-}
-
-func resolveDownloadOID(fdr common.FileDownloadResponseObject) string {
-	if fdr.OID != "" {
-		return fdr.OID
-	}
-	if fdr.GUID != "" {
-		return fdr.GUID
-	}
-	return fdr.Filename
 }

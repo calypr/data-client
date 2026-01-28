@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/calypr/data-client/common"
-	client "github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
@@ -43,7 +43,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
 			defer closer()
 
-			g3i, err := client.NewGen3Interface(profile, logger)
+			g3i, err := g3client.NewGen3Interface(profile, logger)
 			if err != nil {
 				logger.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
@@ -81,19 +81,19 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			for _, obj := range objects {
 				localFilePath := filepath.Join(absUploadPath, obj.Title)
 
-				fur, err := upload.ProcessFilename(logger, absUploadPath, localFilePath, obj.ObjectID, includeSubDirName, false)
+				fur, err := upload.ProcessFilename(logger, absUploadPath, localFilePath, obj.GUID, includeSubDirName, false)
 				if err != nil {
 					logger.Printf("Skipping %s: %v\n", localFilePath, err)
-					logger.Failed(localFilePath, filepath.Base(localFilePath), common.FileMetadata{}, obj.ObjectID, 0, false)
+					logger.Failed(localFilePath, filepath.Base(localFilePath), common.FileMetadata{}, obj.GUID, 0, false)
 					continue
 				}
 
 				// GUID comes from manifest → override
-				fur.GUID = obj.ObjectID
+				fur.GUID = obj.GUID
 				fur.Bucket = bucketName
 				fur.Progress = noopProgress
 
-				logger.Println("\t" + localFilePath + " → GUID " + obj.ObjectID)
+				logger.Println("\t" + localFilePath + " → GUID " + obj.GUID)
 				requests = append(requests, fur)
 			}
 
@@ -122,16 +122,16 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				}
 			} else {
 				for _, req := range single {
-					upload.UploadSingle(ctx, profileConfig.Profile, req.GUID, req.GUID, req.FilePath, req.Bucket, true, nil)
+					upload.UploadSingle(ctx, profileConfig.Profile, req, true)
 				}
 			}
 
 			// Upload multipart files
 			for _, req := range multi {
 
-				file, err := os.Open(req.FilePath)
+				file, err := os.Open(req.SourcePath)
 				if err != nil {
-					g3i.Logger().Printf("Error opening file %s : %v", req.FilePath, err)
+					g3i.Logger().Printf("Error opening file %s : %v", req.SourcePath, err)
 					continue
 				}
 

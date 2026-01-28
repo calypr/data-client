@@ -66,6 +66,11 @@ type AuthTransport struct {
 }
 
 func (t *AuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("X-Skip-Auth") == "true" {
+		req.Header.Del("X-Skip-Auth")
+		return t.Base.RoundTrip(req)
+	}
+
 	t.mu.RLock()
 	token := t.Cred.AccessToken
 	t.mu.RUnlock()

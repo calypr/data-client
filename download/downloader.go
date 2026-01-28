@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -16,7 +16,7 @@ import (
 // DownloadMultiple is the public entry point called from g3cmd
 func DownloadMultiple(
 	ctx context.Context,
-	g3i client.Gen3Interface,
+	g3i g3client.Gen3Interface,
 	objects []common.ManifestObject,
 	downloadPath string,
 	filenameFormat string,
@@ -109,7 +109,7 @@ func handleWarningsAndConfirmation(logger *slog.Logger, downloadPath, filenameFo
 // prepareFiles gathers metadata, checks local files, collects skips/renames
 func prepareFiles(
 	ctx context.Context,
-	g3i client.Gen3Interface,
+	g3i g3client.Gen3Interface,
 	objects []common.ManifestObject,
 	downloadPath, filenameFormat string,
 	rename, skipCompleted bool,
@@ -127,7 +127,7 @@ func prepareFiles(
 	)
 
 	for _, obj := range objects {
-		if obj.ObjectID == "" {
+		if obj.GUID == "" {
 			logger.Warn("Empty GUID, skipping entry")
 			bar.Increment()
 			continue
@@ -137,7 +137,7 @@ func prepareFiles(
 		var err error
 		if info.Name == "" || info.Size == 0 {
 			// Very strict object id checking
-			info, err = AskGen3ForFileInfo(ctx, g3i, obj.ObjectID, protocol, downloadPath, filenameFormat, rename, &renamed)
+			info, err = AskGen3ForFileInfo(ctx, g3i, obj.GUID, protocol, downloadPath, filenameFormat, rename, &renamed)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -146,7 +146,7 @@ func prepareFiles(
 		fdr := common.FileDownloadResponseObject{
 			DownloadPath: downloadPath,
 			Filename:     info.Name,
-			GUID:         obj.ObjectID,
+			GUID:         obj.GUID,
 		}
 
 		if !rename {

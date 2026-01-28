@@ -9,22 +9,38 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/request"
+	client "github.com/calypr/data-client/g3client"
 )
 
 // GetDownloadResponse gets presigned URL and prepares HTTP response
 func GetDownloadResponse(ctx context.Context, g3 client.Gen3Interface, fdr *common.FileDownloadResponseObject, protocolText string) error {
+	// 1. Try Fence first
 	url, err := g3.Fence().GetDownloadPresignedUrl(ctx, fdr.GUID, protocolText)
-	if err != nil {
-		return err
-	}
-	fdr.URL = url
+	if err == nil && url != "" {
+		fdr.PresignedURL = url
+	} else {
+		// 2. Fallback to IndexD DRS endpoint
+		accessType := "s3"
+		if strings.HasPrefix(protocolText, "?protocol=") {
+			accessType = strings.TrimPrefix(protocolText, "?protocol=")
+		} else if protocolText == "?protocol=gs" {
+			accessType = "gs"
+		}
 
-	if fdr.Range > 0 && !isCloudPresignedURL(url) {
-		if !supportsRange(url) {
-			fdr.Range = 0
+		accessURL, errIdx := g3.Indexd().GetDownloadURL(ctx, fdr.GUID, accessType)
+		if errIdx == nil && accessURL != nil && accessURL.URL != "" {
+			fdr.PresignedURL = accessURL.URL
+			// Some DRS providers might return required headers
+			// This is not currently used by makeDownloadRequest but good to have for future
+		} else {
+			if err != nil {
+				return err
+			}
+			if errIdx != nil {
+				return errIdx
+			}
+			return fmt.Errorf("failed to resolve download URL for %s", fdr.GUID)
 		}
 	}
 
@@ -32,34 +48,25 @@ func GetDownloadResponse(ctx context.Context, g3 client.Gen3Interface, fdr *comm
 }
 
 func isCloudPresignedURL(url string) bool {
-	return strings.Contains(url, "X-Amz-Signature") || strings.Contains(url, "X-Goog-Signature")
-}
-
-func supportsRange(url string) bool {
-	resp, err := http.Head(url)
-	if err != nil || resp.Header.Get("Accept-Ranges") != "bytes" {
-		return false
-	}
-	return true
+	return strings.Contains(url, "X-Amz-Signature") ||
+		strings.Contains(url, "X-Goog-Signature") ||
+		strings.Contains(url, "Signature=") ||
+		strings.Contains(url, "AWSAccessKeyId=") ||
+		strings.Contains(url, "Expires=")
 }
 
 func makeDownloadRequest(ctx context.Context, g3 client.Gen3Interface, fdr *common.FileDownloadResponseObject) error {
-	headers := map[string]string{}
+	skipAuth := isCloudPresignedURL(fdr.PresignedURL)
+	rb := g3.Fence().New(http.MethodGet, fdr.PresignedURL).WithSkipAuth(skipAuth)
+
 	if fdr.Range > 0 {
-		headers["Range"] = "bytes=" + strconv.FormatInt(fdr.Range, 10) + "-"
+		rb.WithHeader("Range", "bytes="+strconv.FormatInt(fdr.Range, 10)+"-")
 	}
 
-	resp, err := g3.Fence().Do(
-		ctx,
-		&request.RequestBuilder{
-			Method:  http.MethodGet,
-			Url:     fdr.URL,
-			Headers: headers,
-		},
-	)
+	resp, err := g3.Fence().Do(ctx, rb)
 
 	if err != nil {
-		return errors.New("Request failed: " + strings.ReplaceAll(err.Error(), fdr.URL, "<SENSITIVE_URL>"))
+		return errors.New("Request failed: " + strings.ReplaceAll(err.Error(), fdr.PresignedURL, "<SENSITIVE_URL>"))
 	}
 
 	// Check for non-success status codes

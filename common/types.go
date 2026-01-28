@@ -11,11 +11,10 @@ type AccessTokenStruct struct {
 
 // FileUploadRequestObject defines a object for file upload
 type FileUploadRequestObject struct {
-	FilePath     string
-	Filename     string
+	SourcePath   string
+	ObjectKey    string
 	FileMetadata FileMetadata
 	GUID         string
-	OID          string
 	PresignedURL string
 	Bucket       string `json:"bucket,omitempty"`
 	Progress     ProgressCallback
@@ -26,8 +25,7 @@ type FileDownloadResponseObject struct {
 	DownloadPath string
 	Filename     string
 	GUID         string
-	OID          string
-	URL          string
+	PresignedURL string
 	Range        int64
 	Overwrite    bool
 	Skip         bool
@@ -46,8 +44,8 @@ type FileMetadata struct {
 
 // RetryObject defines a object for retry upload
 type RetryObject struct {
-	FilePath     string
-	Filename     string
+	SourcePath   string
+	ObjectKey    string
 	FileMetadata FileMetadata
 	GUID         string
 	RetryCount   int
@@ -56,7 +54,7 @@ type RetryObject struct {
 }
 
 type ManifestObject struct {
-	ObjectID  string `json:"object_id"`
+	GUID      string `json:"object_id"`
 	SubjectID string `json:"subject_id"`
 	Title     string `json:"title"`
 	Size      int64  `json:"size"`

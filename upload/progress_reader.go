@@ -10,28 +10,25 @@ import (
 type progressReader struct {
 	reader     io.Reader
 	onProgress common.ProgressCallback
-	oid        string
+	hash       string
 	total      int64
 	bytesSoFar int64
 }
 
-func newProgressReader(reader io.Reader, onProgress common.ProgressCallback, oid string, total int64) *progressReader {
+func newProgressReader(reader io.Reader, onProgress common.ProgressCallback, hash string, total int64) *progressReader {
 	return &progressReader{
 		reader:     reader,
 		onProgress: onProgress,
-		oid:        oid,
+		hash:       hash,
 		total:      total,
 	}
 }
 
 func resolveUploadOID(req common.FileUploadRequestObject) string {
-	if req.OID != "" {
-		return req.OID
+	if req.ObjectKey != "" {
+		return req.ObjectKey
 	}
-	if req.GUID != "" {
-		return req.GUID
-	}
-	return req.Filename
+	return req.GUID
 }
 
 func (pr *progressReader) Read(p []byte) (int, error) {
@@ -41,7 +38,7 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 		pr.bytesSoFar += delta
 		if progressErr := pr.onProgress(common.ProgressEvent{
 			Event:          "progress",
-			Oid:            pr.oid,
+			Oid:            pr.hash,
 			BytesSoFar:     pr.bytesSoFar,
 			BytesSinceLast: delta,
 		}); progressErr != nil {
@@ -58,7 +55,7 @@ func (pr *progressReader) Finalize() error {
 		if pr.onProgress != nil {
 			_ = pr.onProgress(common.ProgressEvent{
 				Event:          "progress",
-				Oid:            pr.oid,
+				Oid:            pr.hash,
 				BytesSoFar:     pr.bytesSoFar,
 				BytesSinceLast: delta,
 			})

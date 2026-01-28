@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
@@ -37,7 +37,7 @@ func init() {
 			Logger, logCloser := logs.New(profile, logs.WithSucceededLog(), logs.WithScoreboard(), logs.WithFailedLog())
 			defer logCloser()
 			// Instantiate interface to Gen3
-			g3i, err := client.NewGen3Interface(profile, Logger)
+			g3i, err := g3client.NewGen3Interface(profile, Logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
@@ -120,16 +120,16 @@ func init() {
 				}
 			} else {
 				for _, furObject := range singlePartObjects {
-					file, err := os.Open(furObject.FilePath)
+					file, err := os.Open(furObject.SourcePath)
 					if err != nil {
-						logger.Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						logger.Failed(furObject.SourcePath, furObject.ObjectKey, furObject.FileMetadata, furObject.GUID, 0, false)
 						logger.Println("File open error: " + err.Error())
 						continue
 					}
 					defer file.Close()
 					fi, err := file.Stat()
 					if err != nil {
-						logger.Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						logger.Failed(furObject.SourcePath, furObject.ObjectKey, furObject.FileMetadata, furObject.GUID, 0, false)
 						logger.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
 						continue
 					}
@@ -146,9 +146,9 @@ func init() {
 				}
 				g3i.Logger().Println("Multipart uploading...")
 				for _, furObject := range multipartObjects {
-					file, err := os.Open(furObject.FilePath)
+					file, err := os.Open(furObject.SourcePath)
 					if err != nil {
-						logger.Failed(furObject.FilePath, furObject.Filename, furObject.FileMetadata, furObject.GUID, 0, false)
+						logger.Failed(furObject.SourcePath, furObject.ObjectKey, furObject.FileMetadata, furObject.GUID, 0, false)
 						logger.Println("File open error: " + err.Error())
 						continue
 					}

@@ -141,12 +141,11 @@ func TestMultipartUploadProgressIntegration(t *testing.T) {
 	}
 
 	requestObject := common.FileUploadRequestObject{
-		FilePath: file.Name(),
-		Filename: "multipart.bin",
-		GUID:     "guid-123",
-		OID:      "oid-123",
-		Bucket:   "bucket",
-		Progress: progress,
+		SourcePath: file.Name(),
+		ObjectKey:  "multipart.bin",
+		GUID:       "guid-123",
+		Bucket:     "bucket",
+		Progress:   progress,
 	}
 
 	if err := MultipartUpload(ctx, fake, requestObject, file, false); err != nil {

@@ -8,8 +8,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
+	client "github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/request"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -63,21 +63,21 @@ func BatchUpload(
 			for fur := range workCh {
 				// --- Ensure presigned URL ---
 				if fur.PresignedURL == "" {
-					resp, err := GeneratePresignedUploadURL(ctx, g3i, fur.Filename, fur.FileMetadata, fur.Bucket)
+					resp, err := GeneratePresignedUploadURL(ctx, g3i, fur.ObjectKey, fur.FileMetadata, fur.Bucket)
 					if err != nil {
-						g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, "", 0, false)
+						g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, "", 0, false)
 						errCh <- err
 						continue
 					}
 					fur.PresignedURL = resp.URL
 					fur.GUID = resp.GUID
-					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, resp.GUID, 0, false) // update log
+					g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, resp.GUID, 0, false) // update log
 				}
 
 				// --- Open file ---
-				file, err := os.Open(fur.FilePath)
+				file, err := os.Open(fur.SourcePath)
 				if err != nil {
-					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, fur.GUID, 0, false)
 					errCh <- fmt.Errorf("file open error: %w", err)
 					continue
 				}
@@ -85,22 +85,22 @@ func BatchUpload(
 				fi, err := file.Stat()
 				if err != nil {
 					file.Close()
-					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, fur.GUID, 0, false)
 					errCh <- fmt.Errorf("file stat error: %w", err)
 					continue
 				}
 
 				if fi.Size() > common.FileSizeLimit {
 					file.Close()
-					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
-					errCh <- fmt.Errorf("file size exceeds limit: %s", fur.Filename)
+					g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, fur.GUID, 0, false)
+					errCh <- fmt.Errorf("file size exceeds limit: %s", fur.ObjectKey)
 					continue
 				}
 
 				// --- Progress bar ---
 				bar := progress.AddBar(fi.Size(),
 					mpb.PrependDecorators(
-						decor.Name(fur.Filename+" "),
+						decor.Name(fur.ObjectKey+" "),
 						decor.CountersKibiByte("% .1f / % .1f"),
 					),
 					mpb.AppendDecorators(
@@ -126,7 +126,7 @@ func BatchUpload(
 				bar.Abort(false)
 
 				if err != nil {
-					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, fur.GUID, 0, false)
 					errCh <- err
 					continue
 				}
@@ -135,7 +135,7 @@ func BatchUpload(
 					bodyBytes, _ := io.ReadAll(resp.Body)
 					resp.Body.Close()
 					errMsg := fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(bodyBytes))
-					g3i.Logger().Failed(fur.FilePath, fur.Filename, fur.FileMetadata, fur.GUID, 0, false)
+					g3i.Logger().Failed(fur.SourcePath, fur.ObjectKey, fur.FileMetadata, fur.GUID, 0, false)
 					errCh <- errMsg
 					continue
 				}
@@ -144,8 +144,8 @@ func BatchUpload(
 
 				// Success
 				respCh <- resp
-				g3i.Logger().DeleteFromFailedLog(fur.FilePath)
-				g3i.Logger().Succeeded(fur.FilePath, fur.GUID)
+				g3i.Logger().DeleteFromFailedLog(fur.SourcePath)
+				g3i.Logger().Succeeded(fur.SourcePath, fur.GUID)
 				g3i.Logger().Scoreboard().IncrementSB(0)
 			}
 		}()

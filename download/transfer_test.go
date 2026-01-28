@@ -17,6 +17,7 @@ import (
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/indexd"
+	"github.com/calypr/data-client/indexd/drs"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
 )
@@ -43,11 +44,17 @@ type fakeFence struct {
 func (f *fakeFence) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	return f.doFunc(ctx, req)
 }
+func (f *fakeFence) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
+}
 func (f *fakeFence) CheckForShepherdAPI(ctx context.Context) (bool, error) { return false, nil }
 func (f *fakeFence) ResolveOID(ctx context.Context, oid string) (fence.FenceResponse, error) {
 	return fence.FenceResponse{}, nil
 }
 func (f *fakeFence) GetDownloadPresignedUrl(ctx context.Context, guid, protocol string) (string, error) {
+	if guid == "test-fallback" {
+		return "", errors.New("fence fallback")
+	}
 	return "https://download.example.com/object", nil
 }
 func (f *fakeFence) ParseFenceURLResponse(resp *http.Response) (fence.FenceResponse, error) {
@@ -65,6 +72,14 @@ type fakeIndexd struct {
 
 func (f *fakeIndexd) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	return f.doFunc(ctx, req)
+}
+
+func (f *fakeIndexd) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
+}
+
+func (f *fakeIndexd) GetDownloadURL(ctx context.Context, did string, accessType string) (*drs.AccessURL, error) {
+	return &drs.AccessURL{URL: "https://download.example.com/object"}, nil
 }
 
 func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
@@ -93,7 +108,7 @@ func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
 		},
 	}
 
-	err := DownloadSingleWithProgress(context.Background(), fake, "guid-123", downloadPath, "", "oid-123", progress)
+	err := DownloadSingleWithProgress(context.Background(), fake, "guid-123", downloadPath, "", progress)
 	if err != nil {
 		t.Fatalf("download failed: %v", err)
 	}
@@ -141,7 +156,7 @@ func TestDownloadSingleWithProgressFinalizeOnError(t *testing.T) {
 		},
 	}
 
-	err := DownloadSingleWithProgress(context.Background(), fake, "guid-123", downloadPath, "", "oid-123", progress)
+	err := DownloadSingleWithProgress(context.Background(), fake, "guid-123", downloadPath, "", progress)
 	if err == nil {
 		t.Fatal("expected download error")
 	}

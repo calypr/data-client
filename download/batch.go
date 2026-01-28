@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/calypr/data-client/common"
-	client "github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/hashicorp/go-multierror"
 	"github.com/vbauerster/mpb/v8"
@@ -21,7 +21,7 @@ import (
 // downloadFiles performs bounded parallel downloads and collects ALL errors
 func downloadFiles(
 	ctx context.Context,
-	g3i client.Gen3Interface,
+	g3i g3client.Gen3Interface,
 	files []common.FileDownloadResponseObject,
 	numParallel int,
 	protocol string,
@@ -134,7 +134,7 @@ func downloadFiles(
 
 				writer = bar.ProxyWriter(file)
 			} else if fdr.Progress != nil {
-				tracker = newProgressWriter(file, fdr.Progress, resolveDownloadOID(*fdr), total)
+				tracker = newProgressWriter(file, fdr.Progress, fdr.GUID, total)
 				writer = tracker
 			}
 

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/spf13/cobra"
 )
@@ -50,7 +50,7 @@ func init() {
 				cred.AccessToken = ""
 			}
 
-			g3i := client.NewGen3InterfaceFromCredential(cred, logger)
+			g3i := g3client.NewGen3InterfaceFromCredential(cred, logger)
 			err := g3i.ExportCredential(context.Background(), cred)
 			if err != nil {
 				logger.Println(err.Error())

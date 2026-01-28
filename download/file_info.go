@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"net/http"
 
-	client "github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/request"
 )
 
 func AskGen3ForFileInfo(
 	ctx context.Context,
-	g3i client.Gen3Interface,
+	g3i g3client.Gen3Interface,
 	guid, protocol, downloadPath, filenameFormat string,
 	rename bool,
 	renamedFiles *[]RenamedOrSkippedFileInfo,
@@ -43,7 +43,7 @@ func AskGen3ForFileInfo(
 
 func fetchFromShepherd(
 	ctx context.Context,
-	g3i client.Gen3Interface,
+	g3i g3client.Gen3Interface,
 	guid, downloadPath, filenameFormat string,
 	renamedFiles *[]RenamedOrSkippedFileInfo,
 ) (*IndexdResponse, error) {
@@ -74,7 +74,7 @@ func fetchFromShepherd(
 
 func fetchFromIndexd(
 	ctx context.Context,
-	g3i client.Gen3Interface, method,
+	g3i g3client.Gen3Interface, method,
 	guid, protocol, downloadPath, filenameFormat string,
 	rename bool,
 	renamedFiles *[]RenamedOrSkippedFileInfo,
