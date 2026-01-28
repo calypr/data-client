@@ -13,6 +13,7 @@ import (
 	"github.com/calypr/data-client/download"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/mocks"
+	"github.com/calypr/data-client/request"
 	"github.com/calypr/data-client/upload"
 	"go.uber.org/mock/gomock"
 )
@@ -35,6 +36,15 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 	mockFence.EXPECT().
 		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
 		Return(mockDownloadURL, nil)
+
+	mockFence.EXPECT().
+		New(http.MethodGet, mockDownloadURL).
+		Return(&request.RequestBuilder{
+			Method:  http.MethodGet,
+			Url:     mockDownloadURL,
+			Headers: make(map[string]string),
+		}).
+		AnyTimes()
 
 	// Mock successful response from the presigned URL
 	mockResp := &http.Response{
@@ -78,6 +88,15 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 	mockFence.EXPECT().
 		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
 		Return(mockDownloadURL, nil)
+
+	mockFence.EXPECT().
+		New(http.MethodGet, mockDownloadURL).
+		Return(&request.RequestBuilder{
+			Method:  http.MethodGet,
+			Url:     mockDownloadURL,
+			Headers: make(map[string]string),
+		}).
+		AnyTimes()
 
 	// Mock successful response
 	mockResp := &http.Response{
