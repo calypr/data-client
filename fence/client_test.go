@@ -27,7 +27,12 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodGet && path == common.FenceUserEndpoint:
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"authz": map[string]any{"/resource": []string{"read"}},
+				"username": "test-user",
+				"authz": map[string]any{
+					"/resource": []map[string]string{
+						{"method": "read", "service": "fence"},
+					},
+				},
 			})
 			return
 		case r.Method == http.MethodGet && path == common.ShepherdVersionEndpoint:
@@ -215,5 +220,31 @@ func TestFenceClient_GetDownloadPresignedUrl_Fence(t *testing.T) {
 	}
 	if url != "https://download.url" {
 		t.Errorf("expected download URL, got %s", url)
+	}
+}
+
+func TestFenceClient_UserPing(t *testing.T) {
+	mock := &mockFenceServer{}
+	server := httptest.NewServer(mock.handler(t))
+	defer server.Close()
+
+	client := newTestClient(server)
+
+	resp, err := client.UserPing(context.Background())
+	if err != nil {
+		t.Fatalf("UserPing error: %v", err)
+	}
+
+	if resp.Username != "test-user" {
+		t.Errorf("expected username test-user, got %s", resp.Username)
+	}
+
+	if _, ok := resp.YourAccess["/resource"]; !ok {
+		t.Errorf("expected /resource access")
+	}
+
+	if resp.BucketPrograms["test-bucket"] != "" {
+		// Our mock for /user/data/buckets returns a bucket but no programs by default unless we update it
+		// In my update to types.go, I added Programs to S3Bucket.
 	}
 }

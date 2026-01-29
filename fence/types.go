@@ -42,10 +42,52 @@ type MultipartCompleteRequestObject struct {
 }
 
 type S3Bucket struct {
-	EndpointURL string `json:"endpoint_url"`
-	Region      string `json:"region"`
+	EndpointURL string   `json:"endpoint_url"`
+	Programs    []string `json:"programs,omitempty"`
+	Region      string   `json:"region"`
 }
 
 type S3BucketsResponse struct {
-	S3Buckets map[string]*S3Bucket `json:"s3_buckets"`
+	GSBuckets map[string]any       `json:"GS_BUCKETS,omitempty"`
+	S3Buckets map[string]*S3Bucket `json:"S3_BUCKETS,omitempty"`
+	// Some versions of fence use lowercase
+	S3BucketsLower map[string]*S3Bucket `json:"s3_buckets,omitempty"`
+}
+
+type UserPermission struct {
+	Method  string `json:"method"`
+	Service string `json:"service"`
+}
+
+type FenceUserResp struct {
+	Active                      bool                        `json:"active"`
+	Authz                       map[string][]UserPermission `json:"authz"`
+	Azp                         *string                     `json:"azp"`
+	CertificatesUploaded        []any                       `json:"certificates_uploaded"`
+	DisplayName                 string                      `json:"display_name"`
+	Email                       string                      `json:"email"`
+	Ga4GhPassportV1             []any                       `json:"ga4gh_passport_v1"`
+	Groups                      []any                       `json:"groups"`
+	Idp                         string                      `json:"idp"`
+	IsAdmin                     bool                        `json:"is_admin"`
+	Message                     string                      `json:"message"`
+	Name                        string                      `json:"name"`
+	PhoneNumber                 string                      `json:"phone_number"`
+	PreferredUsername           string                      `json:"preferred_username"`
+	PrimaryGoogleServiceAccount *string                     `json:"primary_google_service_account"`
+	ProjectAccess               map[string]any              `json:"project_access"`
+	Resources                   []string                    `json:"resources"`
+	ResourcesGranted            []any                       `json:"resources_granted"`
+	Role                        string                      `json:"role"`
+	Sub                         string                      `json:"sub"`
+	UserID                      int                         `json:"user_id"`
+	Username                    string                      `json:"username"`
+}
+
+type PingResp struct {
+	Profile        string            `yaml:"profile" json:"profile"`
+	Username       string            `yaml:"username" json:"username"`
+	Endpoint       string            `yaml:"endpoint" json:"endpoint"`
+	BucketPrograms map[string]string `yaml:"bucket_programs" json:"bucket_programs"`
+	YourAccess     map[string]string `yaml:"your_access" json:"your_access"`
 }

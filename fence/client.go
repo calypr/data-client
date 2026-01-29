@@ -20,6 +20,9 @@ import (
 	"github.com/hashicorp/go-version"
 )
 
+// FenceBucketEndpoint is the endpoint postfix for FENCE bucket list
+const FenceBucketEndpoint = "/user/data/buckets"
+
 //go:generate mockgen -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
 
 // FenceInterface defines the interface for Fence client
@@ -31,6 +34,8 @@ type FenceInterface interface {
 	CheckForShepherdAPI(ctx context.Context) (bool, error)
 	DeleteRecord(ctx context.Context, guid string) (string, error)
 	GetDownloadPresignedUrl(ctx context.Context, guid, protocolText string) (string, error)
+
+	UserPing(ctx context.Context) (*PingResp, error)
 
 	// Bucket details
 	GetBucketDetails(ctx context.Context, bucket string) (*S3Bucket, error)
@@ -44,6 +49,8 @@ type FenceInterface interface {
 	GenerateMultipartPresignedURL(ctx context.Context, key string, uploadID string, partNumber int, bucket string) (string, error)
 	CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []MultipartPart, bucket string) error
 	ParseFenceURLResponse(resp *http.Response) (FenceResponse, error)
+
+	RefreshToken(ctx context.Context) error
 }
 
 // FenceClient implements FenceInterface
@@ -100,6 +107,15 @@ func (f *FenceClient) NewAccessToken(ctx context.Context) (string, error) {
 	}
 
 	return result.AccessToken, nil
+}
+
+func (f *FenceClient) RefreshToken(ctx context.Context) error {
+	token, err := f.NewAccessToken(ctx)
+	if err != nil {
+		return err
+	}
+	f.cred.AccessToken = token
+	return nil
 }
 
 func (f *FenceClient) CheckPrivileges(ctx context.Context) (map[string]any, error) {
@@ -523,4 +539,99 @@ func (f *FenceClient) ParseFenceURLResponse(resp *http.Response) (FenceResponse,
 	}
 
 	return msg, nil
+}
+
+func (f *FenceClient) UserPing(ctx context.Context) (*PingResp, error) {
+	resp, err := f.Do(ctx, &request.RequestBuilder{
+		Url:    f.cred.APIEndpoint + common.FenceUserEndpoint,
+		Method: http.MethodGet,
+		Token:  f.cred.AccessToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get user info, status: %d", resp.StatusCode)
+	}
+
+	var uResp FenceUserResp
+	if err := json.NewDecoder(resp.Body).Decode(&uResp); err != nil {
+		return nil, err
+	}
+
+	bucketResp, err := f.Do(ctx, &request.RequestBuilder{
+		Url:    f.cred.APIEndpoint + FenceBucketEndpoint,
+		Method: http.MethodGet,
+		Token:  f.cred.AccessToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer bucketResp.Body.Close()
+
+	if bucketResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get bucket info, status: %d", bucketResp.StatusCode)
+	}
+
+	var bResp S3BucketsResponse
+	if err := json.NewDecoder(bucketResp.Body).Decode(&bResp); err != nil {
+		return nil, err
+	}
+
+	return &PingResp{
+		Profile:        f.cred.Profile,
+		Username:       uResp.Username,
+		Endpoint:       f.cred.APIEndpoint,
+		BucketPrograms: ParseBucketResp(bResp),
+		YourAccess:     ParseUserResp(uResp),
+	}, nil
+}
+
+func ParseBucketResp(resp S3BucketsResponse) map[string]string {
+	bucketsByProgram := make(map[string]string)
+
+	// Check both S3_BUCKETS and s3_buckets
+	s3Buckets := resp.S3Buckets
+	if len(s3Buckets) == 0 {
+		s3Buckets = resp.S3BucketsLower
+	}
+
+	for bucketName, bucketInfo := range s3Buckets {
+		var programs strings.Builder
+		if len(bucketInfo.Programs) > 1 {
+			for i, p := range bucketInfo.Programs {
+				if i > 0 {
+					programs.WriteString(",")
+				}
+				programs.WriteString(p)
+			}
+		} else if len(bucketInfo.Programs) == 1 {
+			programs.WriteString(bucketInfo.Programs[0])
+		}
+		bucketsByProgram[bucketName] = programs.String()
+	}
+	return bucketsByProgram
+}
+
+func ParseUserResp(resp FenceUserResp) map[string]string {
+	servicesByPath := make(map[string]string)
+	for path, permissions := range resp.Authz {
+		var services strings.Builder
+		seenServices := make(map[string]bool)
+		for _, p := range permissions {
+			if !seenServices[p.Method] {
+				if services.Len() > 0 {
+					services.WriteString(",")
+				}
+				services.WriteString(p.Method)
+				seenServices[p.Method] = true
+			}
+		}
+		if services.Len() > 0 {
+			servicesByPath[path] = services.String()
+		}
+	}
+	return servicesByPath
 }

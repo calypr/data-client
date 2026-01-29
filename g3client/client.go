@@ -11,6 +11,7 @@ import (
 	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/sower"
 	version "github.com/hashicorp/go-version"
 )
 
@@ -22,6 +23,7 @@ type Gen3Interface interface {
 	ExportCredential(ctx context.Context, cred *conf.Credential) error
 	Fence() fence.FenceInterface
 	Indexd() indexd.IndexdInterface
+	Sower() sower.SowerInterface
 }
 
 func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logger) Gen3Interface {
@@ -29,10 +31,12 @@ func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logg
 	reqInterface := request.NewRequestInterface(logger.Logger, cred, config)
 	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
 	iClient := indexd.NewIndexdClient(reqInterface, cred, logger.Logger)
+	sClient := sower.NewSowerClient(reqInterface, cred.APIEndpoint)
 
 	return &Gen3Client{
 		fence:            fClient,
 		indexd:           iClient,
+		sower:            sClient,
 		config:           config,
 		RequestInterface: reqInterface,
 		credential:       cred,
@@ -44,6 +48,7 @@ type Gen3Client struct {
 	Ctx    context.Context
 	fence  fence.FenceInterface
 	indexd indexd.IndexdInterface
+	sower  sower.SowerInterface
 	config conf.ManagerInterface
 	request.RequestInterface
 
@@ -57,6 +62,10 @@ func (g *Gen3Client) Fence() fence.FenceInterface {
 
 func (g *Gen3Client) Indexd() indexd.IndexdInterface {
 	return g.indexd
+}
+
+func (g *Gen3Client) Sower() sower.SowerInterface {
+	return g.sower
 }
 
 func (g *Gen3Client) Logger() *logs.Gen3Logger {
@@ -165,10 +174,12 @@ func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...func(*Gen
 	}
 
 	iClient := indexd.NewIndexdClient(reqInterface, cred, logger.Logger)
+	sClient := sower.NewSowerClient(reqInterface, cred.APIEndpoint)
 
 	return &Gen3Client{
 		fence:            fClient,
 		indexd:           iClient,
+		sower:            sClient,
 		config:           config,
 		RequestInterface: reqInterface,
 		credential:       cred,
