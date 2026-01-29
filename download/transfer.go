@@ -19,8 +19,8 @@ func DownloadSingleWithProgress(
 	guid string,
 	downloadPath string,
 	protocol string,
-	progress common.ProgressCallback,
 ) error {
+	progress := common.GetProgress(ctx)
 	var err error
 	downloadPath, err = common.ParseRootPath(downloadPath)
 	if err != nil {
@@ -40,7 +40,6 @@ func DownloadSingleWithProgress(
 		DownloadPath: downloadPath,
 		Filename:     info.Name,
 		GUID:         guid,
-		Progress:     progress,
 	}
 
 	protocolText := ""
@@ -75,8 +74,8 @@ func DownloadSingleWithProgress(
 	total := info.Size
 	var writer io.Writer = file
 	var tracker *progressWriter
-	if fdr.Progress != nil {
-		tracker = newProgressWriter(file, fdr.Progress, fdr.GUID, total)
+	if progress != nil {
+		tracker = newProgressWriter(file, progress, guid, total)
 		writer = tracker
 	}
 
@@ -101,42 +100,49 @@ func DownloadToPath(
 	g3i g3client.Gen3Interface,
 	guid string,
 	dstPath string,
-	hash string, // Content hash (e.g. SHA256) for progress tracking
-	progress common.ProgressCallback,
 ) error {
+	progress := common.GetProgress(ctx)
+	hash := common.GetOid(ctx)
+	logger := g3i.Logger()
+	// logger.Printf("Downloading %s to %s\n", guid, dstPath)
+
 	fdr := common.FileDownloadResponseObject{
-		GUID:     guid,
-		Progress: progress,
+		GUID: guid,
 	}
 
 	if err := GetDownloadResponse(ctx, g3i, &fdr, ""); err != nil {
+		logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
 		return err
 	}
 	defer fdr.Response.Body.Close()
 
 	if dir := filepath.Dir(dstPath); dir != "." {
 		if err := os.MkdirAll(dir, 0766); err != nil {
+			logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
 			return fmt.Errorf("mkdir for %s: %w", dstPath, err)
 		}
 	}
 
 	file, err := os.Create(dstPath)
 	if err != nil {
+		logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
 		return fmt.Errorf("create local file %s: %w", dstPath, err)
 	}
 	defer file.Close()
 
 	var writer io.Writer = file
-	if fdr.Progress != nil {
+	if progress != nil {
 		total := fdr.Response.ContentLength
-		tracker := newProgressWriter(file, fdr.Progress, hash, total)
+		tracker := newProgressWriter(file, progress, hash, total)
 		writer = tracker
 		defer tracker.Finalize()
 	}
 
 	if _, err := io.Copy(writer, fdr.Response.Body); err != nil {
+		logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
 		return fmt.Errorf("copy to %s: %w", dstPath, err)
 	}
 
+	logger.SucceededContext(ctx, dstPath, guid)
 	return nil
 }

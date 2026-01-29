@@ -2,6 +2,7 @@ package logs
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"testing"
 )
@@ -102,8 +103,7 @@ func TestNew_WithSucceededLogOption(t *testing.T) {
 
 func TestNew_WithBaseLogger(t *testing.T) {
 	profile := "test-profile"
-	// Create a simple logger that implements the Logger interface
-	baseLogger := &testLogger{writer: os.Stdout}
+	baseLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	logger, cleanup := New(profile, WithBaseLogger(baseLogger))
 	defer cleanup()
@@ -118,7 +118,7 @@ func TestNew_WithBaseLogger(t *testing.T) {
 
 func TestNew_WithMultipleOptions(t *testing.T) {
 	profile := "test-profile"
-	baseLogger := &testLogger{writer: os.Stdout}
+	baseLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	logger, cleanup := New(profile,
 		WithBaseLogger(baseLogger),

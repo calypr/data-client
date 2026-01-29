@@ -133,7 +133,7 @@ func init() {
 						logger.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
 						continue
 					}
-					upload.UploadSingleFile(ctx, g3i, furObject, true)
+					upload.UploadSingle(ctx, g3i, furObject, true)
 				}
 			}
 

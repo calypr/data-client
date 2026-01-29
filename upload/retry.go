@@ -124,7 +124,7 @@ func RetryFailedUploads(ctx context.Context, g3 client.Gen3Interface, failedMap 
 				continue
 			}
 
-			err = UploadSingle(ctx, g3.GetCredential().Profile, fur, true)
+			err = UploadSingle(ctx, g3, fur, true)
 			if err == nil {
 				logger.Succeeded(ro.SourcePath, fur.GUID)
 				if sb != nil {

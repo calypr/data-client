@@ -18,7 +18,7 @@ type RenamedOrSkippedFileInfo struct {
 }
 
 func validateLocalFileStat(
-	logger logs.Logger,
+	logger *logs.Gen3Logger,
 	fdr *common.FileDownloadResponseObject,
 	filesize int64,
 	skipCompleted bool,

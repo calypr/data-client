@@ -20,7 +20,7 @@ import (
 )
 
 func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadRequestObject, file *os.File, showProgress bool) error {
-	g3.Logger().Info("File Upload Request", "request", req)
+	g3.Logger().InfoContext(ctx, "File Upload Request", "request", req)
 
 	stat, err := file.Stat()
 	if err != nil {
@@ -57,7 +57,7 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 	// 2. Construct the S3 Key correctly
 	// Ensure finalGUID is not empty to avoid a leading slash
 	key := fmt.Sprintf("%s/%s", finalGUID, req.ObjectKey)
-	g3.Logger().Info("Initialized Upload", "id", uploadID, "key", key)
+	g3.Logger().InfoContext(ctx, "Initialized Upload", "id", uploadID, "key", key)
 
 	chunkSize := OptimalChunkSize(fileSize)
 
@@ -76,6 +76,12 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		uploadErrors []error
 		totalBytes   int64 // Atomic counter for monotonically increasing BytesSoFar
 	)
+
+	progressCallback := common.GetProgress(ctx)
+	oid := common.GetOid(ctx)
+	if oid == "" {
+		oid = resolveUploadOID(req)
+	}
 
 	// 3. Worker logic
 	worker := func() {
@@ -118,17 +124,14 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 			if bar != nil {
 				bar.IncrInt64(size)
 			}
-			if req.Progress != nil {
+			if progressCallback != nil {
 				currentTotal := atomic.AddInt64(&totalBytes, size)
-				err = req.Progress(common.ProgressEvent{
+				_ = progressCallback(common.ProgressEvent{
 					Event:          "progress",
-					Oid:            resolveUploadOID(req),
+					Oid:            oid,
 					BytesSinceLast: size,
 					BytesSoFar:     currentTotal,
 				})
-				if err != nil {
-					g3.Logger().Printf("progress callback error: %v", err)
-				}
 			}
 			mu.Unlock()
 		}
@@ -158,8 +161,8 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		return fmt.Errorf("failed to complete multipart upload: %w", err)
 	}
 
-	g3.Logger().Info("Successfully uploaded", "file", req.ObjectKey, "key", key)
-	g3.Logger().Succeeded(req.SourcePath, req.GUID)
+	g3.Logger().InfoContext(ctx, "Successfully uploaded", "file", req.ObjectKey, "key", key)
+	g3.Logger().SucceededContext(ctx, req.SourcePath, req.GUID)
 	return nil
 }
 

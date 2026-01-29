@@ -37,7 +37,7 @@ func Upload(ctx context.Context, g3 client.Gen3Interface, req common.FileUploadR
 	// Use Single-Part if file is smaller than 5GB (or your defined limit)
 	if fileSize < 5*common.GB {
 		g3.Logger().Printf("File size %d bytes (< 5GB), performing single-part upload\n", fileSize)
-		return UploadSingle(ctx, g3.GetCredential().Profile, req, true)
+		return UploadSingle(ctx, g3, req, true)
 	}
 	g3.Logger().Printf("File size %d bytes (>= 5GB), performing multipart upload\n", fileSize)
 	return MultipartUpload(ctx, g3, req, file, showProgress)

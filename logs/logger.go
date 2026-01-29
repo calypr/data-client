@@ -1,16 +1,8 @@
 package logs
 
 import (
-	"io"
+	"log/slog"
 )
-
-type Logger interface {
-	Printf(format string, v ...any)
-	Println(v ...any)
-	Fatalf(format string, v ...any)
-	Fatal(v ...any)
-	Writer() io.Writer
-}
 
 type Option func(*config)
 
@@ -20,15 +12,17 @@ type config struct {
 	failedLog        bool
 	succeededLog     bool
 	enableScoreboard bool
-	baseLogger       Logger
+	baseLogger       *slog.Logger
 }
 
-func WithConsole() Option               { return func(c *config) { c.console = true } }
-func WithMessageFile() Option           { return func(c *config) { c.messageFile = true } }
-func WithFailedLog() Option             { return func(c *config) { c.failedLog = true } }
-func WithSucceededLog() Option          { return func(c *config) { c.succeededLog = true } }
-func WithScoreboard() Option            { return func(c *config) { c.enableScoreboard = true } }
-func WithBaseLogger(base Logger) Option { return func(c *config) { c.baseLogger = base } }
+func WithConsole() Option                     { return func(c *config) { c.console = true } }
+func WithNoConsole() Option                   { return func(c *config) { c.console = false } }
+func WithMessageFile() Option                 { return func(c *config) { c.messageFile = true } }
+func WithNoMessageFile() Option               { return func(c *config) { c.messageFile = false } }
+func WithFailedLog() Option                   { return func(c *config) { c.failedLog = true } }
+func WithSucceededLog() Option                { return func(c *config) { c.succeededLog = true } }
+func WithScoreboard() Option                  { return func(c *config) { c.enableScoreboard = true } }
+func WithBaseLogger(base *slog.Logger) Option { return func(c *config) { c.baseLogger = base } }
 
 func defaults() *config {
 	return &config{

@@ -40,13 +40,8 @@ func downloadFiles(
 	// Scoreboard: maxRetries = 0 for now (no retry logic yet)
 	sb := logs.NewSB(0, logger)
 
-	useProgressBars := true
-	for _, fdr := range files {
-		if fdr.Progress != nil {
-			useProgressBars = false
-			break
-		}
-	}
+	progress := common.GetProgress(ctx)
+	useProgressBars := (progress == nil)
 
 	var p *mpb.Progress
 	if useProgressBars {
@@ -133,8 +128,8 @@ func downloadFiles(
 				}
 
 				writer = bar.ProxyWriter(file)
-			} else if fdr.Progress != nil {
-				tracker = newProgressWriter(file, fdr.Progress, fdr.GUID, total)
+			} else if progress != nil {
+				tracker = newProgressWriter(file, progress, fdr.GUID, total)
 				writer = tracker
 			}
 

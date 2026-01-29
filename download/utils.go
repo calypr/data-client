@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"context"
 	"fmt"
 	"log/slog"
 )
@@ -62,20 +63,15 @@ func truncateFilename(name string, max int) string {
 }
 
 // printRenamed shows renamed files in final summary
-func printRenamed(logger *slog.Logger, renamed []RenamedOrSkippedFileInfo) {
-	if len(renamed) == 0 {
-		return
-	}
-	logger.Info(fmt.Sprintf("%d files renamed:", len(renamed)))
+func printRenamed(ctx context.Context, logger *slog.Logger, renamed []RenamedOrSkippedFileInfo) {
 	for _, r := range renamed {
-		logger.Info(fmt.Sprintf("  %q (GUID: %s) → %q", r.OldFilename, r.GUID, r.NewFilename))
+		logger.InfoContext(ctx, fmt.Sprintf("Renamed %q to %q (GUID: %s)", r.OldFilename, r.NewFilename, r.GUID))
 	}
 }
 
 // printSkipped shows skipped files in final summary
-func printSkipped(logger *slog.Logger, skipped []RenamedOrSkippedFileInfo) {
-	if len(skipped) == 0 {
-		return
+func printSkipped(ctx context.Context, logger *slog.Logger, skipped []RenamedOrSkippedFileInfo) {
+	for _, s := range skipped {
+		logger.InfoContext(ctx, fmt.Sprintf("Skipped %q (GUID: %s)", s.OldFilename, s.GUID))
 	}
-	logger.Info(fmt.Sprintf("%d files skipped (complete local copy exists)", len(skipped)))
 }

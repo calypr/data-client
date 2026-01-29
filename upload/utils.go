@@ -51,7 +51,7 @@ func SeparateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []commo
 }
 
 // ProcessFilename returns an FileInfo object which has the information about the path and name to be used for upload of a file
-func ProcessFilename(logger logs.Logger, uploadPath string, filePath string, objectId string, includeSubDirName bool, includeMetadata bool) (common.FileUploadRequestObject, error) {
+func ProcessFilename(logger *logs.Gen3Logger, uploadPath string, filePath string, objectId string, includeSubDirName bool, includeMetadata bool) (common.FileUploadRequestObject, error) {
 	var err error
 	filePath, err = common.GetAbsolutePath(filePath)
 	if err != nil {

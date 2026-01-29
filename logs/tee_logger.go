@@ -1,12 +1,15 @@
 package logs
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io" // Added for standard logging methods like Fatal
+	"io"
 	"maps"
 	"os"
+	"runtime"
 	"sync"
+	"time"
 
 	"log/slog"
 
@@ -28,92 +31,117 @@ type Gen3Logger struct {
 	succeededPath string
 }
 
-// NewGen3Logger combines initialization and log loading
+// NewGen3Logger creates a new Gen3Logger wrapping the provided slog.Logger.
 func NewGen3Logger(logger *slog.Logger, logDir, profile string) *Gen3Logger {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 	}
-	t := &Gen3Logger{
-		Logger:     logger,
-		mu:         sync.RWMutex{},
-		scoreboard: nil,
-
+	return &Gen3Logger{
+		Logger:       logger,
 		FailedMap:    make(map[string]common.RetryObject),
 		succeededMap: make(map[string]string),
 	}
-
-	return t
 }
 
-// Internal helper function (replaces the global loadJSON)
+// loadJSON is an internal helper to load JSON from a file path.
 func loadJSON(path string, v any) {
 	data, _ := os.ReadFile(path)
 	if len(data) > 0 {
-		// Error handling for Unmarshal is often omitted in utility code
-		// but is good practice. We keep the original style for now.
 		json.Unmarshal(data, v)
 	}
 }
 
-// --- Public Logger Methods ---
+// --- Core logging helper ---
 
-// Printf implements part of the standard Logger interface.
-// Printf implements part of the standard Logger interface.
+// logWithSkip logs a message at the given level, skipping `skip` stack frames for source attribution.
+func (t *Gen3Logger) logWithSkip(ctx context.Context, level slog.Level, skip int, msg string, args ...any) {
+	if !t.Enabled(ctx, level) {
+		return
+	}
+	var pcs [1]uintptr
+	runtime.Callers(skip, pcs[:])
+	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	r.Add(args...)
+	_ = t.Handler().Handle(ctx, r)
+}
+
+// --- slog.Logger Method Overrides for accurate source attribution ---
+
+func (t *Gen3Logger) Info(msg string, args ...any) {
+	t.logWithSkip(context.Background(), slog.LevelInfo, 3, msg, args...)
+}
+
+func (t *Gen3Logger) InfoContext(ctx context.Context, msg string, args ...any) {
+	t.logWithSkip(ctx, slog.LevelInfo, 3, msg, args...)
+}
+
+func (t *Gen3Logger) Error(msg string, args ...any) {
+	t.logWithSkip(context.Background(), slog.LevelError, 3, msg, args...)
+}
+
+func (t *Gen3Logger) ErrorContext(ctx context.Context, msg string, args ...any) {
+	t.logWithSkip(ctx, slog.LevelError, 3, msg, args...)
+}
+
+func (t *Gen3Logger) Warn(msg string, args ...any) {
+	t.logWithSkip(context.Background(), slog.LevelWarn, 3, msg, args...)
+}
+
+func (t *Gen3Logger) WarnContext(ctx context.Context, msg string, args ...any) {
+	t.logWithSkip(ctx, slog.LevelWarn, 3, msg, args...)
+}
+
+func (t *Gen3Logger) Debug(msg string, args ...any) {
+	t.logWithSkip(context.Background(), slog.LevelDebug, 3, msg, args...)
+}
+
+func (t *Gen3Logger) DebugContext(ctx context.Context, msg string, args ...any) {
+	t.logWithSkip(ctx, slog.LevelDebug, 3, msg, args...)
+}
+
+// --- Legacy fmt-style methods ---
+
 func (t *Gen3Logger) Printf(format string, v ...any) {
-	t.Info(fmt.Sprintf(format, v...))
+	t.logWithSkip(context.Background(), slog.LevelInfo, 3, fmt.Sprintf(format, v...))
 }
 
-// Println implements part of the standard Logger interface.
 func (t *Gen3Logger) Println(v ...any) {
-	t.Info(fmt.Sprint(v...))
+	t.logWithSkip(context.Background(), slog.LevelInfo, 3, fmt.Sprint(v...))
 }
 
-// Fatalf implements part of the standard Logger interface and exits the program.
 func (t *Gen3Logger) Fatalf(format string, v ...any) {
-	s := fmt.Sprintf(format, v...)
-	t.Error(s)
+	t.logWithSkip(context.Background(), slog.LevelError, 3, fmt.Sprintf(format, v...))
 	os.Exit(1)
 }
 
-// Fatal implements part of the standard Logger interface and exits the program.
 func (t *Gen3Logger) Fatal(v ...any) {
-	s := fmt.Sprint(v...)
-	t.Error(s)
+	t.logWithSkip(context.Background(), slog.LevelError, 3, fmt.Sprint(v...))
 	os.Exit(1)
 }
 
-// Writer implements part of the standard Logger interface, returning a multi-writer.
-// Writer implements part of the standard Logger interface.
-// For slog, accessing the underlying writer is not standard.
-// We return a no-op writer or stdout appropriately if needed for legacy compatibility.
-// But mostly this was used to chain loggers.
+// Writer returns os.Stderr for legacy compatibility (used by Scoreboard's tabwriter).
 func (t *Gen3Logger) Writer() io.Writer {
-	// Attempt to return a writer that logs to Info?
-	// Or just return os.Stderr for now.
 	return os.Stderr
 }
 
-// Scoreboard returns the embedded ScoreboardAccess.
+// Scoreboard returns the embedded Scoreboard.
 func (t *Gen3Logger) Scoreboard() *Scoreboard {
 	return t.scoreboard
 }
 
-// GetSucceededLogMap returns a copy of the succeeded log map.
+// --- Succeeded/Failed log map methods ---
+
 func (t *Gen3Logger) GetSucceededLogMap() map[string]string {
 	t.succeededMu.Lock()
 	defer t.succeededMu.Unlock()
-	// Return a copy to prevent external modification
 	copiedMap := make(map[string]string, len(t.succeededMap))
 	maps.Copy(copiedMap, t.succeededMap)
-
 	return copiedMap
 }
 
-// GetFailedLogMap returns a copy of the failed log map.
 func (t *Gen3Logger) GetFailedLogMap() map[string]common.RetryObject {
 	t.failedMu.Lock()
 	defer t.failedMu.Unlock()
-	// Return a copy to prevent external modification
 	copiedMap := make(map[string]common.RetryObject, len(t.FailedMap))
 	maps.Copy(copiedMap, t.FailedMap)
 	return copiedMap
@@ -125,11 +153,6 @@ func (t *Gen3Logger) DeleteFromFailedLog(path string) {
 	delete(t.FailedMap, path)
 }
 
-// --- Internal Utility Methods ---
-
-// write handles writing the string to all configured writers.
-// write is removed as we use slog directly.
-
 func (t *Gen3Logger) GetSucceededCount() int {
 	return len(t.succeededMap)
 }
@@ -137,10 +160,7 @@ func (t *Gen3Logger) GetSucceededCount() int {
 func (t *Gen3Logger) writeFailedSync(e common.RetryObject) {
 	t.failedMu.Lock()
 	defer t.failedMu.Unlock()
-
-	// Store the FileMetadata part in the map
 	t.FailedMap[e.SourcePath] = e
-
 	data, _ := json.MarshalIndent(t.FailedMap, "", "  ")
 	os.WriteFile(t.failedPath, data, 0644)
 }
@@ -153,9 +173,15 @@ func (t *Gen3Logger) writeSucceededSync(path, guid string) {
 	os.WriteFile(t.succeededPath, data, 0644)
 }
 
-// --- Tracking Methods (Part of Logger Interface) ---
+// --- Tracking Methods ---
 
 func (t *Gen3Logger) Failed(filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool) {
+	t.FailedContext(context.Background(), filePath, filename, metadata, guid, retryCount, multipart)
+}
+
+func (t *Gen3Logger) FailedContext(ctx context.Context, filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool) {
+	msg := fmt.Sprintf("Failed: %s (GUID: %s, Retry: %d)", filePath, guid, retryCount)
+	t.logWithSkip(ctx, slog.LevelError, 3, msg)
 	if t.failedPath != "" {
 		t.writeFailedSync(common.RetryObject{
 			SourcePath:   filePath,
@@ -169,7 +195,12 @@ func (t *Gen3Logger) Failed(filePath, filename string, metadata common.FileMetad
 }
 
 func (t *Gen3Logger) Succeeded(filePath, guid string) {
-	// Use t.succeededPath instead of checking the old global succeededPath
+	t.SucceededContext(context.Background(), filePath, guid)
+}
+
+func (t *Gen3Logger) SucceededContext(ctx context.Context, filePath, guid string) {
+	msg := fmt.Sprintf("Succeeded: %s (GUID: %s)", filePath, guid)
+	t.logWithSkip(ctx, slog.LevelInfo, 3, msg)
 	if t.succeededPath != "" {
 		t.writeSucceededSync(filePath, guid)
 	}

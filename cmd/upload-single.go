@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
 )
@@ -22,14 +24,21 @@ func init() {
 		Long:    `Gets a presigned URL for which to upload a file associated with a GUID and then uploads the specified file.`,
 		Example: `./data-client upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
 		Run: func(cmd *cobra.Command, args []string) {
+			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithConsole())
+			defer closer()
+
+			g3i, err := g3client.NewGen3Interface(profile, logger)
+			if err != nil {
+				log.Fatalf("Failed to parse config on profile %s: %v", profile, err)
+			}
+
 			req := common.FileUploadRequestObject{
 				SourcePath: filePath,
 				ObjectKey:  filepath.Base(filePath),
 				Bucket:     bucketName,
 				GUID:       guid,
-				Progress:   nil,
 			}
-			err := upload.UploadSingle(context.Background(), profile, req, true)
+			err = upload.UploadSingle(context.Background(), g3i, req, true)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}

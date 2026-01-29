@@ -10,12 +10,12 @@ import (
 type Scoreboard struct {
 	mu     sync.Mutex
 	Counts []int // index 0 = success on first try, 1 = after 1 retry, ..., last = failed
-	log    Logger
+	log    *Gen3Logger
 }
 
 // New creates a new scoreboard
 // maxRetryCount = how many retries you allow before giving up
-func NewSB(maxRetryCount int, log Logger) *Scoreboard {
+func NewSB(maxRetryCount int, log *Gen3Logger) *Scoreboard {
 	return &Scoreboard{
 		Counts: make([]int, maxRetryCount+2), // +2: one for success-on-first, one for final failure
 		log:    log,

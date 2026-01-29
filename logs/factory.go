@@ -2,7 +2,6 @@ package logs
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/user"
@@ -20,15 +19,15 @@ func New(profile string, opts ...Option) (*Gen3Logger, func()) {
 	logDir := filepath.Join(usr.HomeDir, ".gen3", "logs")
 	os.MkdirAll(logDir, 0755)
 
-	var writers []io.Writer
+	var handlers []slog.Handler
 	var messageFile *os.File
 
 	if cfg.baseLogger != nil {
-		writers = append(writers, cfg.baseLogger.Writer())
+		handlers = append(handlers, cfg.baseLogger.Handler())
 	}
 
 	if cfg.console {
-		writers = append(writers, os.Stderr)
+		handlers = append(handlers, slog.NewTextHandler(os.Stderr, nil))
 	}
 
 	if cfg.messageFile {
@@ -40,20 +39,21 @@ func New(profile string, opts ...Option) (*Gen3Logger, func()) {
 		f, err := os.OpenFile(filepath.Join(logDir, filename), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err == nil {
 			messageFile = f
-			writers = append(writers, f)
+			handlers = append(handlers, slog.NewTextHandler(f, nil))
 			fmt.Fprintf(f, "[%s] Message log started\n", time.Now().Format(time.RFC3339))
 		}
 	}
 
-	
-	// Create the base slog Logger
-	var handler slog.Handler
-	if len(writers) > 0 {
-		handler = slog.NewTextHandler(io.MultiWriter(writers...), nil)
+	var rootHandler slog.Handler
+	if len(handlers) == 0 {
+		rootHandler = slog.NewTextHandler(os.Stderr, nil)
+	} else if len(handlers) == 1 {
+		rootHandler = handlers[0]
 	} else {
-		handler = slog.NewTextHandler(os.Stderr, nil)
+		rootHandler = NewTeeHandler(handlers...)
 	}
-	sl := slog.New(handler)
+
+	sl := slog.New(NewProgressHandler(rootHandler))
 
 	t := NewGen3Logger(sl, logDir, profile)
 

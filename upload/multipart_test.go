@@ -20,6 +20,7 @@ import (
 	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/sower"
 )
 
 type fakeGen3Upload struct {
@@ -35,6 +36,7 @@ func (f *fakeGen3Upload) ExportCredential(ctx context.Context, cred *conf.Creden
 }
 func (f *fakeGen3Upload) Fence() fence.FenceInterface    { return &fakeFence{doFunc: f.doFunc} }
 func (f *fakeGen3Upload) Indexd() indexd.IndexdInterface { return &fakeIndexd{doFunc: f.doFunc} }
+func (f *fakeGen3Upload) Sower() sower.SowerInterface    { return nil }
 
 type fakeFence struct {
 	fence.FenceInterface
@@ -145,8 +147,10 @@ func TestMultipartUploadProgressIntegration(t *testing.T) {
 		ObjectKey:  "multipart.bin",
 		GUID:       "guid-123",
 		Bucket:     "bucket",
-		Progress:   progress,
 	}
+
+	ctx = common.WithProgress(ctx, progress)
+	ctx = common.WithOid(ctx, "guid-123")
 
 	if err := MultipartUpload(ctx, fake, requestObject, file, false); err != nil {
 		t.Fatalf("multipart upload failed: %v", err)

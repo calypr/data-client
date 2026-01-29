@@ -20,6 +20,7 @@ import (
 	"github.com/calypr/data-client/indexd/drs"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/sower"
 )
 
 type fakeGen3Download struct {
@@ -35,6 +36,7 @@ func (f *fakeGen3Download) ExportCredential(ctx context.Context, cred *conf.Cred
 }
 func (f *fakeGen3Download) Fence() fence.FenceInterface    { return &fakeFence{doFunc: f.doFunc} }
 func (f *fakeGen3Download) Indexd() indexd.IndexdInterface { return &fakeIndexd{doFunc: f.doFunc} }
+func (f *fakeGen3Download) Sower() sower.SowerInterface    { return nil }
 
 type fakeFence struct {
 	fence.FenceInterface
@@ -108,7 +110,8 @@ func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
 		},
 	}
 
-	err := DownloadSingleWithProgress(context.Background(), fake, "guid-123", downloadPath, "", progress)
+	ctx := common.WithProgress(context.Background(), progress)
+	err := DownloadSingleWithProgress(ctx, fake, "guid-123", downloadPath, "")
 	if err != nil {
 		t.Fatalf("download failed: %v", err)
 	}
@@ -156,7 +159,8 @@ func TestDownloadSingleWithProgressFinalizeOnError(t *testing.T) {
 		},
 	}
 
-	err := DownloadSingleWithProgress(context.Background(), fake, "guid-123", downloadPath, "", progress)
+	ctx := common.WithProgress(context.Background(), progress)
+	err := DownloadSingleWithProgress(ctx, fake, "guid-123", downloadPath, "")
 	if err == nil {
 		t.Fatal("expected download error")
 	}

@@ -17,7 +17,6 @@ type FileUploadRequestObject struct {
 	GUID         string
 	PresignedURL string
 	Bucket       string `json:"bucket,omitempty"`
-	Progress     ProgressCallback
 }
 
 // FileDownloadResponseObject defines a object for file download
@@ -31,7 +30,6 @@ type FileDownloadResponseObject struct {
 	Skip         bool
 	Response     *http.Response
 	Writer       io.Writer
-	Progress     ProgressCallback
 }
 
 // FileMetadata defines the metadata accepted by the new object management API, Shepherd
