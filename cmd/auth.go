@@ -24,7 +24,10 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			g3i, err := g3client.NewGen3Interface(profile, logger)
+			g3i, err := g3client.NewGen3Interface(
+				profile, logger,
+				g3client.WithClients(g3client.FenceClient),
+			)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}

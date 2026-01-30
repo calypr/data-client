@@ -11,6 +11,7 @@ import (
 	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
 	version "github.com/hashicorp/go-version"
 )
@@ -24,36 +25,86 @@ type Gen3Interface interface {
 	Fence() fence.FenceInterface
 	Indexd() indexd.IndexdInterface
 	Sower() sower.SowerInterface
+	Requestor() requestor.RequestorInterface
 }
 
-func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logger) Gen3Interface {
+func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logger, opts ...Option) Gen3Interface {
 	config := conf.NewConfigure(logger.Logger)
 	reqInterface := request.NewRequestInterface(logger, cred, config)
-	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
-	iClient := indexd.NewIndexdClient(reqInterface, cred, logger.Logger)
-	sClient := sower.NewSowerClient(reqInterface, cred.APIEndpoint)
 
-	return &Gen3Client{
-		fence:            fClient,
-		indexd:           iClient,
-		sower:            sClient,
+	client := &Gen3Client{
 		config:           config,
 		RequestInterface: reqInterface,
 		credential:       cred,
 		logger:           logger,
 	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	client.initializeClients()
+
+	return client
+}
+
+func (g *Gen3Client) initializeClients() {
+	shouldInit := func(ct ClientType) bool {
+		if len(g.requestedClients) == 0 {
+			return true
+		}
+		for _, c := range g.requestedClients {
+			if c == ct {
+				return true
+			}
+		}
+		return false
+	}
+
+	if shouldInit(FenceClient) {
+		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
+	}
+	if shouldInit(IndexdClient) {
+		g.indexd = indexd.NewIndexdClient(g.RequestInterface, g.credential, g.logger.Logger)
+	}
+	if shouldInit(SowerClient) {
+		g.sower = sower.NewSowerClient(g.RequestInterface, g.credential.APIEndpoint)
+	}
+	if shouldInit(RequestorClient) {
+		g.requestor = requestor.NewRequestorClient(g.RequestInterface, g.credential)
+	}
 }
 
 type Gen3Client struct {
-	Ctx    context.Context
-	fence  fence.FenceInterface
-	indexd indexd.IndexdInterface
-	sower  sower.SowerInterface
-	config conf.ManagerInterface
+	Ctx       context.Context
+	fence     fence.FenceInterface
+	indexd    indexd.IndexdInterface
+	sower     sower.SowerInterface
+	requestor requestor.RequestorInterface
+	config    conf.ManagerInterface
 	request.RequestInterface
 
 	credential *conf.Credential
 	logger     *logs.Gen3Logger
+
+	requestedClients []ClientType
+}
+
+type ClientType string
+
+const (
+	FenceClient     ClientType = "fence"
+	IndexdClient    ClientType = "indexd"
+	SowerClient     ClientType = "sower"
+	RequestorClient ClientType = "requestor"
+)
+
+type Option func(*Gen3Client)
+
+func WithClients(clients ...ClientType) Option {
+	return func(g *Gen3Client) {
+		g.requestedClients = clients
+	}
 }
 
 func (g *Gen3Client) Fence() fence.FenceInterface {
@@ -66,6 +117,10 @@ func (g *Gen3Client) Indexd() indexd.IndexdInterface {
 
 func (g *Gen3Client) Sower() sower.SowerInterface {
 	return g.sower
+}
+
+func (g *Gen3Client) Requestor() requestor.RequestorInterface {
+	return g.requestor
 }
 
 func (g *Gen3Client) Logger() *logs.Gen3Logger {
@@ -159,7 +214,7 @@ func EnsureValidCredential(ctx context.Context, cred *conf.Credential, config co
 }
 
 // NewGen3Interface returns a Gen3Client that embeds the credential and implements Gen3Interface.
-func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...func(*Gen3Client)) (Gen3Interface, error) {
+func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...Option) (Gen3Interface, error) {
 	config := conf.NewConfigure(logger.Logger)
 	cred, err := config.Load(profile)
 	if err != nil {
@@ -167,22 +222,25 @@ func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...func(*Gen
 	}
 
 	reqInterface := request.NewRequestInterface(logger, cred, config)
-	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
 
+	// We need a temporary Fence client to refresh tokens if needed
+	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
 	if err := EnsureValidCredential(context.Background(), cred, config, logger, fClient); err != nil {
 		return nil, err
 	}
 
-	iClient := indexd.NewIndexdClient(reqInterface, cred, logger.Logger)
-	sClient := sower.NewSowerClient(reqInterface, cred.APIEndpoint)
-
-	return &Gen3Client{
-		fence:            fClient,
-		indexd:           iClient,
-		sower:            sClient,
+	client := &Gen3Client{
 		config:           config,
 		RequestInterface: reqInterface,
 		credential:       cred,
 		logger:           logger,
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	client.initializeClients()
+
+	return client, nil
 }

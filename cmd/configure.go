@@ -50,7 +50,7 @@ func init() {
 				cred.AccessToken = ""
 			}
 
-			g3i := g3client.NewGen3InterfaceFromCredential(cred, logger)
+			g3i := g3client.NewGen3InterfaceFromCredential(cred, logger, g3client.WithClients())
 			err := g3i.ExportCredential(context.Background(), cred)
 			if err != nil {
 				logger.Println(err.Error())
