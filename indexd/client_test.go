@@ -139,7 +139,7 @@ func newTestClient(server *httptest.Server) IndexdInterface {
 	cred := &conf.Credential{APIEndpoint: server.URL, Profile: "test", AccessToken: "test-token"}
 	logger, _ := logs.New("test")
 	config := conf.NewConfigure(logger.Logger)
-	req := request.NewRequestInterface(logger.Logger, cred, config)
+	req := request.NewRequestInterface(logger, cred, config)
 	return NewIndexdClient(req, cred, logger.Logger)
 }
 

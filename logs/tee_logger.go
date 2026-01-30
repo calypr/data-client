@@ -175,13 +175,19 @@ func (t *Gen3Logger) writeSucceededSync(path, guid string) {
 
 // --- Tracking Methods ---
 
+// --- Tracking Methods ---
+
 func (t *Gen3Logger) Failed(filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool) {
-	t.FailedContext(context.Background(), filePath, filename, metadata, guid, retryCount, multipart)
+	t.failedHelper(context.Background(), filePath, filename, metadata, guid, retryCount, multipart, 4)
 }
 
 func (t *Gen3Logger) FailedContext(ctx context.Context, filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool) {
+	t.failedHelper(ctx, filePath, filename, metadata, guid, retryCount, multipart, 4)
+}
+
+func (t *Gen3Logger) failedHelper(ctx context.Context, filePath, filename string, metadata common.FileMetadata, guid string, retryCount int, multipart bool, skip int) {
 	msg := fmt.Sprintf("Failed: %s (GUID: %s, Retry: %d)", filePath, guid, retryCount)
-	t.logWithSkip(ctx, slog.LevelError, 3, msg)
+	t.logWithSkip(ctx, slog.LevelError, skip, msg)
 	if t.failedPath != "" {
 		t.writeFailedSync(common.RetryObject{
 			SourcePath:   filePath,
@@ -195,12 +201,16 @@ func (t *Gen3Logger) FailedContext(ctx context.Context, filePath, filename strin
 }
 
 func (t *Gen3Logger) Succeeded(filePath, guid string) {
-	t.SucceededContext(context.Background(), filePath, guid)
+	t.succeededHelper(context.Background(), filePath, guid, 4)
 }
 
 func (t *Gen3Logger) SucceededContext(ctx context.Context, filePath, guid string) {
+	t.succeededHelper(ctx, filePath, guid, 4)
+}
+
+func (t *Gen3Logger) succeededHelper(ctx context.Context, filePath, guid string, skip int) {
 	msg := fmt.Sprintf("Succeeded: %s (GUID: %s)", filePath, guid)
-	t.logWithSkip(ctx, slog.LevelInfo, 3, msg)
+	t.logWithSkip(ctx, slog.LevelInfo, skip, msg)
 	if t.succeededPath != "" {
 		t.writeSucceededSync(filePath, guid)
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/logs"
 )
 
 func TestNewRequestInterface(t *testing.T) {
@@ -25,7 +26,7 @@ func TestNewRequestInterface(t *testing.T) {
 	// Create a mock config manager
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 
 	if reqInterface == nil {
 		t.Fatal("Expected non-nil request interface")
@@ -54,7 +55,7 @@ func TestRequestBuilder_New(t *testing.T) {
 	}
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 	req := reqInterface.(*Request)
 
 	builder := req.New("GET", "https://example.com/api/test")
@@ -81,7 +82,7 @@ func TestRequestBuilder_WithHeaders(t *testing.T) {
 	}
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 	req := reqInterface.(*Request)
 
 	builder := req.New("GET", "https://example.com/api/test")
@@ -110,7 +111,7 @@ func TestRequestBuilder_WithToken(t *testing.T) {
 	}
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 	req := reqInterface.(*Request)
 
 	token := "test-bearer-token-12345"
@@ -131,7 +132,7 @@ func TestRequestBuilder_WithBody(t *testing.T) {
 	}
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 	req := reqInterface.(*Request)
 
 	body := strings.NewReader("test body content")
@@ -164,7 +165,7 @@ func TestRequest_Do_Success(t *testing.T) {
 	}
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 	req := reqInterface.(*Request)
 
 	builder := req.New("GET", server.URL+"/api/test")
@@ -214,7 +215,7 @@ func TestRequest_Do_WithCustomHeaders(t *testing.T) {
 	}
 	mockConf := &mockConfigManager{}
 
-	reqInterface := NewRequestInterface(logger, cred, mockConf)
+	reqInterface := NewRequestInterface(logs.NewGen3Logger(logger, "", ""), cred, mockConf)
 	req := reqInterface.(*Request)
 
 	builder := req.New("GET", server.URL+"/api/test")

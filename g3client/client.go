@@ -28,7 +28,7 @@ type Gen3Interface interface {
 
 func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logger) Gen3Interface {
 	config := conf.NewConfigure(logger.Logger)
-	reqInterface := request.NewRequestInterface(logger.Logger, cred, config)
+	reqInterface := request.NewRequestInterface(logger, cred, config)
 	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
 	iClient := indexd.NewIndexdClient(reqInterface, cred, logger.Logger)
 	sClient := sower.NewSowerClient(reqInterface, cred.APIEndpoint)
@@ -139,7 +139,7 @@ func EnsureValidCredential(ctx context.Context, cred *conf.Credential, config co
 		if strings.Contains(err.Error(), "access_token is invalid but api_key is valid") {
 			// Try to refresh the token
 			if fClient == nil {
-				reqInterface := request.NewRequestInterface(logger.Logger, cred, config)
+				reqInterface := request.NewRequestInterface(logger, cred, config)
 				fClient = fence.NewFenceClient(reqInterface, cred, logger.Logger)
 			}
 			newToken, refreshErr := fClient.NewAccessToken(ctx)
@@ -166,7 +166,7 @@ func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...func(*Gen
 		return nil, err
 	}
 
-	reqInterface := request.NewRequestInterface(logger.Logger, cred, config)
+	reqInterface := request.NewRequestInterface(logger, cred, config)
 	fClient := fence.NewFenceClient(reqInterface, cred, logger.Logger)
 
 	if err := EnsureValidCredential(context.Background(), cred, config, logger, fClient); err != nil {

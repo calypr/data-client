@@ -33,10 +33,17 @@ func (h *ProgressHandler) Handle(ctx context.Context, r slog.Record) error {
 	if cb != nil {
 		oid := common.GetOid(ctx)
 		// We send an event of type "log"
+		attrs := make(map[string]any)
+		r.Attrs(func(a slog.Attr) bool {
+			attrs[a.Key] = a.Value.Any()
+			return true
+		})
 		_ = cb(common.ProgressEvent{
 			Event:   "log",
 			Oid:     oid,
 			Message: r.Message,
+			Level:   r.Level.String(),
+			Attrs:   attrs,
 		})
 	}
 

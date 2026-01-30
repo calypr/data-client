@@ -6,11 +6,13 @@ import (
 
 // ProgressEvent matches the Git LFS custom transfer progress payload.
 type ProgressEvent struct {
-	Event          string `json:"event"`
-	Oid            string `json:"oid"`
-	BytesSoFar     int64  `json:"bytesSoFar"`
-	BytesSinceLast int64  `json:"bytesSinceLast"`
-	Message        string `json:"message,omitempty"`
+	Event          string         `json:"event"`
+	Oid            string         `json:"oid"`
+	BytesSoFar     int64          `json:"bytesSoFar"`
+	BytesSinceLast int64          `json:"bytesSinceLast"`
+	Message        string         `json:"message,omitempty"`
+	Level          string         `json:"level,omitempty"`
+	Attrs          map[string]any `json:"attrs,omitempty"`
 }
 
 // ProgressCallback emits transfer progress updates.

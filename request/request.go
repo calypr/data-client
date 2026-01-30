@@ -5,17 +5,17 @@ package request
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/logs"
 	"github.com/hashicorp/go-retryablehttp"
 )
 
 type Request struct {
-	Logs        *slog.Logger
+	Logs        *logs.Gen3Logger
 	RetryClient *retryablehttp.Client
 }
 
@@ -25,13 +25,13 @@ type RequestInterface interface {
 }
 
 func NewRequestInterface(
-	logger *slog.Logger,
+	logger *logs.Gen3Logger,
 	cred *conf.Credential,
 	conf conf.ManagerInterface,
 ) RequestInterface {
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 5
-	// retryClient.Logger = logger // slog.Logger doesn't implement LeveledLogger interface directly
+	retryClient.Logger = logger
 	retryClient.RetryWaitMin = 5 * time.Second
 	retryClient.RetryWaitMax = 15 * time.Second
 	baseTransport := &http.Transport{

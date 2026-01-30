@@ -84,7 +84,7 @@ func newTestClient(server *httptest.Server) FenceInterface {
 	cred := &conf.Credential{APIEndpoint: server.URL, Profile: "test", AccessToken: "test-token", APIKey: "test-key"}
 	logger, _ := logs.New("test")
 	config := conf.NewConfigure(logger.Logger)
-	req := request.NewRequestInterface(logger.Logger, cred, config)
+	req := request.NewRequestInterface(logger, cred, config)
 	return NewFenceClient(req, cred, logger.Logger)
 }
 
@@ -130,7 +130,7 @@ func TestFenceClient_CheckForShepherdAPI(t *testing.T) {
 		UseShepherd: "true",
 	}
 	logger, _ := logs.New("test")
-	req := request.NewRequestInterface(logger.Logger, cred, conf.NewConfigure(logger.Logger))
+	req := request.NewRequestInterface(logger, cred, conf.NewConfigure(logger.Logger))
 	client := NewFenceClient(req, cred, logger.Logger)
 
 	hasShepherd, err := client.CheckForShepherdAPI(context.Background())
