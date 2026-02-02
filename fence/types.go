@@ -2,7 +2,7 @@ package fence
 
 // MultipartPart represents a part of a multipart upload
 type MultipartPart struct {
-	PartNumber int    `json:"partNumber"`
+	PartNumber int    `json:"PartNumber"`
 	ETag       string `json:"ETag"`
 }
 
@@ -29,7 +29,7 @@ type InitRequestObject struct {
 type MultipartUploadRequestObject struct {
 	Key        string `json:"key"`
 	UploadID   string `json:"uploadId"`
-	PartNumber int    `json:"partNumber"`
+	PartNumber int    `json:"PartNumber"`
 	Bucket     string `json:"bucket,omitempty"`
 }
 
