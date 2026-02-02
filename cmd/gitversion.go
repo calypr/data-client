@@ -2,5 +2,5 @@ package cmd
 
 var (
 	gitcommit  = "N/A"
-	gitversion = "2025.12"
+	gitversion = "2026.2"
 )
