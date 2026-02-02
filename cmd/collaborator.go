@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	"regexp"
+	"strings"
+
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/requestor"
@@ -14,6 +17,21 @@ import (
 var collaboratorCmd = &cobra.Command{
 	Use:   "collaborator",
 	Short: "Manage collaborators and access requests",
+}
+
+var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
+
+func validateProjectAndUser(projectID, username string) error {
+	if !emailRegex.MatchString(strings.ToLower(username)) {
+		return fmt.Errorf("invalid username '%s': must be a valid email address", username)
+	}
+
+	parts := strings.Split(projectID, "-")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid project_id '%s': must be in the form 'program-project'", projectID)
+	}
+
+	return nil
 }
 
 func printRequest(r requestor.Request) {
@@ -94,7 +112,12 @@ var collaboratorPendingCmd = &cobra.Command{
 var collaboratorAddUserCmd = &cobra.Command{
 	Use:   "add [project_id] [username]",
 	Short: "Add a user to a project",
-	Args:  cobra.ExactArgs(2),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if err := cobra.ExactArgs(2)(cmd, args); err != nil {
+			return err
+		}
+		return validateProjectAndUser(args[0], args[1])
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		projectID := args[0]
 		username := args[1]
@@ -135,7 +158,12 @@ var collaboratorAddUserCmd = &cobra.Command{
 var collaboratorRemoveUserCmd = &cobra.Command{
 	Use:   "rm [project_id] [username]",
 	Short: "Remove a user from a project",
-	Args:  cobra.ExactArgs(2),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if err := cobra.ExactArgs(2)(cmd, args); err != nil {
+			return err
+		}
+		return validateProjectAndUser(args[0], args[1])
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		projectID := args[0]
 		username := args[1]
