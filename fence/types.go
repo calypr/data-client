@@ -29,7 +29,7 @@ type InitRequestObject struct {
 type MultipartUploadRequestObject struct {
 	Key        string `json:"key"`
 	UploadID   string `json:"uploadId"`
-	PartNumber int    `json:"PartNumber"`
+	PartNumber int    `json:"partNumber"`
 	Bucket     string `json:"bucket,omitempty"`
 }
 
