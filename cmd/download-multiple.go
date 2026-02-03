@@ -7,10 +7,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/download"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/download"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -38,7 +38,7 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog())
 			defer logCloser()
 
-			g3i, err := client.NewGen3Interface(profile, logger)
+			g3i, err := g3client.NewGen3Interface(profile, logger)
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}

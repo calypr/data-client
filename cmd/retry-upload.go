@@ -3,10 +3,10 @@ package cmd
 import (
 	"context"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
-	"github.com/calypr/data-client/client/upload"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/upload"
 
 	"github.com/spf13/cobra"
 )
@@ -28,7 +28,7 @@ func init() {
 			)
 			defer closer()
 
-			g3, err := client.NewGen3Interface(profile, Logger)
+			g3, err := g3client.NewGen3Interface(profile, Logger)
 			if err != nil {
 				Logger.Fatalf("Failed to initialize client: %v", err)
 			}

@@ -1,0 +1,103 @@
+name: "Test Coverage Check"
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.2'
+
+      - name: Run Tests with Coverage
+        run: |
+          go test -coverprofile=coverage.out -covermode=atomic ./...
+        continue-on-error: true
+
+      - name: Generate Coverage Report
+        id: coverage
+        run: |
+          # Get overall coverage
+          OVERALL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "overall=$OVERALL" >> $GITHUB_OUTPUT
+          
+          # Generate detailed report
+          echo "## Test Coverage Report" > coverage-report.md
+          echo "" >> coverage-report.md
+          echo "**Overall Coverage:** ${OVERALL}%" >> coverage-report.md
+          echo "" >> coverage-report.md
+          echo "### Package Coverage" >> coverage-report.md
+          echo "" >> coverage-report.md
+          echo "| Package | Coverage |" >> coverage-report.md
+          echo "|---------|----------|" >> coverage-report.md
+          
+          # Extract package coverage
+          go test -coverprofile=/dev/null -covermode=atomic ./... 2>&1 | \
+            grep "coverage:" | \
+            grep -v "setup failed" | \
+            awk '{
+              pkg=$1; 
+              cov=$4; 
+              gsub(/github.com\/calypr\/data-client\//, "", pkg);
+              if (cov ~ /statements/) {
+                print "| " pkg " | " cov " |"
+              } else {
+                print "| " pkg " | " cov " |"
+              }
+            }' >> coverage-report.md
+          
+          cat coverage-report.md
+
+      - name: Check Coverage Thresholds
+        run: |
+          chmod +x ./scripts/check-coverage.sh
+          ./scripts/check-coverage.sh 30 20
+
+      - name: Upload Coverage to Codecov (Optional)
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Comment PR with Coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = fs.readFileSync('coverage-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: coverage
+            });
+
+      - name: Upload Coverage Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage-report.md
+          retention-days: 30

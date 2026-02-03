@@ -6,8 +6,8 @@ import (
 	"log"
 	"sort"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -24,12 +24,15 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			g3i, err := client.NewGen3Interface(profile, logger)
+			g3i, err := g3client.NewGen3Interface(
+				profile, logger,
+				g3client.WithClients(g3client.FenceClient),
+			)
 			if err != nil {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
-			resourceAccess, err := g3i.CheckPrivileges(context.Background())
+			resourceAccess, err := g3i.Fence().CheckPrivileges(context.Background())
 			if err != nil {
 				g3i.Logger().Fatalf("Fatal authentication error: %s\n", err)
 			} else {

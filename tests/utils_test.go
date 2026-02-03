@@ -1,19 +1,20 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/api"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/conf"
-	"github.com/calypr/data-client/client/download"
-	"github.com/calypr/data-client/client/mocks"
-	req "github.com/calypr/data-client/client/request"
-	"github.com/calypr/data-client/client/upload"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/download"
+	"github.com/calypr/data-client/fence"
+	"github.com/calypr/data-client/mocks"
+	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/upload"
 	"go.uber.org/mock/gomock"
 )
 
@@ -26,40 +27,33 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
+	mockFence := mocks.NewMockFenceInterface(mockCtrl)
 
 	// Mock credential
 	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
+	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
 
-	// Shepherd is deployed
-	mockGen3.EXPECT().
-		CheckForShepherdAPI(gomock.Any()).
-		Return(true, nil)
+	mockFence.EXPECT().
+		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
+		Return(mockDownloadURL, nil)
 
-	// Shepherd download URL response
-	downloadURLBody := fmt.Sprintf(`{"url": "%s"}`, mockDownloadURL)
-	shepherdResp := &http.Response{
+	mockFence.EXPECT().
+		New(http.MethodGet, mockDownloadURL).
+		Return(&request.RequestBuilder{
+			Method:  http.MethodGet,
+			Url:     mockDownloadURL,
+			Headers: make(map[string]string),
+		}).
+		AnyTimes()
+
+	// Mock successful response from the presigned URL
+	mockResp := &http.Response{
 		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(downloadURLBody)),
+		Body:       io.NopCloser(strings.NewReader("content")),
 	}
-
-	// Expect DoAuthenticatedRequest to Shepherd /objects/{guid}/download
-	mockGen3.EXPECT().
-		DoAuthenticatedRequest(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(cred *conf.Credential, rb *req.RequestBuilder) (*http.Response, error) {
-			if !strings.HasSuffix(rb.Url, "/objects/"+testGUID+"/download") {
-				t.Errorf("Expected Shepherd download URL request, got %s", rb.Url)
-			}
-			return shepherdResp, nil
-		})
-
-	// ParseFenceURLResponse to extract URL
-	mockGen3.EXPECT().
-		ParseFenceURLResponse(shepherdResp).
-		Return(api.FenceResponse{URL: mockDownloadURL}, nil)
-
-	// We assume the implementation uses http.Client directly for presigned URLs (common pattern)
-	// So no mock needed here unless you inject an HTTP client — this part may be unmocked.
-	// If you have a mockable HTTP doer, adjust accordingly.
+	mockFence.EXPECT().
+		Do(gomock.Any(), gomock.Any()).
+		Return(mockResp, nil)
 
 	mockFDRObj := common.FileDownloadResponseObject{
 		Filename: testFilename,
@@ -67,17 +61,14 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		Range:    0,
 	}
 
-	err := download.GetDownloadResponse(mockGen3, &mockFDRObj, "")
+	err := download.GetDownloadResponse(context.Background(), mockGen3, &mockFDRObj, "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if mockFDRObj.URL != mockDownloadURL {
-		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.URL)
+	if mockFDRObj.PresignedURL != mockDownloadURL {
+		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.PresignedURL)
 	}
-
-	// Note: Response may be fetched outside the interface (direct http.Get), so this check might not work unless injected.
-	// If you want to fully mock it, consider injecting a downloader.
 }
 
 func TestGetDownloadResponse_noShepherd(t *testing.T) {
@@ -89,26 +80,32 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
+	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+
 	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
+	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
 
-	// No Shepherd
-	mockGen3.EXPECT().
-		CheckForShepherdAPI(gomock.Any()).
-		Return(false, nil)
+	mockFence.EXPECT().
+		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
+		Return(mockDownloadURL, nil)
 
-	// Fence returns presigned URL
-	fenceResp := &http.Response{
+	mockFence.EXPECT().
+		New(http.MethodGet, mockDownloadURL).
+		Return(&request.RequestBuilder{
+			Method:  http.MethodGet,
+			Url:     mockDownloadURL,
+			Headers: make(map[string]string),
+		}).
+		AnyTimes()
+
+	// Mock successful response
+	mockResp := &http.Response{
 		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"url": "%s"}`, mockDownloadURL))),
+		Body:       io.NopCloser(strings.NewReader("content")),
 	}
-
-	mockGen3.EXPECT().
-		DoAuthenticatedRequest(gomock.Any(), gomock.Any()).
-		Return(fenceResp, nil)
-
-	mockGen3.EXPECT().
-		ParseFenceURLResponse(fenceResp).
-		Return(api.FenceResponse{URL: mockDownloadURL}, nil)
+	mockFence.EXPECT().
+		Do(gomock.Any(), gomock.Any()).
+		Return(mockResp, nil)
 
 	mockFDRObj := common.FileDownloadResponseObject{
 		Filename: testFilename,
@@ -116,17 +113,17 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		Range:    0,
 	}
 
-	err := download.GetDownloadResponse(mockGen3, &mockFDRObj, "")
+	err := download.GetDownloadResponse(context.Background(), mockGen3, &mockFDRObj, "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if mockFDRObj.URL != mockDownloadURL {
-		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.URL)
+	if mockFDRObj.PresignedURL != mockDownloadURL {
+		t.Errorf("Wanted URL %s, got %s", mockDownloadURL, mockFDRObj.PresignedURL)
 	}
 }
 
-func TestGeneratePresignedURL_noShepherd(t *testing.T) {
+func TestGeneratePresignedUploadURL_noShepherd(t *testing.T) {
 	testFilename := "test-file"
 	testBucketname := "test-bucket"
 	mockPresignedURL := "https://example.com/example.pfb"
@@ -136,33 +133,24 @@ func TestGeneratePresignedURL_noShepherd(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
+	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+
 	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
+	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
 
 	// No Shepherd
-	mockGen3.EXPECT().
+	mockFence.EXPECT().
 		CheckForShepherdAPI(gomock.Any()).
 		Return(false, nil)
 
-	// Fence upload endpoint response
-	fenceResp := &http.Response{
-		StatusCode: 200,
-		Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
-			`{"url": "%s", "guid": "%s"}`, mockPresignedURL, mockGUID,
-		))),
-	}
-
-	mockGen3.EXPECT().
-		DoAuthenticatedRequest(gomock.Any(), gomock.Any()).
-		Return(fenceResp, nil)
-
-	mockGen3.EXPECT().
-		ParseFenceURLResponse(fenceResp).
-		Return(api.FenceResponse{
+	mockFence.EXPECT().
+		InitUpload(gomock.Any(), testFilename, testBucketname, "").
+		Return(fence.FenceResponse{
 			URL:  mockPresignedURL,
 			GUID: mockGUID,
 		}, nil)
 
-	resp, err := upload.GeneratePresignedURL(mockGen3, testFilename, common.FileMetadata{}, testBucketname)
+	resp, err := upload.GeneratePresignedUploadURL(context.Background(), mockGen3, testFilename, common.FileMetadata{}, testBucketname)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -175,7 +163,7 @@ func TestGeneratePresignedURL_noShepherd(t *testing.T) {
 	}
 }
 
-func TestGeneratePresignedURL_withShepherd(t *testing.T) {
+func TestGeneratePresignedUploadURL_withShepherd(t *testing.T) {
 	testFilename := "test-file"
 	testBucketname := "test-bucket"
 	mockPresignedURL := "https://example.com/example.pfb"
@@ -191,10 +179,13 @@ func TestGeneratePresignedURL_withShepherd(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
+	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+
+	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{AccessToken: "token"}).AnyTimes()
+	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
 
 	// Shepherd is deployed
-	mockGen3.EXPECT().
+	mockFence.EXPECT().
 		CheckForShepherdAPI(gomock.Any()).
 		Return(true, nil)
 
@@ -206,17 +197,11 @@ func TestGeneratePresignedURL_withShepherd(t *testing.T) {
 		))),
 	}
 
-	mockGen3.EXPECT().
-		DoAuthenticatedRequest(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(cred *conf.Credential, rb *req.RequestBuilder) (*http.Response, error) {
-			if rb.Method != "POST" || !strings.HasSuffix(rb.Url, "/objects") {
-				t.Errorf("Expected POST to /objects, got %s %s", rb.Method, rb.Url)
-			}
-			// Optionally validate body here if needed
-			return shepherdResp, nil
-		})
+	mockFence.EXPECT().
+		Do(gomock.Any(), gomock.Any()).
+		Return(shepherdResp, nil)
 
-	respObj, err := upload.GeneratePresignedURL(mockGen3, testFilename, testMetadata, testBucketname)
+	respObj, err := upload.GeneratePresignedUploadURL(context.Background(), mockGen3, testFilename, testMetadata, testBucketname)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

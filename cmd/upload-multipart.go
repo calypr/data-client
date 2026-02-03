@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/common"
-	"github.com/calypr/data-client/client/logs"
-	"github.com/calypr/data-client/client/upload"
+	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -35,30 +35,30 @@ This method is resilient to network interruptions and supports resume capability
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())
 			defer closer()
 
-			g3, err := client.NewGen3Interface(
+			g3, err := g3client.NewGen3Interface(
 				profile,
 				logger,
 			)
 
 			if err != nil {
-				logger.Fatalf("failed to initialize Gen3 interface: %w", err)
+				logger.Fatalf("failed to initialize Gen3 interface: %v", err)
 			}
 
 			absPath, err := common.GetAbsolutePath(filePath)
 			if err != nil {
-				logger.Fatalf("invalid file path: %w", err)
+				logger.Fatalf("invalid file path: %v", err)
 			}
 
 			fileInfo := common.FileUploadRequestObject{
-				FilePath:     absPath,
-				Filename:     filepath.Base(absPath),
+				SourcePath:   absPath,
+				ObjectKey:    filepath.Base(absPath),
 				GUID:         guid,
 				FileMetadata: common.FileMetadata{},
 			}
 
 			file, err := os.Open(absPath)
 			if err != nil {
-				logger.Fatalf("cannot open file %s: %w", absPath, err)
+				logger.Fatalf("cannot open file %s: %v", absPath, err)
 			}
 			defer file.Close()
 

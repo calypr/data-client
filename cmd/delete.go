@@ -3,8 +3,8 @@ package cmd
 import (
 	"context"
 
-	"github.com/calypr/data-client/client/client"
-	"github.com/calypr/data-client/client/logs"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -24,12 +24,12 @@ If no profile is specified, "default" profile is used for authentication.`,
 			logger, logCloser := logs.New(profile, logs.WithConsole())
 			defer logCloser()
 
-			g3i, err := client.NewGen3Interface(profile, logger)
+			g3i, err := g3client.NewGen3Interface(profile, logger)
 			if err != nil {
 				logger.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
-			msg, err := g3i.DeleteRecord(context.Background(), guid)
+			msg, err := g3i.Fence().DeleteRecord(context.Background(), guid)
 			if err != nil {
 				logger.Fatal(err)
 			}
