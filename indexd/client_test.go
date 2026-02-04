@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/calypr/data-client/conf"
-	drs "github.com/calypr/data-client/indexd/drs"
-	"github.com/calypr/data-client/indexd/hash"
+	drs "github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/hash"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
 )

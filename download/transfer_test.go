@@ -15,9 +15,9 @@ import (
 
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/indexd"
-	"github.com/calypr/data-client/indexd/drs"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
 	"github.com/calypr/data-client/requestor"
@@ -201,4 +201,23 @@ func newDownloadResponse(rawURL string, payload []byte, status int) *http.Respon
 		Request:       &http.Request{URL: parsedURL},
 		Header:        make(http.Header),
 	}
+}
+
+// fakeRequestor implements requestor.RequestorInterface using the same doFunc.
+type fakeRequestor struct {
+	requestor.RequestorInterface
+	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+}
+
+func (f *fakeRequestor) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
+	return f.doFunc(ctx, req)
+}
+
+func (f *fakeRequestor) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
+}
+
+// Requestor returns a fakeRequestor for the fakeGen3Download.
+func (f *fakeGen3Download) Requestor() requestor.RequestorInterface {
+	return &fakeRequestor{doFunc: f.doFunc}
 }
