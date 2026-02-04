@@ -250,3 +250,32 @@ func (mr *MockFenceInterfaceMockRecorder) ParseFenceURLResponse(resp any) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseFenceURLResponse", reflect.TypeOf((*MockFenceInterface)(nil).ParseFenceURLResponse), resp)
 }
+
+// RefreshToken mocks base method.
+func (m *MockFenceInterface) RefreshToken(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshToken", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RefreshToken indicates an expected call of RefreshToken.
+func (mr *MockFenceInterfaceMockRecorder) RefreshToken(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshToken", reflect.TypeOf((*MockFenceInterface)(nil).RefreshToken), ctx)
+}
+
+// UserPing mocks base method.
+func (m *MockFenceInterface) UserPing(ctx context.Context) (*fence.PingResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserPing", ctx)
+	ret0, _ := ret[0].(*fence.PingResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserPing indicates an expected call of UserPing.
+func (mr *MockFenceInterfaceMockRecorder) UserPing(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserPing", reflect.TypeOf((*MockFenceInterface)(nil).UserPing), ctx)
+}

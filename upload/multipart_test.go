@@ -20,6 +20,7 @@ import (
 	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
 )
 
@@ -34,9 +35,10 @@ func (f *fakeGen3Upload) Logger() *logs.Gen3Logger        { return f.logger }
 func (f *fakeGen3Upload) ExportCredential(ctx context.Context, cred *conf.Credential) error {
 	return nil
 }
-func (f *fakeGen3Upload) Fence() fence.FenceInterface    { return &fakeFence{doFunc: f.doFunc} }
-func (f *fakeGen3Upload) Indexd() indexd.IndexdInterface { return &fakeIndexd{doFunc: f.doFunc} }
-func (f *fakeGen3Upload) Sower() sower.SowerInterface    { return nil }
+func (f *fakeGen3Upload) Fence() fence.FenceInterface             { return &fakeFence{doFunc: f.doFunc} }
+func (f *fakeGen3Upload) Indexd() indexd.IndexdInterface          { return &fakeIndexd{doFunc: f.doFunc} }
+func (f *fakeGen3Upload) Sower() sower.SowerInterface             { return nil }
+func (f *fakeGen3Upload) Requestor() requestor.RequestorInterface { return nil }
 
 type fakeFence struct {
 	fence.FenceInterface
