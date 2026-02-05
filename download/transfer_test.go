@@ -216,8 +216,3 @@ func (f *fakeRequestor) Do(ctx context.Context, req *request.RequestBuilder) (*h
 func (f *fakeRequestor) New(method, url string) *request.RequestBuilder {
 	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
 }
-
-// Requestor returns a fakeRequestor for the fakeGen3Download.
-func (f *fakeGen3Download) Requestor() requestor.RequestorInterface {
-	return &fakeRequestor{doFunc: f.doFunc}
-}
