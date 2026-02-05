@@ -14,8 +14,8 @@ import (
 	http "net/http"
 	reflect "reflect"
 
+	drs "github.com/calypr/data-client/drs"
 	indexd "github.com/calypr/data-client/indexd"
-	drs "github.com/calypr/data-client/indexd/drs"
 	request "github.com/calypr/data-client/request"
 	gomock "go.uber.org/mock/gomock"
 )

@@ -1,4 +1,4 @@
-package indexd
+package s3utils
 
 import (
 	"context"
@@ -121,4 +121,9 @@ func FetchS3MetadataWithBucketDetails(
 	}
 
 	return contentLength, lastModified, nil
+}
+
+type S3Meta struct {
+	Size         int64
+	LastModified string
 }

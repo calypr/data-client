@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/calypr/data-client/indexd/drs"
+	"github.com/calypr/data-client/drs"
 )
 
 // IndexdRecordFromDrsObject represents a simplified version of an indexd record for conversion purposes

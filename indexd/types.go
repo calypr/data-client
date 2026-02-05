@@ -1,8 +1,8 @@
 package indexd
 
 import (
-	"github.com/calypr/data-client/indexd/drs"
-	"github.com/calypr/data-client/indexd/hash"
+	"github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/hash"
 )
 
 type OutputObject struct {
@@ -67,9 +67,4 @@ type UpdateInputInfo struct {
 
 	// List of authorization policies
 	Authz []string `json:"authz,omitempty"`
-}
-
-type S3Meta struct {
-	Size         int64
-	LastModified string
 }

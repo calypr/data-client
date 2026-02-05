@@ -17,6 +17,8 @@ import (
 	fence "github.com/calypr/data-client/fence"
 	indexd "github.com/calypr/data-client/indexd"
 	logs "github.com/calypr/data-client/logs"
+	requestor "github.com/calypr/data-client/requestor"
+	sower "github.com/calypr/data-client/sower"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -112,4 +114,32 @@ func (m *MockGen3Interface) Logger() *logs.Gen3Logger {
 func (mr *MockGen3InterfaceMockRecorder) Logger() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logger", reflect.TypeOf((*MockGen3Interface)(nil).Logger))
+}
+
+// Requestor mocks base method.
+func (m *MockGen3Interface) Requestor() requestor.RequestorInterface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Requestor")
+	ret0, _ := ret[0].(requestor.RequestorInterface)
+	return ret0
+}
+
+// Requestor indicates an expected call of Requestor.
+func (mr *MockGen3InterfaceMockRecorder) Requestor() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Requestor", reflect.TypeOf((*MockGen3Interface)(nil).Requestor))
+}
+
+// Sower mocks base method.
+func (m *MockGen3Interface) Sower() sower.SowerInterface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Sower")
+	ret0, _ := ret[0].(sower.SowerInterface)
+	return ret0
+}
+
+// Sower indicates an expected call of Sower.
+func (mr *MockGen3InterfaceMockRecorder) Sower() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sower", reflect.TypeOf((*MockGen3Interface)(nil).Sower))
 }

@@ -15,11 +15,12 @@ import (
 
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/indexd"
-	"github.com/calypr/data-client/indexd/drs"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
 )
 
@@ -34,9 +35,10 @@ func (f *fakeGen3Download) Logger() *logs.Gen3Logger        { return f.logger }
 func (f *fakeGen3Download) ExportCredential(ctx context.Context, cred *conf.Credential) error {
 	return nil
 }
-func (f *fakeGen3Download) Fence() fence.FenceInterface    { return &fakeFence{doFunc: f.doFunc} }
-func (f *fakeGen3Download) Indexd() indexd.IndexdInterface { return &fakeIndexd{doFunc: f.doFunc} }
-func (f *fakeGen3Download) Sower() sower.SowerInterface    { return nil }
+func (f *fakeGen3Download) Fence() fence.FenceInterface             { return &fakeFence{doFunc: f.doFunc} }
+func (f *fakeGen3Download) Indexd() indexd.IndexdInterface          { return &fakeIndexd{doFunc: f.doFunc} }
+func (f *fakeGen3Download) Sower() sower.SowerInterface             { return nil }
+func (f *fakeGen3Download) Requestor() requestor.RequestorInterface { return nil }
 
 type fakeFence struct {
 	fence.FenceInterface
@@ -199,4 +201,18 @@ func newDownloadResponse(rawURL string, payload []byte, status int) *http.Respon
 		Request:       &http.Request{URL: parsedURL},
 		Header:        make(http.Header),
 	}
+}
+
+// fakeRequestor implements requestor.RequestorInterface using the same doFunc.
+type fakeRequestor struct {
+	requestor.RequestorInterface
+	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+}
+
+func (f *fakeRequestor) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
+	return f.doFunc(ctx, req)
+}
+
+func (f *fakeRequestor) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
 }

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/common"
+	drs "github.com/calypr/data-client/drs" // Imported for DRSObject
 	client "github.com/calypr/data-client/g3client"
-	drs "github.com/calypr/data-client/indexd/drs" // Imported for DRSObject
 	"github.com/vbauerster/mpb/v8"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/data-client/indexd/hash"
+	"github.com/calypr/data-client/hash"
 	"github.com/google/uuid"
 )
 

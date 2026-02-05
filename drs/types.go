@@ -1,8 +1,6 @@
 package drs
 
-import (
-	"github.com/calypr/data-client/indexd/hash"
-)
+import "github.com/calypr/data-client/hash"
 
 type ChecksumType = hash.ChecksumType
 type Checksum = hash.Checksum

@@ -3,7 +3,7 @@ package indexd
 // https://github.com/uc-cdis/indexd/blob/master/openapis/swagger.yaml
 
 import (
-	"github.com/calypr/data-client/indexd/hash"
+	"github.com/calypr/data-client/hash"
 )
 
 // subset of the OpenAPI spec for the InputInfo object in indexd
