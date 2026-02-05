@@ -39,7 +39,7 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 		pr.bytesSoFar += delta
 		pr.bytesSinceReport += delta
 
-		if pr.bytesSinceReport >= common.MinChunkSize {
+		if pr.bytesSinceReport >= 1*common.MB {
 			if progressErr := pr.onProgress(common.ProgressEvent{
 				Event:          "progress",
 				Oid:            pr.hash,
