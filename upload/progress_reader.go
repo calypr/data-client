@@ -39,7 +39,7 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 		pr.bytesSoFar += delta
 		pr.bytesSinceReport += delta
 
-		if pr.bytesSinceReport >= 1*common.MB {
+		if pr.bytesSinceReport >= common.OnProgressThreshold {
 			if progressErr := pr.onProgress(common.ProgressEvent{
 				Event:          "progress",
 				Oid:            pr.hash,

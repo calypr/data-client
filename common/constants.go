@@ -85,6 +85,8 @@ const (
 	MaxMultipartParts    = 10000
 	MaxConcurrentUploads = 10
 	MaxRetries           = 5
+
+	OnProgressThreshold = 1 * MB
 )
 
 var (

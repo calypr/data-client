@@ -32,7 +32,7 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 		pw.bytesSoFar += delta
 		pw.bytesSinceReport += delta
 
-		if pw.bytesSinceReport >= 1*common.MB {
+		if pw.bytesSinceReport >= common.OnProgressThreshold {
 			if progressErr := pw.onProgress(common.ProgressEvent{
 				Event:          "progress",
 				Oid:            pw.hash,
