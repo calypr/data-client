@@ -7,6 +7,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/calypr/data-client/backend"
+	drsbackend "github.com/calypr/data-client/backend/drs"
+	gen3backend "github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/download"
 	"github.com/calypr/data-client/g3client"
@@ -78,9 +81,18 @@ func init() {
 				g3i.Logger().Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
 			}
 
+			var bk backend.Backend
+			if backendType == "drs" {
+				cred := g3i.GetCredential()
+				// Use the API endpoint from the profile as the DRS server URL
+				bk = drsbackend.NewDrsBackend(cred.APIEndpoint, logger.Logger, g3i)
+			} else {
+				bk = gen3backend.NewGen3Backend(g3i)
+			}
+
 			err = download.DownloadMultiple(
 				context.Background(),
-				g3i,
+				bk,
 				objects,
 				downloadPath,
 				filenameFormat,

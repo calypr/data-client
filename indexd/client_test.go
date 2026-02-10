@@ -118,7 +118,7 @@ func sampleDRSObject() drs.DRSObject {
 			{
 				Type:           "s3",
 				AccessURL:      drs.AccessURL{URL: "s3://bucket/key"},
-				Authorizations: &drs.Authorizations{Value: "/programs/test/projects/proj"},
+				Authorizations: &drs.Authorizations{BearerAuthIssuers: []string{"/programs/test/projects/proj"}},
 			},
 		},
 	}
@@ -209,7 +209,7 @@ func TestIndexdClient_RegisterAndUpdateDirect(t *testing.T) {
 			{
 				Type:           "s3",
 				AccessURL:      drs.AccessURL{URL: "s3://bucket/key"},
-				Authorizations: &drs.Authorizations{Value: "/programs/test/projects/proj"},
+				Authorizations: &drs.Authorizations{BearerAuthIssuers: []string{"/programs/test/projects/proj"}},
 			},
 		},
 	}
@@ -230,7 +230,7 @@ func TestIndexdClient_RegisterAndUpdateDirect(t *testing.T) {
 			{
 				Type:           "s3",
 				AccessURL:      drs.AccessURL{URL: "s3://bucket/other"},
-				Authorizations: &drs.Authorizations{Value: "/programs/test/projects/proj"},
+				Authorizations: &drs.Authorizations{BearerAuthIssuers: []string{"/programs/test/projects/proj"}},
 			},
 		},
 	}

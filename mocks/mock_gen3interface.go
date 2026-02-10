@@ -11,12 +11,14 @@ package mocks
 
 import (
 	context "context"
+	http "net/http"
 	reflect "reflect"
 
 	conf "github.com/calypr/data-client/conf"
 	fence "github.com/calypr/data-client/fence"
 	indexd "github.com/calypr/data-client/indexd"
 	logs "github.com/calypr/data-client/logs"
+	request "github.com/calypr/data-client/request"
 	requestor "github.com/calypr/data-client/requestor"
 	sower "github.com/calypr/data-client/sower"
 	gomock "go.uber.org/mock/gomock"
@@ -44,6 +46,21 @@ func NewMockGen3Interface(ctrl *gomock.Controller) *MockGen3Interface {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockGen3Interface) EXPECT() *MockGen3InterfaceMockRecorder {
 	return m.recorder
+}
+
+// Do mocks base method.
+func (m *MockGen3Interface) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Do", ctx, req)
+	ret0, _ := ret[0].(*http.Response)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Do indicates an expected call of Do.
+func (mr *MockGen3InterfaceMockRecorder) Do(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockGen3Interface)(nil).Do), ctx, req)
 }
 
 // ExportCredential mocks base method.
@@ -114,6 +131,20 @@ func (m *MockGen3Interface) Logger() *logs.Gen3Logger {
 func (mr *MockGen3InterfaceMockRecorder) Logger() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logger", reflect.TypeOf((*MockGen3Interface)(nil).Logger))
+}
+
+// New mocks base method.
+func (m *MockGen3Interface) New(method, url string) *request.RequestBuilder {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "New", method, url)
+	ret0, _ := ret[0].(*request.RequestBuilder)
+	return ret0
+}
+
+// New indicates an expected call of New.
+func (mr *MockGen3InterfaceMockRecorder) New(method, url any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "New", reflect.TypeOf((*MockGen3Interface)(nil).New), method, url)
 }
 
 // Requestor mocks base method.

@@ -45,7 +45,7 @@ func (c *IndexdClient) UpsertIndexdRecord(ctx context.Context, url string, sha25
 		return nil, err
 	}
 
-	drsObj, err := drs.BuildDrsObj(key, sha256, fileSize, uuid, "placeholder-bucket", projectId)
+	drsObj, err := drs.BuildDrsObj(key, sha256, fileSize, uuid, "placeholder-bucket", "", projectId)
 	if err != nil {
 		return nil, err
 	}

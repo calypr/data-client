@@ -1,10 +1,10 @@
 package download
 
 import (
+	"log/slog"
 	"os"
 
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/logs"
 )
 
 type IndexdResponse struct {
@@ -18,7 +18,7 @@ type RenamedOrSkippedFileInfo struct {
 }
 
 func validateLocalFileStat(
-	logger *logs.Gen3Logger,
+	logger *slog.Logger,
 	fdr *common.FileDownloadResponseObject,
 	filesize int64,
 	skipCompleted bool,
@@ -31,8 +31,8 @@ func validateLocalFileStat(
 			// No local file → full download, nothing special
 			return
 		}
-		logger.Printf("Error statting local file \"%s\": %s\n", fullPath, err.Error())
-		logger.Println("Will attempt full download anyway")
+		logger.Error("Error statting local file", "path", fullPath, "error", err)
+		logger.Info("Will attempt full download anyway")
 		return
 	}
 

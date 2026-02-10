@@ -41,8 +41,8 @@ func NewRequestInterface(
 		}).DialContext,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   100,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
 	}
 
 	authTransport := &AuthTransport{

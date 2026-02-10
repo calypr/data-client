@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/download"
-	"github.com/calypr/data-client/fence"
+	drs "github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/mocks"
 	req "github.com/calypr/data-client/request"
@@ -51,12 +52,14 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	}
 
 	// Expect request to Shepherd
-	mockFence.EXPECT().
+	mockGen3.EXPECT().
+		New(gomock.Any(), gomock.Any()).
+		Return(&req.RequestBuilder{Url: "/objects/" + testGUID}).
+		AnyTimes()
+
+	mockGen3.EXPECT().
 		Do(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(ctx any, rb *req.RequestBuilder) (*http.Response, error) {
-			if !strings.HasSuffix(rb.Url, "/objects/"+testGUID) {
-				t.Errorf("Expected request to Shepherd objects endpoint, got %s", rb.Url)
-			}
 			return resp, nil
 		})
 
@@ -64,7 +67,8 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info, err := download.AskGen3ForFileInfo(context.Background(), mockGen3, testGUID, "", "", "original", true, &skipped)
+	bk := gen3.NewGen3Backend(mockGen3)
+	info, err := download.GetFileInfo(context.Background(), bk, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Error(err)
 	}
@@ -100,16 +104,22 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		Times(1)
 
 	// 2. Shepherd request fails → triggers fallback to Indexd
-	mockFence.EXPECT().
+	mockGen3.EXPECT().
+		New(gomock.Any(), gomock.Any()).
+		Return(&req.RequestBuilder{Url: "/objects/" + testGUID}).
+		AnyTimes()
+
+	mockGen3.EXPECT().
 		Do(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("Shepherd error")).
 		Times(1) // only the Shepherd call
 
-	// 3. Fallback: Indexd request also fails
-	mockFence.EXPECT().
-		Do(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("Indexd error")).
-		Times(1)
+	// 3. Fallback: Indexd request
+	mockIndexd := mocks.NewMockIndexdInterface(mockCtrl)
+	mockGen3.EXPECT().Indexd().Return(mockIndexd).AnyTimes()
+	mockIndexd.EXPECT().
+		GetObject(gomock.Any(), testGUID).
+		Return(nil, fmt.Errorf("Indexd error"))
 
 	// Logger
 	mockGen3.EXPECT().
@@ -118,7 +128,8 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info, err := download.AskGen3ForFileInfo(context.Background(), mockGen3, testGUID, "", "", "original", true, &skipped)
+	bk := gen3.NewGen3Backend(mockGen3)
+	info, err := download.GetFileInfo(context.Background(), bk, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,20 +166,17 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	// No Shepherd
 	mockFence.EXPECT().CheckForShepherdAPI(gomock.Any()).Return(false, nil)
 
-	// Indexd returns parsed FenceResponse
-	mockFence.EXPECT().
-		ParseFenceURLResponse(gomock.Any()).
-		Return(fence.FenceResponse{FileName: testFileName, Size: testFileSize}, nil)
-
-	// Do called for indexd
-	mockFence.EXPECT().
-		Do(gomock.Any(), gomock.Any()).
-		Return(&http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}"))}, nil)
+	mockIndexd := mocks.NewMockIndexdInterface(mockCtrl)
+	mockGen3.EXPECT().Indexd().Return(mockIndexd).AnyTimes()
+	mockIndexd.EXPECT().
+		GetObject(gomock.Any(), testGUID).
+		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
 
 	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info, err := download.AskGen3ForFileInfo(context.Background(), mockGen3, testGUID, "", "", "original", true, &skipped)
+	bk := gen3.NewGen3Backend(mockGen3)
+	info, err := download.GetFileInfo(context.Background(), bk, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/calypr/data-client/backend"
+	drsbackend "github.com/calypr/data-client/backend/drs"
+	gen3backend "github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/download"
 	"github.com/calypr/data-client/g3client"
@@ -37,14 +40,22 @@ func init() {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
+			var bk backend.Backend
+			if backendType == "drs" {
+				cred := g3I.GetCredential()
+				bk = drsbackend.NewDrsBackend(cred.APIEndpoint, logger.Logger, g3I)
+			} else {
+				bk = gen3backend.NewGen3Backend(g3I)
+			}
+
 			objects := []common.ManifestObject{
-				common.ManifestObject{
+				{
 					GUID: guid,
 				},
 			}
 			err = download.DownloadMultiple(
 				context.Background(),
-				g3I,
+				bk,
 				objects,
 				downloadPath,
 				filenameFormat,

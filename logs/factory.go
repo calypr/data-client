@@ -58,7 +58,7 @@ func New(profile string, opts ...Option) (*Gen3Logger, func()) {
 	t := NewGen3Logger(sl, logDir, profile)
 
 	if cfg.enableScoreboard {
-		t.scoreboard = NewSB(5, t)
+		t.scoreboard = NewSB(5, t.Logger)
 	}
 
 	if cfg.failedLog {

@@ -28,7 +28,7 @@ func IndexdRecordToDrsObject(indexdObj *IndexdRecord) (*drs.DRSObject, error) {
 		return nil, err
 	}
 	for _, am := range accessMethods {
-		if am.Authorizations == nil || am.Authorizations.Value == "" {
+		if am.Authorizations == nil || len(am.Authorizations.BearerAuthIssuers) == 0 {
 			return nil, fmt.Errorf("access method missing authorization %v, %v", indexdObj, indexdObj.Authz)
 		}
 	}
@@ -65,7 +65,7 @@ func DRSAccessMethodsFromIndexdURLs(urls []string, authz []string) ([]drs.Access
 		}
 
 		// NOTE: a record can only have 1 authz entry atm
-		method.Authorizations = &drs.Authorizations{Value: authz[0]}
+		method.Authorizations = &drs.Authorizations{BearerAuthIssuers: []string{authz[0]}}
 		accessMethods = append(accessMethods, method)
 	}
 	return accessMethods, nil
@@ -75,8 +75,8 @@ func DRSAccessMethodsFromIndexdURLs(urls []string, authz []string) ([]drs.Access
 func IndexdAuthzFromDrsAccessMethods(accessMethods []drs.AccessMethod) []string {
 	var authz []string
 	for _, drsURL := range accessMethods {
-		if drsURL.Authorizations != nil {
-			authz = append(authz, drsURL.Authorizations.Value)
+		if drsURL.Authorizations != nil && len(drsURL.Authorizations.BearerAuthIssuers) > 0 {
+			authz = append(authz, drsURL.Authorizations.BearerAuthIssuers[0])
 		}
 	}
 	return authz

@@ -3,9 +3,9 @@ package download
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,74 +16,70 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/drs"
-	"github.com/calypr/data-client/fence"
-	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
-	"github.com/calypr/data-client/requestor"
-	"github.com/calypr/data-client/sower"
 )
 
-type fakeGen3Download struct {
+type fakeBackend struct {
 	cred   *conf.Credential
 	logger *logs.Gen3Logger
 	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
 }
 
-func (f *fakeGen3Download) GetCredential() *conf.Credential { return f.cred }
-func (f *fakeGen3Download) Logger() *logs.Gen3Logger        { return f.logger }
-func (f *fakeGen3Download) ExportCredential(ctx context.Context, cred *conf.Credential) error {
-	return nil
-}
-func (f *fakeGen3Download) Fence() fence.FenceInterface             { return &fakeFence{doFunc: f.doFunc} }
-func (f *fakeGen3Download) Indexd() indexd.IndexdInterface          { return &fakeIndexd{doFunc: f.doFunc} }
-func (f *fakeGen3Download) Sower() sower.SowerInterface             { return nil }
-func (f *fakeGen3Download) Requestor() requestor.RequestorInterface { return nil }
+func (f *fakeBackend) Name() string                    { return "Fake" }
+func (f *fakeBackend) GetCredential() *conf.Credential { return f.cred }
+func (f *fakeBackend) Logger() *slog.Logger            { return f.logger.Logger }
 
-type fakeFence struct {
-	fence.FenceInterface
-	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+func (f *fakeBackend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSObject, error) {
+	return &drs.DRSObject{
+		Name: "payload.bin",
+		Size: 64,
+		AccessMethods: []drs.AccessMethod{
+			{AccessID: "s3", Type: "s3"},
+		},
+	}, nil
 }
 
-func (f *fakeFence) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
-	return f.doFunc(ctx, req)
-}
-func (f *fakeFence) New(method, url string) *request.RequestBuilder {
-	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
-}
-func (f *fakeFence) CheckForShepherdAPI(ctx context.Context) (bool, error) { return false, nil }
-func (f *fakeFence) ResolveOID(ctx context.Context, oid string) (fence.FenceResponse, error) {
-	return fence.FenceResponse{}, nil
-}
-func (f *fakeFence) GetDownloadPresignedUrl(ctx context.Context, guid, protocol string) (string, error) {
+func (f *fakeBackend) GetDownloadURL(ctx context.Context, guid string, accessID string) (string, error) {
 	if guid == "test-fallback" {
-		return "", errors.New("fence fallback")
+		return "", errors.New("fallback")
 	}
 	return "https://download.example.com/object", nil
 }
-func (f *fakeFence) ParseFenceURLResponse(resp *http.Response) (fence.FenceResponse, error) {
-	var msg fence.FenceResponse
-	if resp != nil && resp.Body != nil {
-		json.NewDecoder(resp.Body).Decode(&msg)
-	}
-	return msg, nil
+
+func (f *fakeBackend) Register(ctx context.Context, obj *drs.DRSObject) (*drs.DRSObject, error) {
+	return obj, nil
 }
 
-type fakeIndexd struct {
-	indexd.IndexdInterface
-	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+func (f *fakeBackend) BatchRegister(ctx context.Context, objs []*drs.DRSObject) ([]*drs.DRSObject, error) {
+	return objs, nil
 }
 
-func (f *fakeIndexd) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
+func (f *fakeBackend) GetUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (f *fakeBackend) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	return f.doFunc(ctx, req)
 }
 
-func (f *fakeIndexd) New(method, url string) *request.RequestBuilder {
-	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
+func (f *fakeBackend) Download(ctx context.Context, fdr *common.FileDownloadResponseObject) (*http.Response, error) {
+	return f.Do(ctx, &request.RequestBuilder{
+		Method: http.MethodGet,
+		Url:    fdr.PresignedURL,
+	})
 }
 
-func (f *fakeIndexd) GetDownloadURL(ctx context.Context, did string, accessType string) (*drs.AccessURL, error) {
-	return &drs.AccessURL{URL: "https://download.example.com/object"}, nil
+func (f *fakeBackend) GetObjectByHash(ctx context.Context, checksumType, checksum string) ([]drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeBackend) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeBackend) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
 }
 
 func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
@@ -97,7 +93,7 @@ func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
 		return nil
 	}
 
-	fake := &fakeGen3Download{
+	fake := &fakeBackend{
 		cred:   &conf.Credential{APIEndpoint: "https://example.com", AccessToken: "token"},
 		logger: logs.NewGen3Logger(nil, "", ""),
 		doFunc: func(_ context.Context, req *request.RequestBuilder) (*http.Response, error) {
@@ -146,7 +142,7 @@ func TestDownloadSingleWithProgressFinalizeOnError(t *testing.T) {
 		return nil
 	}
 
-	fake := &fakeGen3Download{
+	fake := &fakeBackend{
 		cred:   &conf.Credential{APIEndpoint: "https://example.com", AccessToken: "token"},
 		logger: logs.NewGen3Logger(nil, "", ""),
 		doFunc: func(_ context.Context, req *request.RequestBuilder) (*http.Response, error) {
@@ -201,18 +197,4 @@ func newDownloadResponse(rawURL string, payload []byte, status int) *http.Respon
 		Request:       &http.Request{URL: parsedURL},
 		Header:        make(http.Header),
 	}
-}
-
-// fakeRequestor implements requestor.RequestorInterface using the same doFunc.
-type fakeRequestor struct {
-	requestor.RequestorInterface
-	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
-}
-
-func (f *fakeRequestor) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
-	return f.doFunc(ctx, req)
-}
-
-func (f *fakeRequestor) New(method, url string) *request.RequestBuilder {
-	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
 }

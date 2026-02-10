@@ -23,7 +23,7 @@ const (
 func (ct ChecksumType) IsValid() bool {
 	switch ct {
 	case ChecksumTypeSHA256, ChecksumTypeSHA512, ChecksumTypeSHA1, ChecksumTypeMD5,
-		ChecksumTypeETag, ChecksumTypeCRC32C, ChecksumTypeTrunc512:
+		ChecksumTypeETag, ChecksumTypeCRC32C:
 		return true
 	default:
 		return false
@@ -59,7 +59,7 @@ type HashInfo struct {
 	ETag   string `json:"etag,omitempty"`
 }
 
-// UnmarshalJSON accepts both the DRS map-based schema and the array-of-checksums schema.
+// UnmarshalJSON accepts both the DRS map-based schema (Indexd) and the array-of-checksums schema (GA4GH).
 func (h *HashInfo) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		*h = HashInfo{}

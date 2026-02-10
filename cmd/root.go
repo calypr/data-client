@@ -7,6 +7,7 @@ import (
 )
 
 var profile string
+var backendType string
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -27,5 +28,6 @@ func Execute() {
 
 func init() {
 	RootCmd.PersistentFlags().StringVar(&profile, "profile", "", "Specify profile to use")
+	RootCmd.PersistentFlags().StringVar(&backendType, "backend", "gen3", "Specify backend to use (gen3 or drs)")
 	_ = RootCmd.MarkFlagRequired("profile")
 }

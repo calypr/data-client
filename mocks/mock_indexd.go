@@ -44,6 +44,21 @@ func (m *MockIndexdInterface) EXPECT() *MockIndexdInterfaceMockRecorder {
 	return m.recorder
 }
 
+// BatchGetObjectsByHash mocks base method.
+func (m *MockIndexdInterface) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchGetObjectsByHash", ctx, hashes)
+	ret0, _ := ret[0].(map[string][]drs.DRSObject)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BatchGetObjectsByHash indicates an expected call of BatchGetObjectsByHash.
+func (mr *MockIndexdInterfaceMockRecorder) BatchGetObjectsByHash(ctx, hashes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchGetObjectsByHash", reflect.TypeOf((*MockIndexdInterface)(nil).BatchGetObjectsByHash), ctx, hashes)
+}
+
 // DeleteIndexdRecord mocks base method.
 func (m *MockIndexdInterface) DeleteIndexdRecord(ctx context.Context, did string) error {
 	m.ctrl.T.Helper()
@@ -235,6 +250,21 @@ func (mr *MockIndexdInterfaceMockRecorder) RegisterRecord(ctx, record any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRecord", reflect.TypeOf((*MockIndexdInterface)(nil).RegisterRecord), ctx, record)
 }
 
+// RegisterRecords mocks base method.
+func (m *MockIndexdInterface) RegisterRecords(ctx context.Context, records []*drs.DRSObject) ([]*drs.DRSObject, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RegisterRecords", ctx, records)
+	ret0, _ := ret[0].([]*drs.DRSObject)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RegisterRecords indicates an expected call of RegisterRecords.
+func (mr *MockIndexdInterfaceMockRecorder) RegisterRecords(ctx, records any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRecords", reflect.TypeOf((*MockIndexdInterface)(nil).RegisterRecords), ctx, records)
+}
+
 // UpdateRecord mocks base method.
 func (m *MockIndexdInterface) UpdateRecord(ctx context.Context, updateInfo *drs.DRSObject, did string) (*drs.DRSObject, error) {
 	m.ctrl.T.Helper()
@@ -248,4 +278,19 @@ func (m *MockIndexdInterface) UpdateRecord(ctx context.Context, updateInfo *drs.
 func (mr *MockIndexdInterfaceMockRecorder) UpdateRecord(ctx, updateInfo, did any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRecord", reflect.TypeOf((*MockIndexdInterface)(nil).UpdateRecord), ctx, updateInfo, did)
+}
+
+// UpsertIndexdRecord mocks base method.
+func (m *MockIndexdInterface) UpsertIndexdRecord(ctx context.Context, url, sha256 string, fileSize int64, projectId string) (*drs.DRSObject, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertIndexdRecord", ctx, url, sha256, fileSize, projectId)
+	ret0, _ := ret[0].(*drs.DRSObject)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertIndexdRecord indicates an expected call of UpsertIndexdRecord.
+func (mr *MockIndexdInterfaceMockRecorder) UpsertIndexdRecord(ctx, url, sha256, fileSize, projectId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertIndexdRecord", reflect.TypeOf((*MockIndexdInterface)(nil).UpsertIndexdRecord), ctx, url, sha256, fileSize, projectId)
 }

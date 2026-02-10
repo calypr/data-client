@@ -40,6 +40,13 @@ func (f *fakeGen3Upload) Indexd() indexd.IndexdInterface          { return &fake
 func (f *fakeGen3Upload) Sower() sower.SowerInterface             { return nil }
 func (f *fakeGen3Upload) Requestor() requestor.RequestorInterface { return nil }
 
+func (f *fakeGen3Upload) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
+	return f.doFunc(ctx, req)
+}
+func (f *fakeGen3Upload) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url}
+}
+
 type fakeFence struct {
 	fence.FenceInterface
 	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)

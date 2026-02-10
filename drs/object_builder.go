@@ -2,15 +2,17 @@ package drs
 
 import (
 	"fmt"
-	"path/filepath"
+	"strings"
 
 	"github.com/calypr/data-client/hash"
 )
 
 type ObjectBuilder struct {
-	Bucket     string
-	ProjectID  string
-	AccessType string
+	Bucket       string
+	ProjectID    string
+	Organization string
+	AccessType   string
+	PathStyle    string // "CAS" or "" (Gen3 default)
 }
 
 func NewObjectBuilder(bucket, projectID string) ObjectBuilder {
@@ -18,6 +20,7 @@ func NewObjectBuilder(bucket, projectID string) ObjectBuilder {
 		Bucket:     bucket,
 		ProjectID:  projectID,
 		AccessType: "s3",
+		PathStyle:  "Gen3", // Defaults to Gen3 behavior
 	}
 }
 
@@ -30,14 +33,24 @@ func (b ObjectBuilder) Build(fileName string, checksum string, size int64, drsID
 		accessType = "s3"
 	}
 
-	fileURL := fmt.Sprintf("s3://%s", filepath.Join(b.Bucket, drsID, checksum))
+	// Remove sha256: prefix if present for clean S3 key
+	checksum = strings.TrimPrefix(checksum, "sha256:")
 
-	authzStr, err := ProjectToResource(b.ProjectID)
+	var fileURL string
+	if b.PathStyle == "CAS" {
+		// CAS-style (s3://bucket/checksum)
+		fileURL = fmt.Sprintf("s3://%s/%s", b.Bucket, checksum)
+	} else {
+		// Gen3-style (s3://bucket/guid/checksum)
+		fileURL = fmt.Sprintf("s3://%s/%s/%s", b.Bucket, drsID, checksum)
+	}
+
+	authzStr, err := ProjectToResource(b.Organization, b.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 	authorizations := Authorizations{
-		Value: authzStr,
+		BearerAuthIssuers: []string{authzStr},
 	}
 
 	drsObj := DRSObject{

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
 	"github.com/hashicorp/go-multierror"
 	"github.com/vbauerster/mpb/v8"
@@ -21,7 +21,7 @@ import (
 // downloadFiles performs bounded parallel downloads and collects ALL errors
 func downloadFiles(
 	ctx context.Context,
-	g3i g3client.Gen3Interface,
+	bk backend.Backend,
 	files []common.FileDownloadResponseObject,
 	numParallel int,
 	protocol string,
@@ -30,7 +30,7 @@ func downloadFiles(
 		return 0, nil
 	}
 
-	logger := g3i.Logger()
+	logger := bk.Logger()
 
 	protocolText := ""
 	if protocol != "" {
@@ -76,7 +76,7 @@ func downloadFiles(
 			}()
 
 			// Get presigned URL
-			if err = GetDownloadResponse(ctx, g3i, fdr, protocolText); err != nil {
+			if err = GetDownloadResponse(ctx, bk, fdr, protocolText); err != nil {
 				err = fmt.Errorf("get URL for %s (GUID: %s): %w", fdr.Filename, fdr.GUID, err)
 				return err
 			}
@@ -179,10 +179,10 @@ func downloadFiles(
 	sb.PrintSB()
 
 	if combinedError != nil {
-		logger.Printf("%d files downloaded, but %d failed:\n", downloaded, len(allErrors))
-		logger.Println(combinedError.Error())
+		logger.Info(fmt.Sprintf("%d files downloaded, but %d failed:", downloaded, len(allErrors)))
+		logger.Info(combinedError.Error())
 	} else {
-		logger.Printf("%d files downloaded successfully.\n", downloaded)
+		logger.Info(fmt.Sprintf("%d files downloaded successfully.", downloaded))
 	}
 
 	return downloaded, combinedError

@@ -69,19 +69,34 @@ func (mr *MockManagerInterfaceMockRecorder) Import(filePath, fenceToken any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Import", reflect.TypeOf((*MockManagerInterface)(nil).Import), filePath, fenceToken)
 }
 
-// IsValid mocks base method.
-func (m *MockManagerInterface) IsValid(arg0 *conf.Credential) (bool, error) {
+// IsCredentialValid mocks base method.
+func (m *MockManagerInterface) IsCredentialValid(arg0 *conf.Credential) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsValid", arg0)
+	ret := m.ctrl.Call(m, "IsCredentialValid", arg0)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// IsValid indicates an expected call of IsValid.
-func (mr *MockManagerInterfaceMockRecorder) IsValid(arg0 any) *gomock.Call {
+// IsCredentialValid indicates an expected call of IsCredentialValid.
+func (mr *MockManagerInterfaceMockRecorder) IsCredentialValid(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsValid", reflect.TypeOf((*MockManagerInterface)(nil).IsValid), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsCredentialValid", reflect.TypeOf((*MockManagerInterface)(nil).IsCredentialValid), arg0)
+}
+
+// IsTokenValid mocks base method.
+func (m *MockManagerInterface) IsTokenValid(arg0 string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsTokenValid", arg0)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsTokenValid indicates an expected call of IsTokenValid.
+func (mr *MockManagerInterfaceMockRecorder) IsTokenValid(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTokenValid", reflect.TypeOf((*MockManagerInterface)(nil).IsTokenValid), arg0)
 }
 
 // Load mocks base method.

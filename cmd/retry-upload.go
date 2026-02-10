@@ -36,7 +36,7 @@ func init() {
 			logger := g3.Logger()
 
 			// Create scoreboard with our logger injected
-			sb := logs.NewSB(common.MaxRetryCount, logger)
+			sb := logs.NewSB(common.MaxRetryCount, logger.Logger)
 
 			// Load failed log
 			failedMap, err := common.LoadFailedLog(failedLogPath)

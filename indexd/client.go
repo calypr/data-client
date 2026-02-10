@@ -33,7 +33,10 @@ type IndexdInterface interface {
 	DeleteRecordsByProject(ctx context.Context, projectId string) error
 	DeleteRecordByHash(ctx context.Context, hashValue string, projectId string) error
 	RegisterRecord(ctx context.Context, record *drs.DRSObject) (*drs.DRSObject, error)
+	RegisterRecords(ctx context.Context, records []*drs.DRSObject) ([]*drs.DRSObject, error)
 	UpsertIndexdRecord(ctx context.Context, url string, sha256 string, fileSize int64, projectId string) (*drs.DRSObject, error)
+
+	BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error)
 }
 
 // IndexdClient implements IndexdInterface
@@ -230,7 +233,7 @@ func (c *IndexdClient) GetDownloadURL(ctx context.Context, did string, accessTyp
 func (c *IndexdClient) ListObjectsByProject(ctx context.Context, projectId string) (chan drs.DRSObjectResult, error) {
 	const PAGESIZE = 50
 
-	resourcePath, err := drs.ProjectToResource(projectId)
+	resourcePath, err := drs.ProjectToResource("", projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +480,7 @@ func (c *IndexdClient) DeleteRecordByHash(ctx context.Context, hashValue string,
 		return fmt.Errorf("no records found for hash %s", hashValue)
 	}
 
-	matchingRecord, err := drs.FindMatchingRecord(records, projectId)
+	matchingRecord, err := drs.FindMatchingRecord(records, "", projectId)
 	if err != nil {
 		return fmt.Errorf("error finding matching record for project %s: %v", projectId, err)
 	}
@@ -495,6 +498,112 @@ func (c *IndexdClient) RegisterRecord(ctx context.Context, record *drs.DRSObject
 	}
 
 	return c.RegisterIndexdRecord(ctx, indexdRecord)
+}
+
+func (c *IndexdClient) RegisterRecords(ctx context.Context, records []*drs.DRSObject) ([]*drs.DRSObject, error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	candidates := make([]drs.DRSObjectCandidate, len(records))
+	for i, r := range records {
+		candidates[i] = drs.ConvertToCandidate(r)
+	}
+
+	reqBody := drs.RegisterObjectsRequest{
+		Candidates: candidates,
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/ga4gh/drs/v1/objects/register", c.cred.APIEndpoint)
+	resp, err := c.Do(ctx, &request.RequestBuilder{
+		Method: http.MethodPost,
+		Url:    url,
+		Body:   bytes.NewBuffer(jsonBytes),
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       "application/json",
+		},
+		Token: c.cred.AccessToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to register records: %s (status: %d)", string(body), resp.StatusCode)
+	}
+
+	var registered []*drs.DRSObject
+	if err := json.NewDecoder(resp.Body).Decode(&registered); err != nil {
+		// Fallback: If server returns DrsObjectWithAuthz slice (which it might based on my service.go implementation), decode that
+		return nil, fmt.Errorf("error decoding registered objects: %v", err)
+	}
+
+	return registered, nil
+}
+
+func (c *IndexdClient) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	reqBody := struct {
+		Hashes []string `json:"hashes"`
+	}{
+		Hashes: hashes,
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/index/index/bulk/hashes", c.cred.APIEndpoint)
+	resp, err := c.Do(ctx, &request.RequestBuilder{
+		Method: http.MethodPost,
+		Url:    url,
+		Body:   bytes.NewBuffer(jsonBytes),
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       "application/json",
+		},
+		Token: c.cred.AccessToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to bulk lookup hashes: %s (status: %d)", string(body), resp.StatusCode)
+	}
+
+	var list ListRecords
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string][]drs.DRSObject)
+	for _, r := range list.Records {
+		drsObj, err := r.ToIndexdRecord().ToDrsObject()
+		if err != nil {
+			continue
+		}
+		// Group by hash. We use the SHA256 as the key.
+		if drsObj.Checksums.SHA256 != "" {
+			result[drsObj.Checksums.SHA256] = append(result[drsObj.Checksums.SHA256], *drsObj)
+		}
+	}
+
+	return result, nil
 }
 
 func appendUnique(existing []string, toAdd []string) []string {

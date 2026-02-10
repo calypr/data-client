@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/download"
@@ -37,7 +38,7 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
 		Return(mockDownloadURL, nil)
 
-	mockFence.EXPECT().
+	mockGen3.EXPECT().
 		New(http.MethodGet, mockDownloadURL).
 		Return(&request.RequestBuilder{
 			Method:  http.MethodGet,
@@ -51,7 +52,7 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader("content")),
 	}
-	mockFence.EXPECT().
+	mockGen3.EXPECT().
 		Do(gomock.Any(), gomock.Any()).
 		Return(mockResp, nil)
 
@@ -61,7 +62,8 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		Range:    0,
 	}
 
-	err := download.GetDownloadResponse(context.Background(), mockGen3, &mockFDRObj, "")
+	bk := gen3.NewGen3Backend(mockGen3)
+	err := download.GetDownloadResponse(context.Background(), bk, &mockFDRObj, "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -89,7 +91,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
 		Return(mockDownloadURL, nil)
 
-	mockFence.EXPECT().
+	mockGen3.EXPECT().
 		New(http.MethodGet, mockDownloadURL).
 		Return(&request.RequestBuilder{
 			Method:  http.MethodGet,
@@ -103,7 +105,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader("content")),
 	}
-	mockFence.EXPECT().
+	mockGen3.EXPECT().
 		Do(gomock.Any(), gomock.Any()).
 		Return(mockResp, nil)
 
@@ -113,7 +115,8 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		Range:    0,
 	}
 
-	err := download.GetDownloadResponse(context.Background(), mockGen3, &mockFDRObj, "")
+	bk := gen3.NewGen3Backend(mockGen3)
+	err := download.GetDownloadResponse(context.Background(), bk, &mockFDRObj, "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

@@ -12,7 +12,7 @@ type AccessURL struct {
 }
 
 type Authorizations struct {
-	Value string `json:"value"`
+	BearerAuthIssuers []string `json:"bearer_auth_issuers,omitempty"`
 }
 
 type AccessMethod struct {
@@ -22,7 +22,7 @@ type AccessMethod struct {
 	Cloud          string          `json:"cloud,omitempty"`
 	Region         string          `json:"region,omitempty"`
 	Available      string          `json:"available,omitempty"`
-	Authorizations *Authorizations `json:"Authorizations,omitempty"`
+	Authorizations *Authorizations `json:"authorizations,omitempty"`
 }
 
 type Contents struct {
@@ -38,7 +38,7 @@ type DRSObjectResult struct {
 }
 
 type DRSObject struct {
-	Id            string         `json:"id"`
+	Id            string         `json:"id,omitempty"`
 	Name          string         `json:"name"`
 	SelfURI       string         `json:"self_uri,omitempty"`
 	Size          int64          `json:"size"`
@@ -51,4 +51,27 @@ type DRSObject struct {
 	Contents      []Contents     `json:"contents,omitempty"`
 	Description   string         `json:"description,omitempty"`
 	Aliases       []string       `json:"aliases,omitempty"`
+}
+
+// DRSObjectCandidate represents a DRS object candidate for registration.
+// This matches the server's expected format where checksums is an array of Checksum objects.
+// Server-generated fields (id, created_time, updated_time, self_uri) are not included.
+type DRSObjectCandidate struct {
+	Id            string         `json:"id,omitempty"`
+	Name          string         `json:"name,omitempty"`
+	Size          int64          `json:"size"`
+	Version       string         `json:"version,omitempty"`
+	MimeType      string         `json:"mime_type,omitempty"`
+	Checksums     []Checksum     `json:"checksums"`
+	AccessMethods []AccessMethod `json:"access_methods,omitempty"`
+	Contents      []Contents     `json:"contents,omitempty"`
+	Description   string         `json:"description,omitempty"`
+	Aliases       []string       `json:"aliases,omitempty"`
+}
+
+// RegisterObjectsRequest is the request body for registering objects in some DRS implementations.
+// This matches the server's API specification.
+type RegisterObjectsRequest struct {
+	Candidates []DRSObjectCandidate `json:"candidates"`
+	Passports  []string             `json:"passports,omitempty"`
 }

@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/g3client"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -16,7 +16,7 @@ import (
 // DownloadMultiple is the public entry point called from g3cmd
 func DownloadMultiple(
 	ctx context.Context,
-	g3i g3client.Gen3Interface,
+	bk backend.Backend,
 	objects []common.ManifestObject,
 	downloadPath string,
 	filenameFormat string,
@@ -26,7 +26,7 @@ func DownloadMultiple(
 	numParallel int,
 	skipCompleted bool,
 ) error {
-	logger := g3i.Logger()
+	logger := bk.Logger()
 
 	// === Input validation ===
 	if numParallel < 1 {
@@ -52,7 +52,7 @@ func DownloadMultiple(
 	}
 
 	// === Warnings and user confirmation ===
-	if err := handleWarningsAndConfirmation(ctx, logger.Logger, downloadPath, filenameFormat, rename, noPrompt); err != nil {
+	if err := handleWarningsAndConfirmation(ctx, logger, downloadPath, filenameFormat, rename, noPrompt); err != nil {
 		return err // aborted by user
 	}
 
@@ -62,7 +62,7 @@ func DownloadMultiple(
 	}
 
 	// === Prepare files (metadata + local validation) ===
-	toDownload, skipped, renamed, err := prepareFiles(ctx, g3i, objects, downloadPath, filenameFormat, rename, skipCompleted, protocol)
+	toDownload, skipped, renamed, err := prepareFiles(ctx, bk, objects, downloadPath, filenameFormat, rename, skipCompleted, protocol)
 	if err != nil {
 		return err
 	}
@@ -73,12 +73,12 @@ func DownloadMultiple(
 		"Skipped", len(skipped))
 
 	// === Download phase ===
-	downloaded, downloadErr := downloadFiles(ctx, g3i, toDownload, numParallel, protocol)
+	downloaded, downloadErr := downloadFiles(ctx, bk, toDownload, numParallel, protocol)
 
 	// === Final summary ===
 	logger.InfoContext(ctx, fmt.Sprintf("%d files downloaded successfully.", downloaded))
-	printRenamed(ctx, logger.Logger, renamed)
-	printSkipped(ctx, logger.Logger, skipped)
+	printRenamed(ctx, logger, renamed)
+	printSkipped(ctx, logger, skipped)
 
 	if downloadErr != nil {
 		logger.WarnContext(ctx, "Some downloads failed. See errors above.")
@@ -109,13 +109,13 @@ func handleWarningsAndConfirmation(ctx context.Context, logger *slog.Logger, dow
 // prepareFiles gathers metadata, checks local files, collects skips/renames
 func prepareFiles(
 	ctx context.Context,
-	g3i g3client.Gen3Interface,
+	bk backend.Backend,
 	objects []common.ManifestObject,
 	downloadPath, filenameFormat string,
 	rename, skipCompleted bool,
 	protocol string,
 ) ([]common.FileDownloadResponseObject, []RenamedOrSkippedFileInfo, []RenamedOrSkippedFileInfo, error) {
-	logger := g3i.Logger()
+	logger := bk.Logger()
 	renamed := make([]RenamedOrSkippedFileInfo, 0)
 	skipped := make([]RenamedOrSkippedFileInfo, 0)
 	toDownload := make([]common.FileDownloadResponseObject, 0, len(objects))
@@ -137,7 +137,7 @@ func prepareFiles(
 		var err error
 		if info.Name == "" || info.Size == 0 {
 			// Very strict object id checking
-			info, err = AskGen3ForFileInfo(ctx, g3i, obj.GUID, protocol, downloadPath, filenameFormat, rename, &renamed)
+			info, err = GetFileInfo(ctx, bk, obj.GUID, protocol, downloadPath, filenameFormat, rename, &renamed)
 			if err != nil {
 				return nil, nil, nil, err
 			}

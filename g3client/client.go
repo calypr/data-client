@@ -19,6 +19,7 @@ import (
 //go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/g3client Gen3Interface
 
 type Gen3Interface interface {
+	request.RequestInterface
 	GetCredential() *conf.Credential
 	Logger() *logs.Gen3Logger
 	ExportCredential(ctx context.Context, cred *conf.Credential) error

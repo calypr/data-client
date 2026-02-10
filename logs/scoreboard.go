@@ -2,6 +2,9 @@ package logs
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
+	"os"
 	"sync"
 	"text/tabwriter"
 )
@@ -10,19 +13,21 @@ import (
 type Scoreboard struct {
 	mu     sync.Mutex
 	Counts []int // index 0 = success on first try, 1 = after 1 retry, ..., last = failed
-	log    *Gen3Logger
+	logger *slog.Logger
+	writer io.Writer
 }
 
-// New creates a new scoreboard
+// NewSB creates a new scoreboard
 // maxRetryCount = how many retries you allow before giving up
-func NewSB(maxRetryCount int, log *Gen3Logger) *Scoreboard {
+func NewSB(maxRetryCount int, logger *slog.Logger) *Scoreboard {
 	return &Scoreboard{
 		Counts: make([]int, maxRetryCount+2), // +2: one for success-on-first, one for final failure
-		log:    log,
+		logger: logger,
+		writer: os.Stderr,
 	}
 }
 
-// Increment records a result after `retryCount` attempts
+// IncrementSB records a result after `retryCount` attempts
 // retryCount == 0 → succeeded on first try
 // retryCount == max → final failure
 func (s *Scoreboard) IncrementSB(retryCount int) {
@@ -38,7 +43,7 @@ func (s *Scoreboard) IncrementSB(retryCount int) {
 	s.Counts[retryCount]++
 }
 
-// Print the beautiful table at the end
+// PrintSB prints the beautiful table at the end
 func (s *Scoreboard) PrintSB() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -51,8 +56,8 @@ func (s *Scoreboard) PrintSB() {
 		return
 	}
 
-	s.log.Println("\n\nSubmission Results")
-	w := tabwriter.NewWriter(s.log.Writer(), 0, 0, 2, ' ', 0)
+	s.logger.Info("Submission Results")
+	w := tabwriter.NewWriter(s.writer, 0, 0, 2, ' ', 0)
 
 	for i, count := range s.Counts {
 		if i == 0 {

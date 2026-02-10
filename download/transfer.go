@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/g3client"
 )
 
 // DownloadSingleWithProgress downloads a single object while emitting progress events.
 func DownloadSingleWithProgress(
 	ctx context.Context,
-	g3i g3client.Gen3Interface,
+	bk backend.Backend,
 	guid string,
 	downloadPath string,
 	protocol string,
@@ -31,7 +32,7 @@ func DownloadSingleWithProgress(
 	}
 
 	renamed := make([]RenamedOrSkippedFileInfo, 0)
-	info, err := AskGen3ForFileInfo(ctx, g3i, guid, protocol, downloadPath, "original", false, &renamed)
+	info, err := GetFileInfo(ctx, bk, guid, protocol, downloadPath, "original", false, &renamed)
 	if err != nil {
 		return err
 	}
@@ -46,7 +47,7 @@ func DownloadSingleWithProgress(
 	if protocol != "" {
 		protocolText = "?protocol=" + protocol
 	}
-	if err := GetDownloadResponse(ctx, g3i, &fdr, protocolText); err != nil {
+	if err := GetDownloadResponse(ctx, bk, &fdr, protocolText); err != nil {
 		return err
 	}
 
@@ -93,39 +94,48 @@ func DownloadSingleWithProgress(
 	return nil
 }
 
-// DownloadToPath downloads a single object by GUID to a specific destination file path.
-// It bypasses the name lookup from Gen3 and uses the provided dstPath directly.
+// DownloadToPath downloads a single object using the provided backend
 func DownloadToPath(
 	ctx context.Context,
-	g3i g3client.Gen3Interface,
+	bk backend.Backend,
+	logger *slog.Logger,
 	guid string,
 	dstPath string,
+	protocol string,
 ) error {
 	progress := common.GetProgress(ctx)
 	hash := common.GetOid(ctx)
-	logger := g3i.Logger()
-	// logger.Printf("Downloading %s to %s\n", guid, dstPath)
 
 	fdr := common.FileDownloadResponseObject{
 		GUID: guid,
 	}
 
-	if err := GetDownloadResponse(ctx, g3i, &fdr, ""); err != nil {
-		logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
+	protocolText := ""
+	if protocol != "" {
+		protocolText = "?protocol=" + protocol
+	}
+
+	if err := GetDownloadResponse(ctx, bk, &fdr, protocolText); err != nil {
+		// Mimic failed context logging from original
+		// We'd need to reconstruct the "logger.FailedContext" logic if using raw slog
+		// For now, simple error logging or rely on caller to log context?
+		// The original code used g3i.Logger().FailedContext...
+		// Let's just log error
+		logger.Error("Download failed", "error", err, "path", dstPath, "guid", guid)
 		return err
 	}
 	defer fdr.Response.Body.Close()
 
 	if dir := filepath.Dir(dstPath); dir != "." {
 		if err := os.MkdirAll(dir, 0766); err != nil {
-			logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
+			logger.Error("Mkdir failed", "error", err, "path", dstPath)
 			return fmt.Errorf("mkdir for %s: %w", dstPath, err)
 		}
 	}
 
 	file, err := os.Create(dstPath)
 	if err != nil {
-		logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
+		logger.Error("Create file failed", "error", err, "path", dstPath)
 		return fmt.Errorf("create local file %s: %w", dstPath, err)
 	}
 	defer file.Close()
@@ -139,10 +149,11 @@ func DownloadToPath(
 	}
 
 	if _, err := io.Copy(writer, fdr.Response.Body); err != nil {
-		logger.FailedContext(ctx, dstPath, filepath.Base(dstPath), common.FileMetadata{}, guid, 0, false)
+		logger.Error("Copy failed", "error", err, "path", dstPath)
 		return fmt.Errorf("copy to %s: %w", dstPath, err)
 	}
 
-	logger.SucceededContext(ctx, dstPath, guid)
+	// Success logging is up to caller or we can do simple info
+	// logger.Info("Download succeeded", "path", dstPath, "guid", guid)
 	return nil
 }
