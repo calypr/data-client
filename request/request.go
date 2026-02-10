@@ -36,13 +36,13 @@ func NewRequestInterface(
 	retryClient.RetryWaitMax = 15 * time.Second
 	baseTransport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
+			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   100,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
 	}
 
 	authTransport := &AuthTransport{
