@@ -40,8 +40,13 @@ func (g *Gen3Backend) Download(ctx context.Context, fdr *common.FileDownloadResp
 	skipAuth := common.IsCloudPresignedURL(fdr.PresignedURL)
 
 	rb := g.client.New(http.MethodGet, fdr.PresignedURL)
-	if fdr.Range > 0 {
-		rb.WithHeader("Range", "bytes="+strconv.FormatInt(fdr.Range, 10)+"-")
+	start, end, hasRange := resolveRange(fdr)
+	if hasRange {
+		rangeHeader := "bytes=" + strconv.FormatInt(start, 10) + "-"
+		if end != nil {
+			rangeHeader += strconv.FormatInt(*end, 10)
+		}
+		rb.WithHeader("Range", rangeHeader)
 	}
 
 	if skipAuth {
@@ -49,6 +54,19 @@ func (g *Gen3Backend) Download(ctx context.Context, fdr *common.FileDownloadResp
 	}
 
 	return g.client.Do(ctx, rb)
+}
+
+func resolveRange(fdr *common.FileDownloadResponseObject) (start int64, end *int64, ok bool) {
+	if fdr == nil {
+		return 0, nil, false
+	}
+	if fdr.RangeStart != nil {
+		return *fdr.RangeStart, fdr.RangeEnd, true
+	}
+	if fdr.Range > 0 {
+		return fdr.Range, nil, true
+	}
+	return 0, nil, false
 }
 
 func (g *Gen3Backend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSObject, error) {
@@ -215,21 +233,69 @@ func (g *Gen3Backend) GetUploadURL(ctx context.Context, guid string, filename st
 	return res.URL, nil
 }
 
-func (g *Gen3Backend) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+func (g *Gen3Backend) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
+	res, err := g.client.Fence().InitMultipartUpload(ctx, filename, bucket, guid)
+	if err != nil {
+		return nil, err
+	}
+	if res.UploadID == "" {
+		return nil, fmt.Errorf("fence multipart init did not return uploadId")
+	}
+	return &common.MultipartUploadInit{
+		GUID:     res.GUID,
+		UploadID: res.UploadID,
+	}, nil
+}
+
+func (g *Gen3Backend) GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error) {
+	return g.client.Fence().GenerateMultipartPresignedURL(ctx, key, uploadID, int(partNumber), bucket)
+}
+
+func (g *Gen3Backend) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error {
+	fParts := make([]fence.MultipartPart, len(parts))
+	for i, p := range parts {
+		fParts[i] = fence.MultipartPart{
+			PartNumber: int(p.PartNumber),
+			ETag:       p.ETag,
+		}
+	}
+	return g.client.Fence().CompleteMultipartUpload(ctx, key, uploadID, fParts, bucket)
+}
+
+func (g *Gen3Backend) doUpload(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
 	rb := g.client.New(http.MethodPut, url).
 		WithBody(body).
 		WithSkipAuth(true)
+	if size > 0 {
+		rb.PartSize = size
+	}
 
 	resp, err := g.client.Do(ctx, rb)
 	if err != nil {
-		return fmt.Errorf("upload to %s failed: %w", url, err)
+		return "", fmt.Errorf("upload to %s failed: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("upload to %s failed with status %d: %s", url, resp.StatusCode, string(bodyBytes))
+		return "", fmt.Errorf("upload to %s failed with status %d: %s", url, resp.StatusCode, string(bodyBytes))
 	}
 
-	return nil
+	return strings.Trim(resp.Header.Get("ETag"), `"`), nil
+}
+
+func (g *Gen3Backend) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+	_, err := g.doUpload(ctx, url, body, size)
+	return err
+}
+
+func (g *Gen3Backend) UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
+	etag, err := g.doUpload(ctx, url, body, size)
+	if err != nil {
+		return "", err
+	}
+	if etag == "" {
+		return "", fmt.Errorf("multipart upload part returned empty ETag")
+	}
+	return etag, nil
 }

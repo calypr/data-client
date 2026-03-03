@@ -44,7 +44,12 @@ func FindMatchingRecord(records []DRSObject, organization, projectId string) (*D
 		return nil, fmt.Errorf("error converting project ID to resource format: %v", err)
 	}
 
+	var fallback *DRSObject
 	for _, record := range records {
+		if fallback == nil {
+			r := record
+			fallback = &r
+		}
 		for _, access := range record.AccessMethods {
 			if access.Authorizations == nil {
 				continue
@@ -62,7 +67,7 @@ func FindMatchingRecord(records []DRSObject, organization, projectId string) (*D
 		}
 	}
 
-	return nil, nil
+	return fallback, nil
 }
 
 // DRS UUID generation using SHA1 (compatible with git-drs)

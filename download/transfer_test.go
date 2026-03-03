@@ -14,21 +14,18 @@ import (
 	"testing"
 
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/request"
 )
 
 type fakeBackend struct {
-	cred   *conf.Credential
 	logger *logs.Gen3Logger
-	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+	doFunc func(context.Context, *common.FileDownloadResponseObject) (*http.Response, error)
+	data   []byte
 }
 
-func (f *fakeBackend) Name() string                    { return "Fake" }
-func (f *fakeBackend) GetCredential() *conf.Credential { return f.cred }
-func (f *fakeBackend) Logger() *slog.Logger            { return f.logger.Logger }
+func (f *fakeBackend) Name() string         { return "Fake" }
+func (f *fakeBackend) Logger() *slog.Logger { return f.logger.Logger }
 
 func (f *fakeBackend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSObject, error) {
 	return &drs.DRSObject{
@@ -59,15 +56,38 @@ func (f *fakeBackend) GetUploadURL(ctx context.Context, guid string, filename st
 	return "", errors.New("not implemented")
 }
 
-func (f *fakeBackend) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
-	return f.doFunc(ctx, req)
+func (f *fakeBackend) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeBackend) GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (f *fakeBackend) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error {
+	return errors.New("not implemented")
+}
+
+func (f *fakeBackend) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+	return errors.New("not implemented")
+}
+
+func (f *fakeBackend) UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
+	return "", errors.New("not implemented")
 }
 
 func (f *fakeBackend) Download(ctx context.Context, fdr *common.FileDownloadResponseObject) (*http.Response, error) {
-	return f.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodGet,
-		Url:    fdr.PresignedURL,
-	})
+	if f.doFunc != nil {
+		return f.doFunc(ctx, fdr)
+	}
+	if fdr.RangeStart != nil && fdr.RangeEnd != nil {
+		start, end := *fdr.RangeStart, *fdr.RangeEnd
+		if start < 0 || end >= int64(len(f.data)) || start > end {
+			return nil, errors.New("invalid range")
+		}
+		return newDownloadResponse(fdr.PresignedURL, f.data[start:end+1], http.StatusPartialContent), nil
+	}
+	return newDownloadResponse(fdr.PresignedURL, f.data, http.StatusOK), nil
 }
 
 func (f *fakeBackend) GetObjectByHash(ctx context.Context, checksumType, checksum string) ([]drs.DRSObject, error) {
@@ -76,10 +96,6 @@ func (f *fakeBackend) GetObjectByHash(ctx context.Context, checksumType, checksu
 
 func (f *fakeBackend) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
 	return nil, errors.New("not implemented")
-}
-
-func (f *fakeBackend) New(method, url string) *request.RequestBuilder {
-	return &request.RequestBuilder{Method: method, Url: url, Headers: make(map[string]string)}
 }
 
 func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
@@ -94,18 +110,8 @@ func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
 	}
 
 	fake := &fakeBackend{
-		cred:   &conf.Credential{APIEndpoint: "https://example.com", AccessToken: "token"},
 		logger: logs.NewGen3Logger(nil, "", ""),
-		doFunc: func(_ context.Context, req *request.RequestBuilder) (*http.Response, error) {
-			switch {
-			case strings.Contains(req.Url, common.IndexdIndexEndpoint):
-				return newDownloadJSONResponse(req.Url, `{"file_name":"payload.bin","size":64}`), nil
-			case strings.HasPrefix(req.Url, "https://download.example.com/"):
-				return newDownloadResponse(req.Url, payload, http.StatusOK), nil
-			default:
-				return nil, errors.New("unexpected request url: " + req.Url)
-			}
-		},
+		data:   payload,
 	}
 
 	ctx := common.WithProgress(context.Background(), progress)
@@ -143,18 +149,8 @@ func TestDownloadSingleWithProgressFinalizeOnError(t *testing.T) {
 	}
 
 	fake := &fakeBackend{
-		cred:   &conf.Credential{APIEndpoint: "https://example.com", AccessToken: "token"},
 		logger: logs.NewGen3Logger(nil, "", ""),
-		doFunc: func(_ context.Context, req *request.RequestBuilder) (*http.Response, error) {
-			switch {
-			case strings.Contains(req.Url, common.IndexdIndexEndpoint):
-				return newDownloadJSONResponse(req.Url, `{"file_name":"payload.bin","size":64}`), nil
-			case strings.HasPrefix(req.Url, "https://download.example.com/"):
-				return newDownloadResponse(req.Url, []byte("short"), http.StatusOK), nil
-			default:
-				return nil, errors.New("unexpected request url: " + req.Url)
-			}
-		},
+		data:   []byte("short"),
 	}
 
 	ctx := common.WithProgress(context.Background(), progress)
@@ -182,6 +178,42 @@ func newDownloadJSONResponse(rawURL, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    &http.Request{URL: parsedURL},
 		Header:     make(http.Header),
+	}
+}
+
+func TestDownloadToPathMultipart(t *testing.T) {
+	payload := bytes.Repeat([]byte("z"), 2*1024*1024) // 2MB
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "multipart.bin")
+
+	fake := &fakeBackend{
+		logger: logs.NewGen3Logger(nil, "", ""),
+		data:   payload,
+	}
+
+	err := DownloadToPathWithOptions(
+		context.Background(),
+		fake,
+		fake.Logger(),
+		"guid-789",
+		dst,
+		"",
+		DownloadOptions{
+			MultipartThreshold: 1 * 1024 * 1024,
+			ChunkSize:          256 * 1024,
+			Concurrency:        4,
+		},
+	)
+	if err != nil {
+		t.Fatalf("multipart download failed: %v", err)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if !bytes.Equal(payload, got) {
+		t.Fatal("downloaded payload mismatch")
 	}
 }
 

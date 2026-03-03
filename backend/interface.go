@@ -46,6 +46,18 @@ type Backend interface {
 	// implementation handles provider-specific logic (e.g. Fence vs Shepherd vs DRS-Upload)
 	GetUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error)
 
+	// InitMultipartUpload initializes multipart upload and returns upload metadata.
+	InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error)
+
+	// GetMultipartUploadURL retrieves a presigned URL for an individual multipart part.
+	GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error)
+
+	// CompleteMultipartUpload finalizes a multipart upload with uploaded parts.
+	CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error
+
 	// Upload performs the HTTP PUT for the file content to the presigned URL.
 	Upload(ctx context.Context, url string, body io.Reader, size int64) error
+
+	// UploadPart performs a multipart upload part PUT and returns the ETag.
+	UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error)
 }

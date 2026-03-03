@@ -43,8 +43,13 @@ func (d *DrsBackend) Download(ctx context.Context, fdr *common.FileDownloadRespo
 	skipAuth := common.IsCloudPresignedURL(fdr.PresignedURL)
 
 	rb := d.req.New(http.MethodGet, fdr.PresignedURL)
-	if fdr.Range > 0 {
-		rb.WithHeader("Range", "bytes="+strconv.FormatInt(fdr.Range, 10)+"-")
+	start, end, hasRange := resolveRange(fdr)
+	if hasRange {
+		rangeHeader := "bytes=" + strconv.FormatInt(start, 10) + "-"
+		if end != nil {
+			rangeHeader += strconv.FormatInt(*end, 10)
+		}
+		rb.WithHeader("Range", rangeHeader)
 	}
 
 	if skipAuth {
@@ -52,6 +57,19 @@ func (d *DrsBackend) Download(ctx context.Context, fdr *common.FileDownloadRespo
 	}
 
 	return d.req.Do(ctx, rb)
+}
+
+func resolveRange(fdr *common.FileDownloadResponseObject) (start int64, end *int64, ok bool) {
+	if fdr == nil {
+		return 0, nil, false
+	}
+	if fdr.RangeStart != nil {
+		return *fdr.RangeStart, fdr.RangeEnd, true
+	}
+	if fdr.Range > 0 {
+		return fdr.Range, nil, true
+	}
+	return 0, nil, false
 }
 
 func (d *DrsBackend) buildURL(paths ...string) (string, error) {
@@ -166,11 +184,21 @@ func (d *DrsBackend) GetObjectByHash(ctx context.Context, checksumType, checksum
 		return nil, err
 	}
 
-	var objs []drs.DRSObject
-	if err := d.doJSONRequest(ctx, http.MethodGet, u, nil, &objs); err != nil {
+	// Server may return either a single object (canonical spec) or an array (legacy behavior).
+	var raw json.RawMessage
+	if err := d.doJSONRequest(ctx, http.MethodGet, u, nil, &raw); err != nil {
 		return nil, err
 	}
 
+	var single drs.DRSObject
+	if err := json.Unmarshal(raw, &single); err == nil && single.Id != "" {
+		return []drs.DRSObject{single}, nil
+	}
+
+	var objs []drs.DRSObject
+	if err := json.Unmarshal(raw, &objs); err != nil {
+		return nil, fmt.Errorf("unable to decode checksum lookup response: %w", err)
+	}
 	return objs, nil
 }
 
@@ -275,21 +303,138 @@ func (d *DrsBackend) GetUploadURL(ctx context.Context, guid string, filename str
 	return res.URL, nil
 }
 
-func (d *DrsBackend) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+func (d *DrsBackend) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
+	u, err := d.buildURL("user/data/multipart/init")
+	if err != nil {
+		return nil, err
+	}
+
+	req := struct {
+		GUID     string `json:"guid,omitempty"`
+		FileName string `json:"file_name,omitempty"`
+		Bucket   string `json:"bucket,omitempty"`
+	}{
+		GUID:     guid,
+		FileName: filename,
+		Bucket:   bucket,
+	}
+
+	var res struct {
+		GUID     string `json:"guid"`
+		UploadID string `json:"uploadId"`
+	}
+	if err := d.doJSONRequest(ctx, http.MethodPost, u, req, &res); err != nil {
+		return nil, err
+	}
+	if res.UploadID == "" {
+		return nil, fmt.Errorf("server did not return uploadId")
+	}
+
+	return &common.MultipartUploadInit{
+		GUID:     res.GUID,
+		UploadID: res.UploadID,
+	}, nil
+}
+
+func (d *DrsBackend) GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error) {
+	u, err := d.buildURL("user/data/multipart/upload")
+	if err != nil {
+		return "", err
+	}
+
+	req := struct {
+		Key        string `json:"key"`
+		Bucket     string `json:"bucket,omitempty"`
+		UploadID   string `json:"uploadId"`
+		PartNumber int32  `json:"partNumber"`
+	}{
+		Key:        key,
+		Bucket:     bucket,
+		UploadID:   uploadID,
+		PartNumber: partNumber,
+	}
+
+	var res struct {
+		PresignedURL string `json:"presigned_url"`
+	}
+	if err := d.doJSONRequest(ctx, http.MethodPost, u, req, &res); err != nil {
+		return "", err
+	}
+	if res.PresignedURL == "" {
+		return "", fmt.Errorf("server did not return presigned_url")
+	}
+	return res.PresignedURL, nil
+}
+
+func (d *DrsBackend) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error {
+	u, err := d.buildURL("user/data/multipart/complete")
+	if err != nil {
+		return err
+	}
+
+	reqParts := make([]struct {
+		PartNumber int32  `json:"PartNumber"`
+		ETag       string `json:"ETag"`
+	}, len(parts))
+	for i, p := range parts {
+		reqParts[i] = struct {
+			PartNumber int32  `json:"PartNumber"`
+			ETag       string `json:"ETag"`
+		}{
+			PartNumber: p.PartNumber,
+			ETag:       p.ETag,
+		}
+	}
+
+	req := struct {
+		Key      string `json:"key"`
+		Bucket   string `json:"bucket,omitempty"`
+		UploadID string `json:"uploadId"`
+		Parts    any    `json:"parts"`
+	}{
+		Key:      key,
+		Bucket:   bucket,
+		UploadID: uploadID,
+		Parts:    reqParts,
+	}
+
+	return d.doJSONRequest(ctx, http.MethodPost, u, req, nil)
+}
+
+func (d *DrsBackend) doUpload(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
 	rb := d.req.New(http.MethodPut, url).
 		WithBody(body).
 		WithSkipAuth(true) // S3 presigned URLs don't need our bearer token
+	if size > 0 {
+		rb.PartSize = size
+	}
 
 	resp, err := d.req.Do(ctx, rb)
 	if err != nil {
-		return fmt.Errorf("upload to %s failed: %w", url, err)
+		return "", fmt.Errorf("upload to %s failed: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("upload to %s failed with status %d: %s", url, resp.StatusCode, string(bodyBytes))
+		return "", fmt.Errorf("upload to %s failed with status %d: %s", url, resp.StatusCode, string(bodyBytes))
 	}
 
-	return nil
+	return strings.Trim(resp.Header.Get("ETag"), `"`), nil
+}
+
+func (d *DrsBackend) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+	_, err := d.doUpload(ctx, url, body, size)
+	return err
+}
+
+func (d *DrsBackend) UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
+	etag, err := d.doUpload(ctx, url, body, size)
+	if err != nil {
+		return "", err
+	}
+	if etag == "" {
+		return "", fmt.Errorf("multipart upload part returned empty ETag")
+	}
+	return etag, nil
 }

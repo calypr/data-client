@@ -25,11 +25,15 @@ type FileDownloadResponseObject struct {
 	Filename     string
 	GUID         string
 	PresignedURL string
-	Range        int64
-	Overwrite    bool
-	Skip         bool
-	Response     *http.Response
-	Writer       io.Writer
+	// Range is kept for backward compatibility with resume-download semantics (start offset).
+	Range int64
+	// RangeStart/RangeEnd provide explicit byte range requests (inclusive).
+	RangeStart *int64
+	RangeEnd   *int64
+	Overwrite  bool
+	Skip       bool
+	Response   *http.Response
+	Writer     io.Writer
 }
 
 // FileMetadata defines the metadata accepted by the new object management API, Shepherd
@@ -49,6 +53,18 @@ type RetryObject struct {
 	RetryCount   int
 	Multipart    bool
 	Bucket       string
+}
+
+// MultipartUploadInit captures the response needed to upload multipart parts.
+type MultipartUploadInit struct {
+	GUID     string
+	UploadID string
+}
+
+// MultipartUploadPart represents an uploaded part that must be completed.
+type MultipartUploadPart struct {
+	PartNumber int32
+	ETag       string
 }
 
 type ManifestObject struct {
