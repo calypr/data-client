@@ -70,35 +70,16 @@ func resolveRange(fdr *common.FileDownloadResponseObject) (start int64, end *int
 }
 
 func (g *Gen3Backend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSObject, error) {
-	// 1. Try Shepherd
-	hasShepherd, err := g.client.Fence().CheckForShepherdAPI(ctx)
-	if err == nil && hasShepherd {
-		endpoint := strings.TrimSuffix(g.client.GetCredential().APIEndpoint, "/") + common.ShepherdEndpoint + "/objects/" + guid
-		rb := g.client.New(http.MethodGet, endpoint)
-		resp, err := g.client.Do(ctx, rb)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
-			var shepherdResp struct {
-				Record struct {
-					FileName string `json:"file_name"`
-					Size     int64  `json:"size"`
-					Did      string `json:"did"`
-				} `json:"record"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&shepherdResp); err == nil {
-				return &drs.DRSObject{
-					Name: shepherdResp.Record.FileName,
-					Size: shepherdResp.Record.Size,
-					Id:   shepherdResp.Record.Did,
-				}, nil
-			}
+	if oid := drs.NormalizeOid(guid); oid != "" {
+		if cached, ok := drs.PrefetchedBySHA(ctx, oid); ok {
+			obj := cached
+			return &obj, nil
 		}
-		if err != nil {
-			g.Logger().Warn("Shepherd lookup failed, falling back to Indexd", "guid", guid, "error", err)
+		if recs, err := g.client.Indexd().GetObjectByHash(ctx, "sha256", oid); err == nil && len(recs) > 0 {
+			return &recs[0], nil
 		}
 	}
 
-	// 2. Fallback to Indexd
 	return g.client.Indexd().GetObject(ctx, guid)
 }
 
@@ -111,16 +92,13 @@ func (g *Gen3Backend) BatchGetObjectsByHash(ctx context.Context, hashes []string
 }
 
 func (g *Gen3Backend) GetDownloadURL(ctx context.Context, guid string, accessID string) (string, error) {
-	// For Gen3, often "accessID" is used as a protocol hint like "s3", "gs", or "?protocol=s3"
-	// 1. Try Fence first
+	// Try Fence first.
 	url, err := g.client.Fence().GetDownloadPresignedUrl(ctx, guid, accessID)
 	if err == nil && url != "" {
 		return url, nil
 	}
 
-	// 2. Fallback to Indexd
-	// Indexd expects "s3", "gs", "ftp", "http", "https" etc.
-	// We need to clean up accessID if it contains query params like "?protocol="
+	// Resolve access type for Indexd.
 	accessType := "s3" // default
 	if strings.Contains(accessID, "protocol=") {
 		parts := strings.Split(accessID, "=")
@@ -131,7 +109,24 @@ func (g *Gen3Backend) GetDownloadURL(ctx context.Context, guid string, accessID 
 		accessType = accessID
 	}
 
-	resp, errIdx := g.client.Indexd().GetDownloadURL(ctx, guid, accessType)
+	// Checksum-first resolution.
+	resolvedID := guid
+	if oid := drs.NormalizeOid(guid); oid != "" {
+		if cached, ok := drs.PrefetchedBySHA(ctx, oid); ok {
+			if id := strings.TrimSpace(cached.Id); id != "" {
+				resolvedID = id
+			}
+		}
+		if resolvedID == guid {
+			if recs, hashErr := g.client.Indexd().GetObjectByHash(ctx, "sha256", oid); hashErr == nil && len(recs) > 0 {
+				if id := strings.TrimSpace(recs[0].Id); id != "" {
+					resolvedID = id
+				}
+			}
+		}
+	}
+
+	resp, errIdx := g.client.Indexd().GetDownloadURL(ctx, resolvedID, accessType)
 	if errIdx == nil && resp != nil && resp.URL != "" {
 		return resp.URL, nil
 	}

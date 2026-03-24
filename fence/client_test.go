@@ -55,7 +55,7 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(FenceResponse{URL: "https://download.url"})
 			return
-		case r.Method == http.MethodGet && path == "/user/data/buckets":
+		case r.Method == http.MethodGet && path == "/data/buckets":
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(S3BucketsResponse{
 				S3Buckets: map[string]*S3Bucket{
@@ -244,7 +244,7 @@ func TestFenceClient_UserPing(t *testing.T) {
 	}
 
 	if resp.BucketPrograms["test-bucket"] != "" {
-		// Our mock for /user/data/buckets returns a bucket but no programs by default unless we update it
+		// Our mock for /data/buckets returns a bucket but no programs by default unless we update it
 		// In my update to types.go, I added Programs to S3Bucket.
 	}
 }

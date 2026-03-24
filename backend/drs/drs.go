@@ -119,6 +119,16 @@ func (d *DrsBackend) doJSONRequest(ctx context.Context, method, url string, body
 }
 
 func (d *DrsBackend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSObject, error) {
+	if oid := drs.NormalizeOid(guid); oid != "" {
+		if cached, ok := drs.PrefetchedBySHA(ctx, oid); ok {
+			obj := cached
+			return &obj, nil
+		}
+		if records, err := d.GetObjectByHash(ctx, "sha256", oid); err == nil && len(records) > 0 {
+			return &records[0], nil
+		}
+	}
+
 	u, err := d.buildURL("ga4gh/drs/v1/objects", guid)
 	if err != nil {
 		return nil, err
@@ -132,11 +142,15 @@ func (d *DrsBackend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSO
 }
 
 func (d *DrsBackend) GetDownloadURL(ctx context.Context, guid string, accessID string) (string, error) {
-	// If accessID is empty, try to find one
+	resolvedID := guid
+
 	if accessID == "" {
 		obj, err := d.GetFileDetails(ctx, guid)
 		if err != nil {
 			return "", err
+		}
+		if strings.TrimSpace(obj.Id) != "" {
+			resolvedID = obj.Id
 		}
 		if len(obj.AccessMethods) == 0 {
 			return "", fmt.Errorf("no access methods found for object %s", guid)
@@ -150,11 +164,9 @@ func (d *DrsBackend) GetDownloadURL(ctx context.Context, guid string, accessID s
 			}
 		}
 		if accessID == "" {
-			// Fallback to first if defined
 			if len(obj.AccessMethods) > 0 && obj.AccessMethods[0].AccessID != "" {
 				accessID = obj.AccessMethods[0].AccessID
 			} else {
-				// If no access ID, maybe direct URL?
 				if obj.AccessMethods[0].AccessURL.URL != "" {
 					return obj.AccessMethods[0].AccessURL.URL, nil
 				}
@@ -163,7 +175,24 @@ func (d *DrsBackend) GetDownloadURL(ctx context.Context, guid string, accessID s
 		}
 	}
 
-	u, err := d.buildURL("ga4gh/drs/v1/objects", guid, "access", accessID)
+	if resolvedID == guid {
+		if oid := drs.NormalizeOid(guid); oid != "" {
+			if cached, ok := drs.PrefetchedBySHA(ctx, oid); ok {
+				if id := strings.TrimSpace(cached.Id); id != "" {
+					resolvedID = id
+				}
+			}
+			if resolvedID == guid {
+				if records, err := d.GetObjectByHash(ctx, "sha256", oid); err == nil && len(records) > 0 {
+					if id := strings.TrimSpace(records[0].Id); id != "" {
+						resolvedID = id
+					}
+				}
+			}
+		}
+	}
+
+	u, err := d.buildURL("ga4gh/drs/v1/objects", resolvedID, "access", accessID)
 	if err != nil {
 		return "", err
 	}
@@ -184,28 +213,17 @@ func (d *DrsBackend) GetObjectByHash(ctx context.Context, checksumType, checksum
 		return nil, err
 	}
 
-	// Server may return either a single object (canonical spec) or an array (legacy behavior).
-	var raw json.RawMessage
-	if err := d.doJSONRequest(ctx, http.MethodGet, u, nil, &raw); err != nil {
-		return nil, err
-	}
-
-	var single drs.DRSObject
-	if err := json.Unmarshal(raw, &single); err == nil && single.Id != "" {
-		return []drs.DRSObject{single}, nil
-	}
-
 	var objs []drs.DRSObject
-	if err := json.Unmarshal(raw, &objs); err != nil {
-		return nil, fmt.Errorf("unable to decode checksum lookup response: %w", err)
+	if err := d.doJSONRequest(ctx, http.MethodGet, u, nil, &objs); err != nil {
+		return nil, err
 	}
 	return objs, nil
 }
 
 func (d *DrsBackend) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
-	// Custom endpoint: POST /index/index/bulk/hashes
+	// Custom endpoint: POST /index/bulk/hashes
 	// This path suggests it's mimicking Indexd API structure even if it's a DRS server
-	u, err := d.buildURL("index/index/bulk/hashes")
+	u, err := d.buildURL("index/bulk/hashes")
 	if err != nil {
 		return nil, err
 	}
@@ -242,16 +260,16 @@ func (d *DrsBackend) Register(ctx context.Context, obj *drs.DRSObject) (*drs.DRS
 		Candidates: []drs.DRSObjectCandidate{drs.ConvertToCandidate(obj)},
 	}
 
-	var registeredObjs []*drs.DRSObject
-	if err := d.doJSONRequest(ctx, http.MethodPost, u, req, &registeredObjs); err != nil {
+	var wrapped struct {
+		Objects []*drs.DRSObject `json:"objects"`
+	}
+	if err := d.doJSONRequest(ctx, http.MethodPost, u, req, &wrapped); err != nil {
 		return nil, err
 	}
-
-	if len(registeredObjs) == 0 {
+	if len(wrapped.Objects) == 0 {
 		return nil, fmt.Errorf("server returned no registered objects")
 	}
-
-	return registeredObjs[0], nil
+	return wrapped.Objects[0], nil
 }
 
 func (d *DrsBackend) BatchRegister(ctx context.Context, objs []*drs.DRSObject) ([]*drs.DRSObject, error) {
@@ -268,12 +286,13 @@ func (d *DrsBackend) BatchRegister(ctx context.Context, objs []*drs.DRSObject) (
 		Candidates: candidates,
 	}
 
-	var registeredObjs []*drs.DRSObject
-	if err := d.doJSONRequest(ctx, http.MethodPost, u, req, &registeredObjs); err != nil {
+	var wrapped struct {
+		Objects []*drs.DRSObject `json:"objects"`
+	}
+	if err := d.doJSONRequest(ctx, http.MethodPost, u, req, &wrapped); err != nil {
 		return nil, err
 	}
-
-	return registeredObjs, nil
+	return wrapped.Objects, nil
 }
 
 func (d *DrsBackend) GetUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
@@ -284,7 +303,9 @@ func (d *DrsBackend) GetUploadURL(ctx context.Context, guid string, filename str
 	}
 	// Add filename/bucket hints
 	q := url.Values{}
-	q.Set("file_name", filename)
+	if strings.TrimSpace(filename) != "" {
+		q.Set("file_name", filename)
+	}
 
 	// Evaluate bucket from argument or struct
 	effectiveBucket := bucket
@@ -292,7 +313,9 @@ func (d *DrsBackend) GetUploadURL(ctx context.Context, guid string, filename str
 		q.Set("bucket", effectiveBucket)
 	}
 
-	u += "?" + q.Encode()
+	if encoded := q.Encode(); encoded != "" {
+		u += "?" + encoded
+	}
 
 	var res struct {
 		URL string `json:"url"`
@@ -304,7 +327,7 @@ func (d *DrsBackend) GetUploadURL(ctx context.Context, guid string, filename str
 }
 
 func (d *DrsBackend) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
-	u, err := d.buildURL("user/data/multipart/init")
+	u, err := d.buildURL("data/multipart/init")
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +360,7 @@ func (d *DrsBackend) InitMultipartUpload(ctx context.Context, guid string, filen
 }
 
 func (d *DrsBackend) GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error) {
-	u, err := d.buildURL("user/data/multipart/upload")
+	u, err := d.buildURL("data/multipart/upload")
 	if err != nil {
 		return "", err
 	}
@@ -367,7 +390,7 @@ func (d *DrsBackend) GetMultipartUploadURL(ctx context.Context, key string, uplo
 }
 
 func (d *DrsBackend) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error {
-	u, err := d.buildURL("user/data/multipart/complete")
+	u, err := d.buildURL("data/multipart/complete")
 	if err != nil {
 		return err
 	}

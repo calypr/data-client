@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/drs"
@@ -93,7 +94,7 @@ func (c *IndexdClient) RegisterIndexdRecord(ctx context.Context, indexdObj *Inde
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/index/index", c.cred.APIEndpoint)
+	url := fmt.Sprintf("%s/index", c.cred.APIEndpoint)
 	resp, err := c.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodPost,
 		Url:    url,
@@ -124,7 +125,7 @@ func (c *IndexdClient) DeleteIndexdRecord(ctx context.Context, did string) error
 		return err
 	}
 
-	url := fmt.Sprintf("%s/index/index/%s?rev=%s", c.cred.APIEndpoint, did, record.Rev)
+	url := fmt.Sprintf("%s/index/%s?rev=%s", c.cred.APIEndpoint, did, record.Rev)
 	resp, err := c.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodDelete,
 		Url:    url,
@@ -147,7 +148,7 @@ func (c *IndexdClient) DeleteIndexdRecord(ctx context.Context, did string) error
 }
 
 func (c *IndexdClient) getIndexdRecordByDID(ctx context.Context, did string) (*OutputInfo, error) {
-	url := fmt.Sprintf("%s/index/index/%s", c.cred.APIEndpoint, did)
+	url := fmt.Sprintf("%s/index/%s", c.cred.APIEndpoint, did)
 	resp, err := c.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodGet,
 		Url:    url,
@@ -171,7 +172,7 @@ func (c *IndexdClient) getIndexdRecordByDID(ctx context.Context, did string) (*O
 }
 
 func (c *IndexdClient) GetObjectByHash(ctx context.Context, hashType, hashValue string) ([]drs.DRSObject, error) {
-	url := fmt.Sprintf("%s/index/index?hash=%s:%s", c.cred.APIEndpoint, hashType, hashValue)
+	url := fmt.Sprintf("%s/index?hash=%s:%s", c.cred.APIEndpoint, hashType, hashValue)
 	resp, err := c.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodGet,
 		Url:    url,
@@ -246,7 +247,7 @@ func (c *IndexdClient) ListObjectsByProject(ctx context.Context, projectId strin
 		active := true
 
 		for active {
-			url := fmt.Sprintf("%s/index/index?authz=%s&limit=%d&page=%d",
+			url := fmt.Sprintf("%s/index?authz=%s&limit=%d&page=%d",
 				c.cred.APIEndpoint, resourcePath, PAGESIZE, pageNum)
 
 			resp, err := c.Do(ctx, &request.RequestBuilder{
@@ -348,7 +349,7 @@ func (c *IndexdClient) UpdateRecord(ctx context.Context, updateInfo *drs.DRSObje
 		return nil, fmt.Errorf("error marshaling indexd update payload: %v", err)
 	}
 
-	url := fmt.Sprintf("%s/index/index/%s?rev=%s", c.cred.APIEndpoint, did, record.Rev)
+	url := fmt.Sprintf("%s/index/%s?rev=%s", c.cred.APIEndpoint, did, record.Rev)
 	resp, err := c.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodPut,
 		Url:    url,
@@ -458,17 +459,49 @@ func (c *IndexdClient) DeleteRecordsByProject(ctx context.Context, projectId str
 	if err != nil {
 		return err
 	}
+
+	// Snapshot and dedupe IDs first so pagination isn't affected by deletes-in-flight.
+	ids := make([]string, 0, 128)
+	seen := make(map[string]struct{})
 	for rec := range recs {
 		if rec.Error != nil {
 			return rec.Error
 		}
-		err := c.DeleteIndexdRecord(ctx, rec.Object.Id)
+
+		if rec.Object == nil || rec.Object.Id == "" {
+			continue
+		}
+		if _, ok := seen[rec.Object.Id]; ok {
+			continue
+		}
+		seen[rec.Object.Id] = struct{}{}
+		ids = append(ids, rec.Object.Id)
+	}
+
+	for _, id := range ids {
+		err := c.DeleteIndexdRecord(ctx, id)
 		if err != nil {
-			c.logger.Error(fmt.Sprintf("DeleteRecordsByProject Error for %s: %v", rec.Object.Id, err))
+			// Project-wide cleanup should be idempotent; stale/deleted IDs are expected.
+			if isNotFoundErr(err) {
+				c.logger.Info(fmt.Sprintf("DeleteRecordsByProject: record already absent %s", id))
+				continue
+			}
+			c.logger.Error(fmt.Sprintf("DeleteRecordsByProject Error for %s: %v", id, err))
 			continue
 		}
 	}
 	return nil
+}
+
+func isNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "status: 404") ||
+		strings.Contains(msg, "status=404") ||
+		strings.Contains(msg, "Object not found") ||
+		strings.Contains(msg, "not found")
 }
 
 func (c *IndexdClient) DeleteRecordByHash(ctx context.Context, hashValue string, projectId string) error {
@@ -540,13 +573,35 @@ func (c *IndexdClient) RegisterRecords(ctx context.Context, records []*drs.DRSOb
 		return nil, fmt.Errorf("failed to register records: %s (status: %d)", string(body), resp.StatusCode)
 	}
 
-	var registered []*drs.DRSObject
-	if err := json.NewDecoder(resp.Body).Decode(&registered); err != nil {
-		// Fallback: If server returns DrsObjectWithAuthz slice (which it might based on my service.go implementation), decode that
-		return nil, fmt.Errorf("error decoding registered objects: %v", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading registered objects response: %v", err)
 	}
 
+	registered, err := decodeRegisteredObjects(body)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding registered objects: %v", err)
+	}
 	return registered, nil
+}
+
+func decodeRegisteredObjects(body []byte) ([]*drs.DRSObject, error) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("empty response body")
+	}
+
+	// Canonical shape from DRS register API.
+	var wrapped struct {
+		Objects []*drs.DRSObject `json:"objects"`
+	}
+	if err := json.Unmarshal(trimmed, &wrapped); err != nil {
+		return nil, fmt.Errorf("unsupported response payload: %s", string(trimmed))
+	}
+	if len(wrapped.Objects) == 0 {
+		return nil, fmt.Errorf("register response did not include objects")
+	}
+	return wrapped.Objects, nil
 }
 
 func (c *IndexdClient) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
@@ -565,7 +620,7 @@ func (c *IndexdClient) BatchGetObjectsByHash(ctx context.Context, hashes []strin
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/index/index/bulk/hashes", c.cred.APIEndpoint)
+	url := fmt.Sprintf("%s/index/bulk/hashes", c.cred.APIEndpoint)
 	resp, err := c.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodPost,
 		Url:    url,

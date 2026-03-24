@@ -54,10 +54,12 @@ func MultipartUpload(ctx context.Context, g3 client.Gen3Interface, req common.Fi
 		return fmt.Errorf("failed to initiate multipart upload: %w", err)
 	}
 
-	// 2. Construct the S3 Key correctly
-	// Ensure finalGUID is not empty to avoid a leading slash
-	key := fmt.Sprintf("%s/%s", finalGUID, req.ObjectKey)
-	g3.Logger().InfoContext(ctx, "Initialized Upload", "id", uploadID, "key", key)
+	// 2. Use the exact key passed during multipart init.
+	// The server creates the multipart session for `file_name=req.ObjectKey`.
+	// Rewriting the key client-side (for example prefixing GUID again) can cause
+	// "NoSuchUpload" because UploadPart/Complete then target a different object key.
+	key := req.ObjectKey
+	g3.Logger().InfoContext(ctx, "Initialized Upload", "id", uploadID, "guid", finalGUID, "key", key)
 
 	chunkSize := OptimalChunkSize(fileSize)
 

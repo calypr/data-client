@@ -1,7 +1,6 @@
 package drs
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -31,8 +30,11 @@ func TestObjectBuilderBuildSuccess(t *testing.T) {
 	if len(obj.AccessMethods) != 1 {
 		t.Fatalf("expected 1 access method, got %d", len(obj.AccessMethods))
 	}
-	if !strings.Contains(obj.AccessMethods[0].AccessURL.URL, filepath.Join("bucket", "did-1", "sha-256")) {
+	if !strings.Contains(obj.AccessMethods[0].AccessURL.URL, "bucket/test/project/sha-256") {
 		t.Fatalf("unexpected access URL: %s", obj.AccessMethods[0].AccessURL.URL)
+	}
+	if len(obj.Aliases) != 0 {
+		t.Fatalf("expected no aliases, got: %#v", obj.Aliases)
 	}
 	if obj.AccessMethods[0].Type != "s3" {
 		t.Fatalf("unexpected access method type: %s", obj.AccessMethods[0].Type)

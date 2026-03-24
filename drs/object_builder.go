@@ -8,11 +8,12 @@ import (
 )
 
 type ObjectBuilder struct {
-	Bucket       string
-	ProjectID    string
-	Organization string
-	AccessType   string
-	PathStyle    string // "CAS" or "" (Gen3 default)
+	Bucket        string
+	ProjectID     string
+	Organization  string
+	StoragePrefix string
+	AccessType    string
+	PathStyle     string // "CAS" or "" (Gen3 default)
 }
 
 func NewObjectBuilder(bucket, projectID string) ObjectBuilder {
@@ -33,16 +34,20 @@ func (b ObjectBuilder) Build(fileName string, checksum string, size int64, drsID
 		accessType = "s3"
 	}
 
-	// Remove sha256: prefix if present for clean S3 key
+	// Remove sha256: prefix if present for clean S3 key.
 	checksum = strings.TrimPrefix(checksum, "sha256:")
+	prefix := strings.Trim(strings.TrimSpace(b.StoragePrefix), "/")
+	if prefix == "" {
+		prefix = StoragePrefix(b.Organization, b.ProjectID)
+	}
 
 	var fileURL string
-	if b.PathStyle == "CAS" {
-		// CAS-style (s3://bucket/checksum)
-		fileURL = fmt.Sprintf("s3://%s/%s", b.Bucket, checksum)
+	// Canonical CAS-style (s3://bucket/{org}/{project}/sha256).
+	// PathStyle is kept for compatibility, but object identity is checksum-first.
+	if prefix != "" {
+		fileURL = fmt.Sprintf("s3://%s/%s/%s", b.Bucket, prefix, checksum)
 	} else {
-		// Gen3-style (s3://bucket/guid/checksum)
-		fileURL = fmt.Sprintf("s3://%s/%s/%s", b.Bucket, drsID, checksum)
+		fileURL = fmt.Sprintf("s3://%s/%s", b.Bucket, checksum)
 	}
 
 	authzStr, err := ProjectToResource(b.Organization, b.ProjectID)

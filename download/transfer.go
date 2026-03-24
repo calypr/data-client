@@ -153,8 +153,7 @@ func DownloadToPathWithOptions(
 	}
 
 	if err := downloadToPathMultipart(ctx, bk, logger, guid, dstPath, protocol, info.Size, opts); err != nil {
-		logger.Warn("multipart download failed, falling back to single stream", "guid", guid, "error", err)
-		return downloadToPathSingle(ctx, bk, logger, guid, dstPath, protocol)
+		return err
 	}
 
 	return nil

@@ -11,6 +11,7 @@ import (
 
 // UpsertIndexdRecord creates or updates an indexd record with a new URL.
 func (c *IndexdClient) UpsertIndexdRecord(ctx context.Context, url string, sha256 string, fileSize int64, projectId string) (*drs.DRSObject, error) {
+	sha256 = drs.NormalizeOid(sha256)
 	uuid := drs.DrsUUID(projectId, sha256)
 
 	records, err := c.GetObjectByHash(ctx, "sha256", sha256)
@@ -20,7 +21,8 @@ func (c *IndexdClient) UpsertIndexdRecord(ctx context.Context, url string, sha25
 
 	var matchingRecord *drs.DRSObject
 	for i := range records {
-		if records[i].Id == uuid {
+		// Hard cutover: checksum is content identity; do not match by record ID shape.
+		if records[i].Checksums.SHA256 == sha256 {
 			matchingRecord = &records[i]
 			break
 		}

@@ -11,6 +11,33 @@ import (
 // NAMESPACE is the UUID namespace used for generating DRS UUIDs
 var NAMESPACE = uuid.NewMD5(uuid.NameSpaceURL, []byte("calypr.org"))
 
+func sanitizePathComponent(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.Trim(v, "/")
+	v = strings.ReplaceAll(v, "\\", "/")
+	return strings.ReplaceAll(v, " ", "_")
+}
+
+// StoragePrefix returns the bucket key prefix used for object placement.
+// Preferred layout is "<organization>/<project>" when organization is provided.
+// When organization is empty, it falls back to "<program>/<project>" for hyphenated
+// project IDs or "default/<project>" otherwise.
+func StoragePrefix(org, project string) string {
+	org = sanitizePathComponent(org)
+	project = sanitizePathComponent(project)
+	if project == "" {
+		return ""
+	}
+	if org != "" {
+		return org + "/" + project
+	}
+	if strings.Contains(project, "-") {
+		parts := strings.SplitN(project, "-", 2)
+		return sanitizePathComponent(parts[0]) + "/" + sanitizePathComponent(parts[1])
+	}
+	return "default/" + project
+}
+
 func ProjectToResource(org, project string) (string, error) {
 	if org != "" {
 		return "/programs/" + org + "/projects/" + project, nil
@@ -44,12 +71,7 @@ func FindMatchingRecord(records []DRSObject, organization, projectId string) (*D
 		return nil, fmt.Errorf("error converting project ID to resource format: %v", err)
 	}
 
-	var fallback *DRSObject
 	for _, record := range records {
-		if fallback == nil {
-			r := record
-			fallback = &r
-		}
 		for _, access := range record.AccessMethods {
 			if access.Authorizations == nil {
 				continue
@@ -66,8 +88,7 @@ func FindMatchingRecord(records []DRSObject, organization, projectId string) (*D
 			}
 		}
 	}
-
-	return fallback, nil
+	return nil, nil
 }
 
 // DRS UUID generation using SHA1 (compatible with git-drs)
@@ -76,13 +97,27 @@ func GenerateDrsID(projectId, hash string) string {
 }
 
 func BuildDrsObj(fileName string, checksum string, size int64, drsId string, bucketName string, org string, projectId string) (*DRSObject, error) {
+	return BuildDrsObjWithPrefix(fileName, checksum, size, drsId, bucketName, org, projectId, "")
+}
+
+func BuildDrsObjWithPrefix(fileName string, checksum string, size int64, drsId string, bucketName string, org string, projectId string, storagePrefix string) (*DRSObject, error) {
 	if bucketName == "" {
 		return nil, fmt.Errorf("error: bucket name is empty")
 	}
 
 	checksum = NormalizeOid(checksum)
-	// Standard Gen3-style storage path: s3://bucket/guid/checksum
-	fileURL := fmt.Sprintf("s3://%s/%s/%s", bucketName, drsId, checksum)
+	prefix := strings.Trim(strings.TrimSpace(storagePrefix), "/")
+	if prefix == "" {
+		prefix = StoragePrefix(org, projectId)
+	}
+	var fileURL string
+	// Canonical CAS-style storage path:
+	// s3://bucket/{org}/{project}/sha256
+	if prefix != "" {
+		fileURL = fmt.Sprintf("s3://%s/%s/%s", bucketName, prefix, checksum)
+	} else {
+		fileURL = fmt.Sprintf("s3://%s/%s", bucketName, checksum)
+	}
 
 	authzStr, err := ProjectToResource(org, projectId)
 	if err != nil {
@@ -135,7 +170,6 @@ func ConvertToCandidate(obj *DRSObject) DRSObjectCandidate {
 	}
 
 	return DRSObjectCandidate{
-		Id:            obj.Id,
 		Name:          obj.Name,
 		Size:          obj.Size,
 		Version:       obj.Version,

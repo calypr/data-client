@@ -28,7 +28,7 @@ func (m *mockIndexdServer) handler(t *testing.T) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
-		case r.Method == http.MethodGet && path == "/index/index":
+		case r.Method == http.MethodGet && path == "/index":
 			if hashQuery := r.URL.Query().Get("hash"); hashQuery != "" {
 				record := sampleOutputInfo()
 				page := ListRecords{Records: []OutputInfo{record}}
@@ -50,7 +50,7 @@ func (m *mockIndexdServer) handler(t *testing.T) http.HandlerFunc {
 				return
 			}
 
-		case r.Method == http.MethodPost && path == "/index/index":
+		case r.Method == http.MethodPost && path == "/index":
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"did":"did-1"}`))
 			return
@@ -72,13 +72,13 @@ func (m *mockIndexdServer) handler(t *testing.T) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(obj)
 			return
-		case r.Method == http.MethodGet && strings.HasPrefix(path, "/index/index/"):
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "/index/"):
 			record := sampleOutputInfo()
 			record.Rev = "rev-1"
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(record)
 			return
-		case r.Method == http.MethodPut && strings.HasPrefix(path, "/index/index/"):
+		case r.Method == http.MethodPut && strings.HasPrefix(path, "/index/"):
 			body, _ := io.ReadAll(r.Body)
 			payload := UpdateInputInfo{}
 			_ = json.Unmarshal(body, &payload)
@@ -87,7 +87,7 @@ func (m *mockIndexdServer) handler(t *testing.T) http.HandlerFunc {
 			m.mu.Unlock()
 			w.WriteHeader(http.StatusOK)
 			return
-		case r.Method == http.MethodDelete && strings.HasPrefix(path, "/index/index/"):
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, "/index/"):
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -262,5 +262,27 @@ func TestIndexdClient_GetObjectDirect(t *testing.T) {
 	}
 	if record.Id != "did-1" {
 		t.Fatalf("unexpected record: %+v", record)
+	}
+}
+
+func TestDecodeRegisteredObjects_Wrapped(t *testing.T) {
+	payload := []byte(`{"objects":[{"id":"did-1","name":"file.txt","size":123,"checksums":[{"type":"sha256","checksum":"sha-256"}],"access_methods":[{"type":"s3","access_url":{"url":"s3://bucket/key"}}]}]}`)
+	objs, err := decodeRegisteredObjects(payload)
+	if err != nil {
+		t.Fatalf("decodeRegisteredObjects wrapped payload error: %v", err)
+	}
+	if len(objs) != 1 {
+		t.Fatalf("expected 1 object, got %d", len(objs))
+	}
+	if objs[0] == nil || objs[0].Id != "did-1" {
+		t.Fatalf("unexpected object: %+v", objs[0])
+	}
+}
+
+func TestDecodeRegisteredObjects_ArrayRejected(t *testing.T) {
+	payload := []byte(`[{"id":"did-1","name":"file.txt","size":123,"checksums":[{"type":"sha256","checksum":"sha-256"}],"access_methods":[{"type":"s3","access_url":{"url":"s3://bucket/key"}}]}]`)
+	_, err := decodeRegisteredObjects(payload)
+	if err == nil {
+		t.Fatal("expected error for non-canonical array register response, got nil")
 	}
 }
