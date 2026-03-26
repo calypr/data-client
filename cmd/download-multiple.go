@@ -7,13 +7,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/calypr/data-client/backend"
-	drsbackend "github.com/calypr/data-client/backend/drs"
-	gen3backend "github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/download"
+	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/localclient"
 	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/transfer"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -41,22 +41,35 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog())
 			defer logCloser()
 
-			g3i, err := g3client.NewGen3Interface(profile, logger)
-			if err != nil {
-				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+			var dc drs.Client
+			var bk transfer.Backend
+			if backendType == "drs" {
+				lc, err := localclient.NewLocalInterface(profile, logger)
+				if err != nil {
+					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+				}
+				dc = lc.DRSClient()
+				bk = lc.DRSClient()
+			} else {
+				g3i, err := g3client.NewGen3Interface(profile, logger)
+				if err != nil {
+					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+				}
+				dc = g3i.DRSClient()
+				bk = g3i.DRSClient()
 			}
 
 			manifestPath, _ = common.GetAbsolutePath(manifestPath)
 			manifestFile, err := os.Open(manifestPath)
 			if err != nil {
-				g3i.Logger().Fatalf("Failed to open manifest file %s, %v\n", manifestPath, err)
+				logger.Fatalf("Failed to open manifest file %s, %v\n", manifestPath, err)
 			}
 			defer manifestFile.Close()
 			manifestFileStat, err := manifestFile.Stat()
 			if err != nil {
-				g3i.Logger().Fatalf("Failed to get manifest file stats %s, %v\n", manifestPath, err)
+				logger.Fatalf("Failed to get manifest file stats %s, %v\n", manifestPath, err)
 			}
-			g3i.Logger().Println("Reading manifest...")
+			logger.Println("Reading manifest...")
 			manifestFileSize := manifestFileStat.Size()
 			manifestProgress := mpb.New(mpb.WithOutput(os.Stdout))
 			manifestFileBar := manifestProgress.AddBar(manifestFileSize,
@@ -71,27 +84,19 @@ func init() {
 
 			manifestBytes, err := io.ReadAll(manifestFileReader)
 			if err != nil {
-				g3i.Logger().Fatalf("Failed reading manifest %s, %v\n", manifestPath, err)
+				logger.Fatalf("Failed reading manifest %s, %v\n", manifestPath, err)
 			}
 			manifestProgress.Wait()
 
 			var objects []common.ManifestObject
 			err = json.Unmarshal(manifestBytes, &objects)
 			if err != nil {
-				g3i.Logger().Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
-			}
-
-			var bk backend.Backend
-			if backendType == "drs" {
-				cred := g3i.GetCredential()
-				// Use the API endpoint from the profile as the DRS server URL
-				bk = drsbackend.NewDrsBackend(cred.APIEndpoint, logger.Logger, g3i)
-			} else {
-				bk = gen3backend.NewGen3Backend(g3i)
+				logger.Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
 			}
 
 			err = download.DownloadMultiple(
 				context.Background(),
+				dc,
 				bk,
 				objects,
 				downloadPath,
@@ -103,7 +108,7 @@ func init() {
 				skipCompleted,
 			)
 			if err != nil {
-				g3i.Logger().Fatal(err.Error())
+				logger.Fatal(err.Error())
 			}
 		},
 	}

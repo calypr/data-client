@@ -10,18 +10,16 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/fence"
-	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
-	"github.com/calypr/data-client/requestor"
-	"github.com/calypr/data-client/sower"
 )
 
 type fakeGen3Upload struct {
@@ -30,15 +28,8 @@ type fakeGen3Upload struct {
 	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
 }
 
-func (f *fakeGen3Upload) GetCredential() *conf.Credential { return f.cred }
-func (f *fakeGen3Upload) Logger() *logs.Gen3Logger        { return f.logger }
-func (f *fakeGen3Upload) ExportCredential(ctx context.Context, cred *conf.Credential) error {
-	return nil
-}
-func (f *fakeGen3Upload) Fence() fence.FenceInterface             { return &fakeFence{doFunc: f.doFunc} }
-func (f *fakeGen3Upload) Indexd() indexd.IndexdInterface          { return &fakeIndexd{doFunc: f.doFunc} }
-func (f *fakeGen3Upload) Sower() sower.SowerInterface             { return nil }
-func (f *fakeGen3Upload) Requestor() requestor.RequestorInterface { return nil }
+func (f *fakeGen3Upload) Name() string             { return "fake" }
+func (f *fakeGen3Upload) Logger() *logs.Gen3Logger { return f.logger }
 
 func (f *fakeGen3Upload) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	return f.doFunc(ctx, req)
@@ -47,48 +38,51 @@ func (f *fakeGen3Upload) New(method, url string) *request.RequestBuilder {
 	return &request.RequestBuilder{Method: method, Url: url}
 }
 
-type fakeFence struct {
-	fence.FenceInterface
-	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+func (f *fakeGen3Upload) ResolveUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
+	return "", fmt.Errorf("not implemented")
 }
 
-func (f *fakeFence) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
-	return f.doFunc(ctx, req)
-}
-func (f *fakeFence) InitMultipartUpload(ctx context.Context, filename string, bucket string, guid string) (fence.FenceResponse, error) {
+func (f *fakeGen3Upload) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
 	resp, err := f.Do(ctx, &request.RequestBuilder{Url: common.FenceDataMultipartInitEndpoint})
 	if err != nil {
-		return fence.FenceResponse{}, err
+		return nil, err
 	}
-	return f.ParseFenceURLResponse(resp)
+	defer resp.Body.Close()
+	var msg struct {
+		UploadID string `json:"uploadId"`
+		GUID     string `json:"guid"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&msg); err != nil {
+		return nil, err
+	}
+	return &common.MultipartUploadInit{GUID: msg.GUID, UploadID: msg.UploadID}, nil
 }
-func (f *fakeFence) GenerateMultipartPresignedURL(ctx context.Context, key string, uploadID string, partNumber int, bucket string) (string, error) {
+func (f *fakeGen3Upload) GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error) {
 	resp, err := f.Do(ctx, &request.RequestBuilder{Url: common.FenceDataMultipartUploadEndpoint})
 	if err != nil {
 		return "", err
 	}
-	msg, err := f.ParseFenceURLResponse(resp)
-	return msg.PresignedURL, err
+	defer resp.Body.Close()
+	var msg struct {
+		PresignedURL string `json:"presigned_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&msg); err != nil {
+		return "", err
+	}
+	return msg.PresignedURL, nil
 }
-func (f *fakeFence) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []fence.MultipartPart, bucket string) error {
+func (f *fakeGen3Upload) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error {
 	_, err := f.Do(ctx, &request.RequestBuilder{Url: common.FenceDataMultipartCompleteEndpoint})
 	return err
 }
-func (f *fakeFence) ParseFenceURLResponse(resp *http.Response) (fence.FenceResponse, error) {
-	var msg fence.FenceResponse
-	if resp != nil && resp.Body != nil {
-		json.NewDecoder(resp.Body).Decode(&msg)
-	}
-	return msg, nil
+func (f *fakeGen3Upload) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+	return nil
 }
-
-type fakeIndexd struct {
-	indexd.IndexdInterface
-	doFunc func(context.Context, *request.RequestBuilder) (*http.Response, error)
+func (f *fakeGen3Upload) UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
+	return "", nil
 }
-
-func (f *fakeIndexd) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
-	return f.doFunc(ctx, req)
+func (f *fakeGen3Upload) DeleteFile(ctx context.Context, guid string) (string, error) {
+	return "", nil
 }
 
 func TestMultipartUploadProgressIntegration(t *testing.T) {
@@ -181,6 +175,137 @@ func TestMultipartUploadProgressIntegration(t *testing.T) {
 	}
 }
 
+func TestMultipartUploadResumesWithoutReinit(t *testing.T) {
+	ctx := context.Background()
+
+	var putCount atomic.Int64
+	var failFirstPut atomic.Bool
+	failFirstPut.Store(true)
+	origTransport := http.DefaultClient.Transport
+	http.DefaultClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPut {
+			return &http.Response{
+				StatusCode: http.StatusMethodNotAllowed,
+				Body:       io.NopCloser(strings.NewReader("method not allowed")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}
+		_, _ = io.Copy(io.Discard, req.Body)
+		_ = req.Body.Close()
+
+		if failFirstPut.Load() && putCount.Load() == 0 {
+			putCount.Add(1)
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("simulated failure")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}
+		n := putCount.Add(1)
+		h := make(http.Header)
+		h.Set("ETag", fmt.Sprintf("etag-%d", n))
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     h,
+			Request:    req,
+		}, nil
+	})
+	defer func() { http.DefaultClient.Transport = origTransport }()
+
+	tmp := t.TempDir()
+	t.Setenv("DATA_CLIENT_CACHE_DIR", tmp)
+	path := filepath.Join(tmp, "large.bin")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	// Sparse file >100MB triggers multipart with multiple parts.
+	if err := f.Truncate(120 * common.MB); err != nil {
+		_ = f.Close()
+		t.Fatalf("truncate temp file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+
+	initCalls := 0
+	completeCalls := 0
+	logger := logs.NewGen3Logger(nil, "", "")
+	fake := &fakeGen3Upload{
+		cred: &conf.Credential{
+			APIEndpoint: "https://example.com",
+			AccessToken: "token",
+		},
+		logger: logger,
+		doFunc: func(_ context.Context, req *request.RequestBuilder) (*http.Response, error) {
+			switch {
+			case strings.Contains(req.Url, common.FenceDataMultipartInitEndpoint):
+				initCalls++
+				return newJSONResponse(req.Url, `{"uploadId":"upload-resume-1","guid":"guid-resume-1"}`), nil
+			case strings.Contains(req.Url, common.FenceDataMultipartUploadEndpoint):
+				return newJSONResponse(req.Url, `{"presigned_url":"https://upload.invalid/part"}`), nil
+			case strings.Contains(req.Url, common.FenceDataMultipartCompleteEndpoint):
+				completeCalls++
+				return newJSONResponse(req.Url, `{}`), nil
+			default:
+				return nil, fmt.Errorf("unexpected request url: %s", req.Url)
+			}
+		},
+	}
+
+	req := common.FileUploadRequestObject{
+		SourcePath: path,
+		ObjectKey:  "resume.bin",
+		GUID:       "guid-resume-1",
+		Bucket:     "bucket",
+	}
+	checkpointPath, err := multipartCheckpointPath(req)
+	if err != nil {
+		t.Fatalf("checkpoint path: %v", err)
+	}
+	_ = os.Remove(checkpointPath)
+
+	file1, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open file1: %v", err)
+	}
+	err = MultipartUpload(ctx, fake, req, file1, false)
+	_ = file1.Close()
+	if err == nil {
+		t.Fatal("expected first multipart upload to fail")
+	}
+	if initCalls != 1 {
+		t.Fatalf("expected one init after first run, got %d", initCalls)
+	}
+	if _, statErr := os.Stat(checkpointPath); statErr != nil {
+		t.Fatalf("expected checkpoint to exist after failure: %v", statErr)
+	}
+
+	failFirstPut.Store(false)
+	file2, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open file2: %v", err)
+	}
+	err = MultipartUpload(ctx, fake, req, file2, false)
+	_ = file2.Close()
+	if err != nil {
+		t.Fatalf("resume multipart upload failed: %v", err)
+	}
+
+	if initCalls != 1 {
+		t.Fatalf("expected resume to reuse existing upload init; init calls = %d", initCalls)
+	}
+	if completeCalls != 1 {
+		t.Fatalf("expected one complete call, got %d", completeCalls)
+	}
+	if _, statErr := os.Stat(checkpointPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected checkpoint cleanup after success, stat err: %v", statErr)
+	}
+}
+
 func newJSONResponse(rawURL, body string) *http.Response {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -192,4 +317,10 @@ func newJSONResponse(rawURL, body string) *http.Response {
 		Request:    &http.Request{URL: parsedURL},
 		Header:     make(http.Header),
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

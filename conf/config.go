@@ -25,6 +25,8 @@ type Credential struct {
 	APIEndpoint        string
 	UseShepherd        string
 	MinShepherdVersion string
+	Bucket             string
+	ProjectID          string
 }
 
 type Manager struct {
@@ -127,6 +129,8 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 		APIEndpoint:        sec.Key("api_endpoint").String(),
 		UseShepherd:        sec.Key("use_shepherd").String(),
 		MinShepherdVersion: sec.Key("min_shepherd_version").String(),
+		Bucket:             sec.Key("bucket").String(),
+		ProjectID:          sec.Key("project_id").String(),
 	}
 
 	if profileConfig.KeyID == "" && profileConfig.APIKey == "" && profileConfig.AccessToken == "" {
@@ -178,6 +182,8 @@ func (man *Manager) Save(profileConfig *Credential) error {
 
 	section.Key("use_shepherd").SetValue(profileConfig.UseShepherd)
 	section.Key("min_shepherd_version").SetValue(profileConfig.MinShepherdVersion)
+	section.Key("bucket").SetValue(profileConfig.Bucket)
+	section.Key("project_id").SetValue(profileConfig.ProjectID)
 	err = cfg.SaveTo(configPath)
 	if err != nil {
 		errs := fmt.Errorf("error occurred when saving config file: %s", err.Error())

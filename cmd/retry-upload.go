@@ -32,6 +32,7 @@ func init() {
 			if err != nil {
 				Logger.Fatalf("Failed to initialize client: %v", err)
 			}
+			bk := g3.DRSClient()
 
 			logger := g3.Logger()
 
@@ -44,7 +45,7 @@ func init() {
 				logger.Fatalf("Cannot read failed log: %v", err)
 			}
 
-			upload.RetryFailedUploads(context.Background(), g3, failedMap)
+			upload.RetryFailedUploads(context.Background(), bk, logger, failedMap)
 			sb.PrintSB()
 		},
 	}

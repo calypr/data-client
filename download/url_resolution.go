@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/transfer"
 )
 
 // GetDownloadResponse gets presigned URL and prepares HTTP response
-func GetDownloadResponse(ctx context.Context, bk backend.Backend, fdr *common.FileDownloadResponseObject, protocolText string) error {
-	url, err := bk.GetDownloadURL(ctx, fdr.GUID, protocolText)
+func GetDownloadResponse(ctx context.Context, bk transfer.Downloader, fdr *common.FileDownloadResponseObject, protocolText string) error {
+	url, err := bk.ResolveDownloadURL(ctx, fdr.GUID, protocolText)
 	if err != nil {
 		return fmt.Errorf("failed to resolve download URL for %s: %w", fdr.GUID, err)
 	}
@@ -23,7 +23,7 @@ func GetDownloadResponse(ctx context.Context, bk backend.Backend, fdr *common.Fi
 	return makeDownloadRequest(ctx, bk, fdr)
 }
 
-func makeDownloadRequest(ctx context.Context, bk backend.Backend, fdr *common.FileDownloadResponseObject) error {
+func makeDownloadRequest(ctx context.Context, bk transfer.Downloader, fdr *common.FileDownloadResponseObject) error {
 	resp, err := bk.Download(ctx, fdr)
 
 	if err != nil {

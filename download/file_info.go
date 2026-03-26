@@ -3,27 +3,31 @@ package download
 import (
 	"context"
 
-	"github.com/calypr/data-client/backend"
+	"github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/logs"
 )
 
 func GetFileInfo(
 	ctx context.Context,
-	bk backend.Backend,
+	dc drs.Client,
+	logger *logs.Gen3Logger,
 	guid, protocol, downloadPath, filenameFormat string,
 	rename bool,
 	renamedFiles *[]RenamedOrSkippedFileInfo,
 ) (*IndexdResponse, error) {
-	// Use Backend to get object details
-	drsObj, err := bk.GetFileDetails(ctx, guid)
+	drsObj, err := drs.ResolveObject(ctx, dc, guid)
 	if err != nil {
-		bk.Logger().Warn("Failed to get file details", "guid", guid, "error", err)
+		logger.Warn("Failed to get file details", "guid", guid, "error", err)
 		// Fallback: use GUID as filename if failed?
 		// Original code: "All meta-data lookups failed... Using GUID as default"
 		*renamedFiles = append(*renamedFiles, RenamedOrSkippedFileInfo{GUID: guid, OldFilename: guid, NewFilename: guid})
 		return &IndexdResponse{Name: guid, Size: 0}, nil
 	}
 
-	name := drsObj.Name
+	name := ""
+	if drsObj.Name != nil {
+		name = *drsObj.Name
+	}
 	if name == "" {
 		// If name is empty (some DRS servers might not return it?), use GUID
 		name = guid

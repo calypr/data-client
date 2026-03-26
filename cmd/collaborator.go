@@ -52,15 +52,15 @@ func getRequestorClient() (requestor.RequestorInterface, func()) {
 	// Initialize logger
 	logger, logCloser := logs.New(profile)
 
-	// Initialize Gen3Interface handles selective initialization
-	g3i, err := g3client.NewGen3Interface(profile, logger, g3client.WithClients(g3client.RequestorClient))
+	// Initialize base Gen3 interface and build requestor client from it.
+	g3i, err := g3client.NewGen3Interface(profile, logger)
 	if err != nil {
 		fmt.Printf("Error accessing Gen3: %v\n", err)
 		logCloser()
 		os.Exit(1)
 	}
 
-	return g3i.Requestor(), logCloser
+	return requestor.NewRequestorClient(g3i, g3i.Credentials().Current()), logCloser
 }
 
 var collaboratorListCmd = &cobra.Command{

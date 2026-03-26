@@ -43,6 +43,7 @@ This method is resilient to network interruptions and supports resume capability
 			if err != nil {
 				logger.Fatalf("failed to initialize Gen3 interface: %v", err)
 			}
+			bk := g3.DRSClient()
 
 			absPath, err := common.GetAbsolutePath(filePath)
 			if err != nil {
@@ -62,7 +63,7 @@ This method is resilient to network interruptions and supports resume capability
 			}
 			defer file.Close()
 
-			err = upload.MultipartUpload(context.Background(), g3, fileInfo, file, true)
+			err = upload.MultipartUpload(context.Background(), bk, fileInfo, file, true)
 			if err != nil {
 				logger.Fatal(err)
 			}

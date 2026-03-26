@@ -61,6 +61,7 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 				S3Buckets: map[string]*S3Bucket{
 					"test-bucket": {
 						EndpointURL: "https://s3.amazonaws.com",
+						Provider:    "s3",
 						Region:      "us-east-1",
 					},
 				},
@@ -172,6 +173,9 @@ func TestFenceClient_GetBucketDetails(t *testing.T) {
 	}
 	if info.Region != "us-east-1" {
 		t.Errorf("expected region us-east-1, got %s", info.Region)
+	}
+	if info.Provider != "s3" {
+		t.Errorf("expected provider s3, got %s", info.Provider)
 	}
 
 	info, err = client.GetBucketDetails(context.Background(), "unknown-bucket")

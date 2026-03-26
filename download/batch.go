@@ -9,9 +9,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/transfer"
 	"github.com/hashicorp/go-multierror"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -21,7 +21,7 @@ import (
 // downloadFiles performs bounded parallel downloads and collects ALL errors
 func downloadFiles(
 	ctx context.Context,
-	bk backend.Backend,
+	bk transfer.Downloader,
 	files []common.FileDownloadResponseObject,
 	numParallel int,
 	protocol string,
@@ -38,7 +38,7 @@ func downloadFiles(
 	}
 
 	// Scoreboard: maxRetries = 0 for now (no retry logic yet)
-	sb := logs.NewSB(0, logger)
+	sb := logs.NewSB(0, logger.Logger)
 
 	progress := common.GetProgress(ctx)
 	useProgressBars := (progress == nil)

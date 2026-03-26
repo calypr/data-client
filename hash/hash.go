@@ -3,6 +3,7 @@ package hash
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/calypr/data-client/apigen/drs"
 )
 
 // ChecksumType represents the digest method used to create the checksum
@@ -141,4 +142,28 @@ func ConvertChecksumsToMap(checksums []Checksum) map[string]string {
 func ConvertChecksumsToHashInfo(checksums []Checksum) HashInfo {
 	checksumMap := ConvertChecksumsToMap(checksums)
 	return ConvertStringMapToHashInfo(checksumMap)
+}
+
+func ConvertDrsChecksumsToMap(checksums []drs.Checksum) map[string]string {
+	result := make(map[string]string, len(checksums))
+	for _, c := range checksums {
+		result[c.Type] = c.Checksum
+	}
+	return result
+}
+
+func ConvertDrsChecksumsToHashInfo(checksums []drs.Checksum) HashInfo {
+	checksumMap := ConvertDrsChecksumsToMap(checksums)
+	return ConvertStringMapToHashInfo(checksumMap)
+}
+
+func ConvertMapToDrsChecksums(hashes map[string]string) []drs.Checksum {
+	result := make([]drs.Checksum, 0, len(hashes))
+	for t, c := range hashes {
+		result = append(result, drs.Checksum{
+			Type:     t,
+			Checksum: c,
+		})
+	}
+	return result
 }

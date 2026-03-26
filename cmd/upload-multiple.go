@@ -45,9 +45,10 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			if err != nil {
 				logger.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
+			bk := g3i.DRSClient()
 
 			// Basic config validation
-			profileConfig := g3i.GetCredential()
+			profileConfig := g3i.Credentials().Current()
 			if profileConfig.APIEndpoint == "" {
 				logger.Fatal("No APIEndpoint found in configuration. Run \"./data-client configure\" first.")
 			}
@@ -100,7 +101,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			}
 
 			// Classify single vs multipart
-			single, multi := upload.SeparateSingleAndMultipartUploads(g3i, requests)
+			single, multi := upload.SeparateSingleAndMultipartUploads(bk, requests)
 
 			// Upload single-part files
 			if batch {
@@ -110,16 +111,16 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 					if len(batchFURObjects) < workers {
 						batchFURObjects = append(batchFURObjects, furObject)
 					} else {
-						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(ctx, bk, logger, batchFURObjects, workers, respCh, errCh, bucketName)
 						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
 					if i == len(single)-1 && len(batchFURObjects) > 0 {
-						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(ctx, bk, logger, batchFURObjects, workers, respCh, errCh, bucketName)
 					}
 				}
 			} else {
 				for _, req := range single {
-					upload.UploadSingle(ctx, g3i, req, true)
+					upload.UploadSingle(ctx, bk, logger, req, true)
 				}
 			}
 
@@ -132,7 +133,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 					continue
 				}
 
-				err = upload.MultipartUpload(ctx, g3i, req, file, true)
+				err = upload.MultipartUpload(ctx, bk, req, file, true)
 				if err != nil {
 					logger.Println("Multipart upload failed:", err)
 				}
@@ -142,7 +143,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			if len(logger.GetSucceededLogMap()) == 0 {
 				failed := logger.GetFailedLogMap()
 				if len(failed) > 0 {
-					upload.RetryFailedUploads(ctx, g3i, failed)
+					upload.RetryFailedUploads(ctx, bk, logger, failed)
 				}
 			}
 

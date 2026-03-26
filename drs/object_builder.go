@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/data-client/hash"
 )
 
 type ObjectBuilder struct {
@@ -60,14 +59,19 @@ func (b ObjectBuilder) Build(fileName string, checksum string, size int64, drsID
 
 	drsObj := DRSObject{
 		Id:   drsID,
-		Name: fileName,
+		Name: &fileName,
 		AccessMethods: []AccessMethod{{
-			Type:           accessType,
-			AccessURL:      AccessURL{URL: fileURL},
+			Type: accessType,
+			AccessUrl: &AccessURL{
+				Url: fileURL,
+			},
 			Authorizations: &authorizations,
 		}},
-		Checksums: hash.HashInfo{SHA256: checksum},
-		Size:      size,
+		Checksums: []Checksum{{
+			Type:     "sha256",
+			Checksum: checksum,
+		}},
+		Size: size,
 	}
 
 	return &drsObj, nil

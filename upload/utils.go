@@ -9,12 +9,13 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/common"
-	client "github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/transfer"
 )
 
-func SeparateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []common.FileUploadRequestObject) ([]common.FileUploadRequestObject, []common.FileUploadRequestObject) {
+func SeparateSingleAndMultipartUploads(bk transfer.Uploader, objects []common.FileUploadRequestObject) ([]common.FileUploadRequestObject, []common.FileUploadRequestObject) {
 	fileSizeLimit := common.FileSizeLimit
+	logger := bk.Logger()
 
 	var singlepartObjects []common.FileUploadRequestObject
 	var multipartObjects []common.FileUploadRequestObject
@@ -23,22 +24,17 @@ func SeparateSingleAndMultipartUploads(g3i client.Gen3Interface, objects []commo
 		fi, err := os.Stat(object.SourcePath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				g3i.Logger().Printf("The file you specified \"%s\" does not exist locally\n", object.SourcePath)
+				logger.Error("The file you specified does not exist locally", "path", object.SourcePath)
 			} else {
-				g3i.Logger().Println("File stat error: " + err.Error())
+				logger.Error("File stat error", "path", object.SourcePath, "error", err)
 			}
-			g3i.Logger().Failed(object.SourcePath, object.ObjectKey, object.FileMetadata, object.GUID, 0, false)
 			continue
 		}
 		if fi.IsDir() {
 			continue
 		}
-		if _, ok := g3i.Logger().GetSucceededLogMap()[object.SourcePath]; ok {
-			g3i.Logger().Println("File \"" + object.SourcePath + "\" found in history. Skipping.")
-			continue
-		}
 		if fi.Size() > common.MultipartFileSizeLimit {
-			g3i.Logger().Printf("File %s exceeds max limit\n", fi.Name())
+			logger.Warn("File exceeds max limit", "name", fi.Name(), "size", fi.Size())
 			continue
 		}
 		if fi.Size() > int64(fileSizeLimit) {

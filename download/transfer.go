@@ -2,16 +2,20 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
-	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/transfer"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -32,7 +36,8 @@ func defaultDownloadOptions() DownloadOptions {
 // DownloadSingleWithProgress downloads a single object while emitting progress events.
 func DownloadSingleWithProgress(
 	ctx context.Context,
-	bk backend.Backend,
+	dc drs.Client,
+	bk transfer.Downloader,
 	guid string,
 	downloadPath string,
 	protocol string,
@@ -48,7 +53,7 @@ func DownloadSingleWithProgress(
 	}
 
 	renamed := make([]RenamedOrSkippedFileInfo, 0)
-	info, err := GetFileInfo(ctx, bk, guid, protocol, downloadPath, "original", false, &renamed)
+	info, err := GetFileInfo(ctx, dc, bk.Logger(), guid, protocol, downloadPath, "original", false, &renamed)
 	if err != nil {
 		return err
 	}
@@ -113,19 +118,21 @@ func DownloadSingleWithProgress(
 // DownloadToPath downloads a single object using the provided backend
 func DownloadToPath(
 	ctx context.Context,
-	bk backend.Backend,
+	dc drs.Client,
+	bk transfer.Downloader,
 	logger *slog.Logger,
 	guid string,
 	dstPath string,
 	protocol string,
 ) error {
 	opts := defaultDownloadOptions()
-	return DownloadToPathWithOptions(ctx, bk, logger, guid, dstPath, protocol, opts)
+	return DownloadToPathWithOptions(ctx, dc, bk, logger, guid, dstPath, protocol, opts)
 }
 
 func DownloadToPathWithOptions(
 	ctx context.Context,
-	bk backend.Backend,
+	dc drs.Client,
+	bk transfer.Downloader,
 	logger *slog.Logger,
 	guid string,
 	dstPath string,
@@ -142,14 +149,25 @@ func DownloadToPathWithOptions(
 		opts.Concurrency = defaultDownloadOptions().Concurrency
 	}
 
-	info, err := bk.GetFileDetails(ctx, guid)
+	info, err := drs.ResolveObject(ctx, dc, guid)
 	if err != nil {
 		return fmt.Errorf("get file details failed: %w", err)
 	}
 
 	// If size is unknown or small, single stream is safest.
 	if info.Size <= 0 || info.Size < opts.MultipartThreshold {
-		return downloadToPathSingle(ctx, bk, logger, guid, dstPath, protocol)
+		return downloadToPathSingle(ctx, bk, logger, guid, dstPath, protocol, info.Size)
+	}
+
+	// If a partial file already exists, resumable single-stream download is safer than
+	// parallel range writes and avoids restarting from zero.
+	if st, statErr := os.Stat(dstPath); statErr == nil {
+		if st.Size() == info.Size {
+			return nil
+		}
+		if st.Size() > 0 && st.Size() < info.Size {
+			return downloadToPathSingle(ctx, bk, logger, guid, dstPath, protocol, info.Size)
+		}
 	}
 
 	if err := downloadToPathMultipart(ctx, bk, logger, guid, dstPath, protocol, info.Size, opts); err != nil {
@@ -161,17 +179,29 @@ func DownloadToPathWithOptions(
 
 func downloadToPathSingle(
 	ctx context.Context,
-	bk backend.Backend,
+	bk transfer.Downloader,
 	logger *slog.Logger,
 	guid string,
 	dstPath string,
 	protocol string,
+	expectedSize int64,
 ) error {
 	progress := common.GetProgress(ctx)
 	hash := common.GetOid(ctx)
 
+	var existingSize int64
+	if st, err := os.Stat(dstPath); err == nil {
+		existingSize = st.Size()
+		if expectedSize > 0 && existingSize == expectedSize {
+			return nil
+		}
+	}
+
 	fdr := common.FileDownloadResponseObject{
 		GUID: guid,
+	}
+	if existingSize > 0 {
+		fdr.Range = existingSize
 	}
 
 	protocolText := ""
@@ -190,6 +220,11 @@ func downloadToPathSingle(
 	}
 	defer fdr.Response.Body.Close()
 
+	if existingSize > 0 && fdr.Response.StatusCode == http.StatusOK {
+		// Server ignored range; restart from zero.
+		existingSize = 0
+	}
+
 	if dir := filepath.Dir(dstPath); dir != "." {
 		if err := os.MkdirAll(dir, 0766); err != nil {
 			logger.Error("Mkdir failed", "error", err, "path", dstPath)
@@ -197,7 +232,13 @@ func downloadToPathSingle(
 		}
 	}
 
-	file, err := os.Create(dstPath)
+	flags := os.O_CREATE | os.O_WRONLY
+	if existingSize > 0 {
+		flags |= os.O_APPEND
+	} else {
+		flags |= os.O_TRUNC
+	}
+	file, err := os.OpenFile(dstPath, flags, 0666)
 	if err != nil {
 		logger.Error("Create file failed", "error", err, "path", dstPath)
 		return fmt.Errorf("create local file %s: %w", dstPath, err)
@@ -206,15 +247,31 @@ func downloadToPathSingle(
 
 	var writer io.Writer = file
 	if progress != nil {
-		total := fdr.Response.ContentLength
+		total := fdr.Response.ContentLength + existingSize
 		tracker := newProgressWriter(file, progress, hash, total)
+		if existingSize > 0 {
+			tracker.bytesSoFar = existingSize
+		}
 		writer = tracker
 		defer tracker.Finalize()
 	}
 
-	if _, err := io.Copy(writer, fdr.Response.Body); err != nil {
+	reader := io.Reader(fdr.Response.Body)
+	if failAfter := parseInjectedDownloadFailureBytes(); failAfter > 0 {
+		reader = &failAfterReader{
+			r:         reader,
+			remaining: failAfter,
+		}
+	}
+
+	if _, err := io.Copy(writer, reader); err != nil {
 		logger.Error("Copy failed", "error", err, "path", dstPath)
 		return fmt.Errorf("copy to %s: %w", dstPath, err)
+	}
+	if expectedSize > 0 {
+		if st, err := os.Stat(dstPath); err == nil && st.Size() != expectedSize {
+			return fmt.Errorf("download incomplete for %s: expected %d bytes, got %d", dstPath, expectedSize, st.Size())
+		}
 	}
 
 	// Success logging is up to caller or we can do simple info
@@ -222,9 +279,50 @@ func downloadToPathSingle(
 	return nil
 }
 
+func parseInjectedDownloadFailureBytes() int64 {
+	raw := strings.TrimSpace(os.Getenv("DATA_CLIENT_TEST_FAIL_DOWNLOAD_AFTER_BYTES"))
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+type failAfterReader struct {
+	r         io.Reader
+	remaining int64
+	failed    bool
+}
+
+func (f *failAfterReader) Read(p []byte) (int, error) {
+	if f.failed {
+		return 0, errors.New("injected test interruption during download")
+	}
+	if f.remaining <= 0 {
+		f.failed = true
+		return 0, errors.New("injected test interruption during download")
+	}
+	if int64(len(p)) > f.remaining {
+		p = p[:f.remaining]
+	}
+	n, err := f.r.Read(p)
+	f.remaining -= int64(n)
+	if err != nil {
+		return n, err
+	}
+	if f.remaining <= 0 {
+		f.failed = true
+		return n, errors.New("injected test interruption during download")
+	}
+	return n, nil
+}
+
 func downloadToPathMultipart(
 	ctx context.Context,
-	bk backend.Backend,
+	bk transfer.Downloader,
 	logger *slog.Logger,
 	guid string,
 	dstPath string,
@@ -237,7 +335,7 @@ func downloadToPathMultipart(
 		protocolText = "?protocol=" + protocol
 	}
 
-	signedURL, err := bk.GetDownloadURL(ctx, guid, protocolText)
+	signedURL, err := bk.ResolveDownloadURL(ctx, guid, protocolText)
 	if err != nil {
 		return fmt.Errorf("failed to resolve download URL for %s: %w", guid, err)
 	}

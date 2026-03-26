@@ -7,15 +7,12 @@ import (
 	"os"
 
 	"github.com/calypr/data-client/common"
-	client "github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/transfer"
 )
 
-func UploadSingle(ctx context.Context, g3Client client.Gen3Interface, req common.FileUploadRequestObject, showProgress bool) error {
-
-	// We use the provided client interface
-	g3i := g3Client
-
-	g3i.Logger().InfoContext(ctx, "File Upload Request", "request", req)
+func UploadSingle(ctx context.Context, bk transfer.Uploader, logger *logs.Gen3Logger, req common.FileUploadRequestObject, showProgress bool) error {
+	logger.InfoContext(ctx, "File Upload Request", "request", req)
 
 	// Helper to handle * in path if it was passed, though optimally caller handles this.
 	// We will trust the SourcePath in the request object mostly, but for safety we can check existence.
@@ -25,14 +22,14 @@ func UploadSingle(ctx context.Context, g3Client client.Gen3Interface, req common
 	file, err := os.Open(req.SourcePath)
 	if err != nil {
 		if showProgress {
-			sb := g3i.Logger().Scoreboard()
+			sb := logger.Scoreboard()
 			if sb != nil {
 				sb.IncrementSB(len(sb.Counts))
 				sb.PrintSB()
 			}
 		}
-		g3i.Logger().Failed(req.SourcePath, req.ObjectKey, common.FileMetadata{}, "", 0, false)
-		g3i.Logger().ErrorContext(ctx, "File open error", "file", req.SourcePath, "error", err)
+		logger.Failed(req.SourcePath, req.ObjectKey, common.FileMetadata{}, "", 0, false)
+		logger.ErrorContext(ctx, "File open error", "file", req.SourcePath, "error", err)
 		return fmt.Errorf("[ERROR] when opening file path %s, an error occurred: %s\n", req.SourcePath, err.Error())
 	}
 	defer file.Close()
@@ -43,17 +40,17 @@ func UploadSingle(ctx context.Context, g3Client client.Gen3Interface, req common
 	}
 	fileSize := fi.Size()
 
-	furObject, err := generateUploadRequest(ctx, g3i, req, file, nil)
+	furObject, err := generateUploadRequest(ctx, bk, req, file, nil)
 	if err != nil {
 		if showProgress {
-			sb := g3i.Logger().Scoreboard()
+			sb := logger.Scoreboard()
 			if sb != nil {
 				sb.IncrementSB(len(sb.Counts))
 				sb.PrintSB()
 			}
 		}
-		g3i.Logger().Failed(req.SourcePath, req.ObjectKey, common.FileMetadata{}, req.GUID, 0, false)
-		g3i.Logger().ErrorContext(ctx, "Error occurred during request generation", "file", req.SourcePath, "error", err)
+		logger.Failed(req.SourcePath, req.ObjectKey, common.FileMetadata{}, req.GUID, 0, false)
+		logger.ErrorContext(ctx, "Error occurred during request generation", "file", req.SourcePath, "error", err)
 		return fmt.Errorf("[ERROR] Error occurred during request generation for file %s: %s\n", req.SourcePath, err.Error())
 	}
 
@@ -70,7 +67,7 @@ func UploadSingle(ctx context.Context, g3Client client.Gen3Interface, req common
 		reader = progressTracker
 	}
 
-	_, err = uploadPart(ctx, furObject.PresignedURL, reader, fileSize)
+	err = bk.Upload(ctx, furObject.PresignedURL, reader, fileSize)
 	if progressTracker != nil {
 		if finalizeErr := progressTracker.Finalize(); finalizeErr != nil && err == nil {
 			err = finalizeErr
@@ -78,15 +75,15 @@ func UploadSingle(ctx context.Context, g3Client client.Gen3Interface, req common
 	}
 
 	if err != nil {
-		g3i.Logger().ErrorContext(ctx, "Upload failed", "error", err)
+		logger.ErrorContext(ctx, "Upload failed", "error", err)
 		return err
 	}
 
-	g3i.Logger().InfoContext(ctx, "Successfully uploaded", "file", req.ObjectKey)
-	g3i.Logger().Succeeded(req.SourcePath, req.GUID)
+	logger.InfoContext(ctx, "Successfully uploaded", "file", req.ObjectKey)
+	logger.Succeeded(req.SourcePath, req.GUID)
 
 	if showProgress {
-		sb := g3i.Logger().Scoreboard()
+		sb := logger.Scoreboard()
 		if sb != nil {
 			sb.IncrementSB(0)
 			sb.PrintSB()

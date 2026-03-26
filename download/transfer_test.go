@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,44 +14,48 @@ import (
 
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/hash"
 	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/request"
 )
 
 type fakeBackend struct {
 	logger *logs.Gen3Logger
 	doFunc func(context.Context, *common.FileDownloadResponseObject) (*http.Response, error)
 	data   []byte
+	size   int64
 }
 
-func (f *fakeBackend) Name() string         { return "Fake" }
-func (f *fakeBackend) Logger() *slog.Logger { return f.logger.Logger }
+func (f *fakeBackend) Name() string             { return "Fake" }
+func (f *fakeBackend) Logger() *logs.Gen3Logger { return f.logger }
 
-func (f *fakeBackend) GetFileDetails(ctx context.Context, guid string) (*drs.DRSObject, error) {
+func (f *fakeBackend) fileDetails(guid string) *drs.DRSObject {
+	size := f.size
+	if size == 0 && len(f.data) > 0 {
+		size = int64(len(f.data))
+	}
+	if size == 0 {
+		size = 64
+	}
+	name := "payload.bin"
+	accessID := "s3"
 	return &drs.DRSObject{
-		Name: "payload.bin",
-		Size: 64,
+		Name: &name,
+		Size: size,
 		AccessMethods: []drs.AccessMethod{
-			{AccessID: "s3", Type: "s3"},
+			{AccessId: &accessID, Type: "s3"},
 		},
-	}, nil
+	}
 }
 
-func (f *fakeBackend) GetDownloadURL(ctx context.Context, guid string, accessID string) (string, error) {
+func (f *fakeBackend) ResolveDownloadURL(ctx context.Context, guid string, accessID string) (string, error) {
 	if guid == "test-fallback" {
 		return "", errors.New("fallback")
 	}
 	return "https://download.example.com/object", nil
 }
 
-func (f *fakeBackend) Register(ctx context.Context, obj *drs.DRSObject) (*drs.DRSObject, error) {
-	return obj, nil
-}
-
-func (f *fakeBackend) BatchRegister(ctx context.Context, objs []*drs.DRSObject) ([]*drs.DRSObject, error) {
-	return objs, nil
-}
-
-func (f *fakeBackend) GetUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
+func (f *fakeBackend) ResolveUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
@@ -76,9 +79,23 @@ func (f *fakeBackend) UploadPart(ctx context.Context, url string, body io.Reader
 	return "", errors.New("not implemented")
 }
 
+func (f *fakeBackend) DeleteFile(ctx context.Context, guid string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
 func (f *fakeBackend) Download(ctx context.Context, fdr *common.FileDownloadResponseObject) (*http.Response, error) {
 	if f.doFunc != nil {
 		return f.doFunc(ctx, fdr)
+	}
+	if fdr.Range > 0 {
+		start := fdr.Range
+		if start < 0 || start > int64(len(f.data)) {
+			return nil, errors.New("invalid resume range")
+		}
+		if start == int64(len(f.data)) {
+			return newDownloadResponse(fdr.PresignedURL, []byte{}, http.StatusPartialContent), nil
+		}
+		return newDownloadResponse(fdr.PresignedURL, f.data[start:], http.StatusPartialContent), nil
 	}
 	if fdr.RangeStart != nil && fdr.RangeEnd != nil {
 		start, end := *fdr.RangeStart, *fdr.RangeEnd
@@ -90,11 +107,81 @@ func (f *fakeBackend) Download(ctx context.Context, fdr *common.FileDownloadResp
 	return newDownloadResponse(fdr.PresignedURL, f.data, http.StatusOK), nil
 }
 
-func (f *fakeBackend) GetObjectByHash(ctx context.Context, checksumType, checksum string) ([]drs.DRSObject, error) {
+type fakeDrsClient struct {
+	backend *fakeBackend
+}
+
+func (f *fakeDrsClient) GetObject(ctx context.Context, id string) (*drs.DRSObject, error) {
+	return f.backend.fileDetails(id), nil
+}
+
+func (f *fakeDrsClient) GetObjectByHash(ctx context.Context, checksum *hash.Checksum) ([]drs.DRSObject, error) {
+	obj := f.backend.fileDetails(checksum.Checksum)
+	return []drs.DRSObject{*obj}, nil
+}
+
+func (f *fakeDrsClient) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
+	return map[string][]drs.DRSObject{}, nil
+}
+
+func (f *fakeDrsClient) ListObjects(ctx context.Context) (chan drs.DRSObjectResult, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeBackend) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]drs.DRSObject, error) {
+func (f *fakeDrsClient) ListObjectsByProject(ctx context.Context, projectId string) (chan drs.DRSObjectResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) GetProjectSample(ctx context.Context, projectId string, limit int) ([]drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) RegisterRecord(ctx context.Context, record *drs.DRSObject) (*drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) RegisterRecords(ctx context.Context, records []*drs.DRSObject) ([]*drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) UpdateRecord(ctx context.Context, updateInfo *drs.DRSObject, did string) (*drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) DeleteRecord(ctx context.Context, did string) error {
+	return errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) DeleteRecordsByProject(ctx context.Context, projectId string) error {
+	return errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) GetDownloadURL(ctx context.Context, id string, accessType string) (*drs.AccessURL, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) AddURL(ctx context.Context, blobURL, sha256 string, opts ...drs.AddURLOption) (*drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) UpsertRecord(ctx context.Context, url string, sha256 string, fileSize int64, projectId string) (*drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) BuildDrsObj(fileName string, checksum string, size int64, drsId string) (*drs.DRSObject, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDrsClient) GetProjectId() string                            { return "" }
+func (f *fakeDrsClient) GetBucketName() string                           { return "" }
+func (f *fakeDrsClient) GetOrganization() string                         { return "" }
+func (f *fakeDrsClient) WithProject(projectId string) drs.Client         { return f }
+func (f *fakeDrsClient) WithOrganization(organization string) drs.Client { return f }
+func (f *fakeDrsClient) WithBucket(bucketName string) drs.Client         { return f }
+func (f *fakeDrsClient) New(method, url string) *request.RequestBuilder {
+	return &request.RequestBuilder{Method: method, Url: url}
+}
+func (f *fakeDrsClient) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -113,9 +200,10 @@ func TestDownloadSingleWithProgressEmitsEvents(t *testing.T) {
 		logger: logs.NewGen3Logger(nil, "", ""),
 		data:   payload,
 	}
+	dc := &fakeDrsClient{backend: fake}
 
 	ctx := common.WithProgress(context.Background(), progress)
-	err := DownloadSingleWithProgress(ctx, fake, "guid-123", downloadPath, "")
+	err := DownloadSingleWithProgress(ctx, dc, fake, "guid-123", downloadPath, "")
 	if err != nil {
 		t.Fatalf("download failed: %v", err)
 	}
@@ -151,10 +239,12 @@ func TestDownloadSingleWithProgressFinalizeOnError(t *testing.T) {
 	fake := &fakeBackend{
 		logger: logs.NewGen3Logger(nil, "", ""),
 		data:   []byte("short"),
+		size:   64,
 	}
+	dc := &fakeDrsClient{backend: fake}
 
 	ctx := common.WithProgress(context.Background(), progress)
-	err := DownloadSingleWithProgress(ctx, fake, "guid-123", downloadPath, "")
+	err := DownloadSingleWithProgress(ctx, dc, fake, "guid-123", downloadPath, "")
 	if err == nil {
 		t.Fatal("expected download error")
 	}
@@ -189,12 +279,15 @@ func TestDownloadToPathMultipart(t *testing.T) {
 	fake := &fakeBackend{
 		logger: logs.NewGen3Logger(nil, "", ""),
 		data:   payload,
+		size:   int64(len(payload)),
 	}
+	dc := &fakeDrsClient{backend: fake}
 
 	err := DownloadToPathWithOptions(
 		context.Background(),
+		dc,
 		fake,
-		fake.Logger(),
+		fake.Logger().Logger,
 		"guid-789",
 		dst,
 		"",
@@ -214,6 +307,143 @@ func TestDownloadToPathMultipart(t *testing.T) {
 	}
 	if !bytes.Equal(payload, got) {
 		t.Fatal("downloaded payload mismatch")
+	}
+}
+
+func TestDownloadToPathSingleResumeFromPartial(t *testing.T) {
+	payload := bytes.Repeat([]byte("r"), 1024)
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "resume.bin")
+	prefix := payload[:300]
+	if err := os.WriteFile(dst, prefix, 0o666); err != nil {
+		t.Fatalf("write partial file: %v", err)
+	}
+
+	var gotRange int64 = -1
+	fake := &fakeBackend{
+		logger: logs.NewGen3Logger(nil, "", ""),
+		data:   payload,
+		size:   int64(len(payload)),
+		doFunc: func(_ context.Context, fdr *common.FileDownloadResponseObject) (*http.Response, error) {
+			gotRange = fdr.Range
+			if fdr.Range <= 0 {
+				return nil, errors.New("expected resume range")
+			}
+			return newDownloadResponse(fdr.PresignedURL, payload[fdr.Range:], http.StatusPartialContent), nil
+		},
+	}
+	dc := &fakeDrsClient{backend: fake}
+
+	err := DownloadToPathWithOptions(
+		context.Background(),
+		dc,
+		fake,
+		fake.Logger().Logger,
+		"guid-resume",
+		dst,
+		"",
+		DownloadOptions{
+			MultipartThreshold: 1 * common.GB, // force single-stream path
+			ChunkSize:          64 * common.MB,
+			Concurrency:        2,
+		},
+	)
+	if err != nil {
+		t.Fatalf("resume download failed: %v", err)
+	}
+	if gotRange != int64(len(prefix)) {
+		t.Fatalf("expected range %d, got %d", len(prefix), gotRange)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatal("resumed file mismatch")
+	}
+}
+
+func TestDownloadToPathSingleRangeIgnoredRestarts(t *testing.T) {
+	payload := bytes.Repeat([]byte("k"), 2048)
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "range-ignored.bin")
+	if err := os.WriteFile(dst, payload[:500], 0o666); err != nil {
+		t.Fatalf("write partial: %v", err)
+	}
+
+	fake := &fakeBackend{
+		logger: logs.NewGen3Logger(nil, "", ""),
+		data:   payload,
+		size:   int64(len(payload)),
+		doFunc: func(_ context.Context, fdr *common.FileDownloadResponseObject) (*http.Response, error) {
+			// Simulate server ignoring Range and returning full body with 200.
+			if fdr.Range <= 0 {
+				return nil, errors.New("expected range request")
+			}
+			return newDownloadResponse(fdr.PresignedURL, payload, http.StatusOK), nil
+		},
+	}
+	dc := &fakeDrsClient{backend: fake}
+
+	err := DownloadToPathWithOptions(
+		context.Background(),
+		dc,
+		fake,
+		fake.Logger().Logger,
+		"guid-range-ignored",
+		dst,
+		"",
+		DownloadOptions{MultipartThreshold: 1 * common.GB, ChunkSize: 64 * common.MB, Concurrency: 2},
+	)
+	if err != nil {
+		t.Fatalf("download failed: %v", err)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatal("range-ignored restart did not produce full file")
+	}
+}
+
+func TestDownloadToPathAlreadyCompleteSkipsDownload(t *testing.T) {
+	payload := bytes.Repeat([]byte("c"), 512)
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "complete.bin")
+	if err := os.WriteFile(dst, payload, 0o666); err != nil {
+		t.Fatalf("write complete file: %v", err)
+	}
+
+	calls := 0
+	fake := &fakeBackend{
+		logger: logs.NewGen3Logger(nil, "", ""),
+		data:   payload,
+		size:   int64(len(payload)),
+		doFunc: func(_ context.Context, _ *common.FileDownloadResponseObject) (*http.Response, error) {
+			calls++
+			return newDownloadResponse("https://download.example.com/object", payload, http.StatusOK), nil
+		},
+	}
+	dc := &fakeDrsClient{backend: fake}
+
+	err := DownloadToPathWithOptions(
+		context.Background(),
+		dc,
+		fake,
+		fake.Logger().Logger,
+		"guid-complete",
+		dst,
+		"",
+		DownloadOptions{MultipartThreshold: 1 * common.GB, ChunkSize: 64 * common.MB, Concurrency: 2},
+	)
+	if err != nil {
+		t.Fatalf("download call failed: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("expected no backend download calls, got %d", calls)
 	}
 }
 

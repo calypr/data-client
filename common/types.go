@@ -73,3 +73,21 @@ type ManifestObject struct {
 	Title     string `json:"title"`
 	Size      int64  `json:"size"`
 }
+ 
+// ShepherdInitRequestObject represents the payload sent to Shepherd
+type ShepherdInitRequestObject struct {
+	Filename string         `json:"file_name"`
+	Authz    ShepherdAuthz  `json:"authz"`
+	Aliases  []string       `json:"aliases"`
+	Metadata map[string]any `json:"metadata"`
+}
+ 
+type ShepherdAuthz struct {
+	Version       string   `json:"version"`
+	ResourcePaths []string `json:"resource_paths"`
+}
+ 
+type PresignedURLResponse struct {
+	GUID string `json:"guid"`
+	URL  string `json:"upload_url"`
+}

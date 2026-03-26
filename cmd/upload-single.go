@@ -31,6 +31,7 @@ func init() {
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
+			bk := g3i.DRSClient()
 
 			req := common.FileUploadRequestObject{
 				SourcePath: filePath,
@@ -38,7 +39,7 @@ func init() {
 				Bucket:     bucketName,
 				GUID:       guid,
 			}
-			err = upload.UploadSingle(context.Background(), g3i, req, true)
+			err = upload.UploadSingle(context.Background(), bk, logger, req, true)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}

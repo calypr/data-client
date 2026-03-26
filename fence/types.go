@@ -43,6 +43,7 @@ type MultipartCompleteRequestObject struct {
 
 type S3Bucket struct {
 	EndpointURL string   `json:"endpoint_url"`
+	Provider    string   `json:"provider,omitempty"`
 	Programs    []string `json:"programs,omitempty"`
 	Region      string   `json:"region"`
 }

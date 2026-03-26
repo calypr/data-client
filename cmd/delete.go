@@ -29,7 +29,7 @@ If no profile is specified, "default" profile is used for authentication.`,
 				logger.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
-			msg, err := g3i.Fence().DeleteRecord(context.Background(), guid)
+			msg, err := g3i.FenceClient().DeleteRecord(context.Background(), guid)
 			if err != nil {
 				logger.Fatal(err)
 			}

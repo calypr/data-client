@@ -7,12 +7,15 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/conf"
+	"github.com/calypr/data-client/credentials"
+	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/fence"
-	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
 	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
+	"github.com/calypr/data-client/transfer"
+	gen3signer "github.com/calypr/data-client/transfer/signer/gen3"
 	version "github.com/hashicorp/go-version"
 )
 
@@ -20,13 +23,12 @@ import (
 
 type Gen3Interface interface {
 	request.RequestInterface
-	GetCredential() *conf.Credential
 	Logger() *logs.Gen3Logger
-	ExportCredential(ctx context.Context, cred *conf.Credential) error
-	Fence() fence.FenceInterface
-	Indexd() indexd.IndexdInterface
-	Sower() sower.SowerInterface
-	Requestor() requestor.RequestorInterface
+	Credentials() credentials.Manager
+	DRSClient() drs.ServerClient
+	FenceClient() fence.FenceInterface
+	RequestorClient() requestor.RequestorInterface
+	SowerClient() sower.SowerInterface
 }
 
 func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logger, opts ...Option) Gen3Interface {
@@ -66,7 +68,7 @@ func (g *Gen3Client) initializeClients() {
 		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
 	}
 	if shouldInit(IndexdClient) {
-		g.indexd = indexd.NewIndexdClient(g.RequestInterface, g.credential, g.logger.Logger)
+		g.indexd = drs.NewDrsClient(g.RequestInterface, g.credential, g.logger.Logger)
 	}
 	if shouldInit(SowerClient) {
 		g.sower = sower.NewSowerClient(g.RequestInterface, g.credential.APIEndpoint)
@@ -79,14 +81,17 @@ func (g *Gen3Client) initializeClients() {
 type Gen3Client struct {
 	Ctx       context.Context
 	fence     fence.FenceInterface
-	indexd    indexd.IndexdInterface
+	indexd    drs.Client
+	server    drs.ServerClient
 	sower     sower.SowerInterface
 	requestor requestor.RequestorInterface
 	config    conf.ManagerInterface
 	request.RequestInterface
 
 	credential *conf.Credential
+	creds      credentials.Manager
 	logger     *logs.Gen3Logger
+	transfer   transfer.Backend
 
 	requestedClients []ClientType
 }
@@ -108,31 +113,38 @@ func WithClients(clients ...ClientType) Option {
 	}
 }
 
-func (g *Gen3Client) Fence() fence.FenceInterface {
+func (g *Gen3Client) DRSClient() drs.ServerClient {
+	if g.server != nil {
+		return g.server
+	}
+	if g.transfer != nil {
+		g.server = drs.ComposeServerClient(g.indexd, g.transfer)
+		return g.server
+	}
+	if g.fence == nil {
+		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
+	}
+	if g.indexd == nil {
+		g.indexd = drs.NewDrsClient(g.RequestInterface, g.credential, g.logger.Logger)
+	}
+	g.transfer = transfer.New(g.RequestInterface, g.logger, gen3signer.New(g.RequestInterface, g.credential, g.indexd, g.fence))
+	g.server = drs.ComposeServerClient(g.indexd, g.transfer)
+	return g.server
+}
+
+func (g *Gen3Client) FenceClient() fence.FenceInterface {
 	return g.fence
 }
 
-func (g *Gen3Client) Indexd() indexd.IndexdInterface {
-	return g.indexd
-}
-
-func (g *Gen3Client) Sower() sower.SowerInterface {
-	return g.sower
-}
-
-func (g *Gen3Client) Requestor() requestor.RequestorInterface {
+func (g *Gen3Client) RequestorClient() requestor.RequestorInterface {
 	return g.requestor
 }
 
-func (g *Gen3Client) Logger() *logs.Gen3Logger {
-	return g.logger
+func (g *Gen3Client) SowerClient() sower.SowerInterface {
+	return g.sower
 }
 
-func (g *Gen3Client) GetCredential() *conf.Credential {
-	return g.credential
-}
-
-func (g *Gen3Client) ExportCredential(ctx context.Context, cred *conf.Credential) error {
+func (g *Gen3Client) exportCredential(ctx context.Context, cred *conf.Credential) error {
 	if cred.Profile == "" {
 		return fmt.Errorf("profile name is required")
 	}
@@ -186,6 +198,25 @@ func (g *Gen3Client) ExportCredential(ctx context.Context, cred *conf.Credential
 	}
 
 	return nil
+}
+
+type gen3Credentials struct {
+	client *Gen3Client
+}
+
+func (c *gen3Credentials) Current() *conf.Credential {
+	return c.client.credential
+}
+
+func (c *gen3Credentials) Export(ctx context.Context, cred *conf.Credential) error {
+	return c.client.exportCredential(ctx, cred)
+}
+
+func (g *Gen3Client) Credentials() credentials.Manager {
+	if g.creds == nil {
+		g.creds = &gen3Credentials{client: g}
+	}
+	return g.creds
 }
 
 // EnsureValidCredential checks if the credential is valid and refreshes it if the access token is expired but the API key is valid.
@@ -245,3 +276,4 @@ func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...Option) (
 
 	return client, nil
 }
+func (g *Gen3Client) Logger() *logs.Gen3Logger { return g.logger }

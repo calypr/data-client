@@ -7,8 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/calypr/data-client/backend"
 	"github.com/calypr/data-client/common"
+	"github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/transfer"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -16,7 +17,8 @@ import (
 // DownloadMultiple is the public entry point called from g3cmd
 func DownloadMultiple(
 	ctx context.Context,
-	bk backend.Backend,
+	dc drs.Client,
+	bk transfer.Downloader,
 	objects []common.ManifestObject,
 	downloadPath string,
 	filenameFormat string,
@@ -52,7 +54,7 @@ func DownloadMultiple(
 	}
 
 	// === Warnings and user confirmation ===
-	if err := handleWarningsAndConfirmation(ctx, logger, downloadPath, filenameFormat, rename, noPrompt); err != nil {
+	if err := handleWarningsAndConfirmation(ctx, logger.Logger, downloadPath, filenameFormat, rename, noPrompt); err != nil {
 		return err // aborted by user
 	}
 
@@ -62,7 +64,7 @@ func DownloadMultiple(
 	}
 
 	// === Prepare files (metadata + local validation) ===
-	toDownload, skipped, renamed, err := prepareFiles(ctx, bk, objects, downloadPath, filenameFormat, rename, skipCompleted, protocol)
+	toDownload, skipped, renamed, err := prepareFiles(ctx, dc, bk, objects, downloadPath, filenameFormat, rename, skipCompleted, protocol)
 	if err != nil {
 		return err
 	}
@@ -77,8 +79,8 @@ func DownloadMultiple(
 
 	// === Final summary ===
 	logger.InfoContext(ctx, fmt.Sprintf("%d files downloaded successfully.", downloaded))
-	printRenamed(ctx, logger, renamed)
-	printSkipped(ctx, logger, skipped)
+	printRenamed(ctx, logger.Logger, renamed)
+	printSkipped(ctx, logger.Logger, skipped)
 
 	if downloadErr != nil {
 		logger.WarnContext(ctx, "Some downloads failed. See errors above.")
@@ -109,7 +111,8 @@ func handleWarningsAndConfirmation(ctx context.Context, logger *slog.Logger, dow
 // prepareFiles gathers metadata, checks local files, collects skips/renames
 func prepareFiles(
 	ctx context.Context,
-	bk backend.Backend,
+	dc drs.Client,
+	bk transfer.Downloader,
 	objects []common.ManifestObject,
 	downloadPath, filenameFormat string,
 	rename, skipCompleted bool,
@@ -137,7 +140,7 @@ func prepareFiles(
 		var err error
 		if info.Name == "" || info.Size == 0 {
 			// Very strict object id checking
-			info, err = GetFileInfo(ctx, bk, obj.GUID, protocol, downloadPath, filenameFormat, rename, &renamed)
+			info, err = GetFileInfo(ctx, dc, logger, obj.GUID, protocol, downloadPath, filenameFormat, rename, &renamed)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -150,7 +153,7 @@ func prepareFiles(
 		}
 
 		if !rename {
-			validateLocalFileStat(logger, &fdr, int64(info.Size), skipCompleted)
+			validateLocalFileStat(logger.Logger, &fdr, int64(info.Size), skipCompleted)
 		}
 
 		if fdr.Skip {

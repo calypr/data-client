@@ -3,18 +3,12 @@ package tests
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/backend/gen3"
-	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/download"
 	drs "github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/mocks"
-	req "github.com/calypr/data-client/request"
 	"go.uber.org/mock/gomock"
 )
 
@@ -26,49 +20,21 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
-	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
 
-	// Expect credential access
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	// New behavior: tries GetObjectByHash first
+	mockIndexd.EXPECT().
+		GetObjectByHash(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("not a hash"))
 
-	// Shepherd is available
-	mockFence.EXPECT().
-		CheckForShepherdAPI(gomock.Any()).
-		Return(true, nil)
+	mockIndexd.EXPECT().
+		GetObject(gomock.Any(), testGUID).
+		Return(&drs.DRSObject{Id: testGUID, Name: &testFileName, Size: testFileSize}, nil)
 
-	// Mock successful Shepherd response
-	testBody := `{
-		"record": {
-			"file_name": "test-file",
-			"size": 120,
-			"did": "000000-0000000-0000000-000000"
-		}
-	}`
-	resp := &http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(testBody)),
-	}
-
-	// Expect request to Shepherd
-	mockGen3.EXPECT().
-		New(gomock.Any(), gomock.Any()).
-		Return(&req.RequestBuilder{Url: "/objects/" + testGUID}).
-		AnyTimes()
-
-	mockGen3.EXPECT().
-		Do(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx any, rb *req.RequestBuilder) (*http.Response, error) {
-			return resp, nil
-		})
-
-	// Optional: logger
-	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
+	logger := logs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	bk := gen3.NewGen3Backend(mockGen3)
-	info, err := download.GetFileInfo(context.Background(), bk, testGUID, "", "", "original", true, &skipped)
+	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Error(err)
 	}
@@ -90,46 +56,21 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
-	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
 
-	dummyCred := &conf.Credential{}
-	mockGen3.EXPECT().GetCredential().Return(dummyCred).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	// New behavior: tries GetObjectByHash first
+	mockIndexd.EXPECT().
+		GetObjectByHash(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("not a hash"))
 
-	// 1. Shepherd is available
-	mockFence.EXPECT().
-		CheckForShepherdAPI(gomock.Any()).
-		Return(true, nil).
-		Times(1)
-
-	// 2. Shepherd request fails → triggers fallback to Indexd
-	mockGen3.EXPECT().
-		New(gomock.Any(), gomock.Any()).
-		Return(&req.RequestBuilder{Url: "/objects/" + testGUID}).
-		AnyTimes()
-
-	mockGen3.EXPECT().
-		Do(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("Shepherd error")).
-		Times(1) // only the Shepherd call
-
-	// 3. Fallback: Indexd request
-	mockIndexd := mocks.NewMockIndexdInterface(mockCtrl)
-	mockGen3.EXPECT().Indexd().Return(mockIndexd).AnyTimes()
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
 		Return(nil, fmt.Errorf("Indexd error"))
 
-	// Logger
-	mockGen3.EXPECT().
-		Logger().
-		Return(logs.NewGen3Logger(nil, "", "test")).
-		AnyTimes()
+	logger := logs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	bk := gen3.NewGen3Backend(mockGen3)
-	info, err := download.GetFileInfo(context.Background(), bk, testGUID, "", "", "original", true, &skipped)
+	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,26 +98,21 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
-	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
 
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	// New behavior: tries GetObjectByHash first
+	mockIndexd.EXPECT().
+		GetObjectByHash(gomock.Any(), gomock.Any()).
+		Return(nil, fmt.Errorf("not a hash"))
 
-	// No Shepherd
-	mockFence.EXPECT().CheckForShepherdAPI(gomock.Any()).Return(false, nil)
-
-	mockIndexd := mocks.NewMockIndexdInterface(mockCtrl)
-	mockGen3.EXPECT().Indexd().Return(mockIndexd).AnyTimes()
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
-		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
+		Return(&drs.DRSObject{Id: testGUID, Name: &testFileName, Size: testFileSize}, nil)
 
-	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
+	logger := logs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	bk := gen3.NewGen3Backend(mockGen3)
-	info, err := download.GetFileInfo(context.Background(), bk, testGUID, "", "", "original", true, &skipped)
+	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Fatal(err)
 	}

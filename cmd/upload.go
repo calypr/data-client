@@ -41,10 +41,11 @@ func init() {
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
+			bk := g3i.DRSClient()
 
 			logger := g3i.Logger()
 			if hasMetadata {
-				hasShepherd, err := g3i.Fence().CheckForShepherdAPI(ctx)
+				hasShepherd, err := g3i.FenceClient().CheckForShepherdAPI(ctx)
 				if err != nil {
 					logger.Printf("WARNING: Error when checking for Shepherd API: %v", err)
 				} else {
@@ -93,7 +94,7 @@ func init() {
 				return
 			}
 
-			singlePartObjects, multipartObjects := upload.SeparateSingleAndMultipartUploads(g3i, uploadRequestObjects)
+			singlePartObjects, multipartObjects := upload.SeparateSingleAndMultipartUploads(bk, uploadRequestObjects)
 
 			if batch {
 				workers, respCh, errCh, batchFURObjects := upload.InitBatchUploadChannels(numParallel, len(singlePartObjects))
@@ -102,12 +103,12 @@ func init() {
 					if len(batchFURObjects) < workers {
 						batchFURObjects = append(batchFURObjects, furObject)
 					} else {
-						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+						upload.BatchUpload(ctx, bk, Logger, batchFURObjects, workers, respCh, errCh, bucketName)
 						batchFURObjects = []common.FileUploadRequestObject{furObject}
 					}
 				}
 				if len(batchFURObjects) > 0 {
-					upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
+					upload.BatchUpload(ctx, bk, Logger, batchFURObjects, workers, respCh, errCh, bucketName)
 				}
 
 				if len(errCh) > 0 {
@@ -133,12 +134,12 @@ func init() {
 						logger.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
 						continue
 					}
-					upload.UploadSingle(ctx, g3i, furObject, true)
+					upload.UploadSingle(ctx, bk, Logger, furObject, true)
 				}
 			}
 
 			if len(multipartObjects) > 0 {
-				cred := g3i.GetCredential()
+				cred := g3i.Credentials().Current()
 				if cred.UseShepherd == "true" ||
 					cred.UseShepherd == "" && common.DefaultUseShepherd == true {
 					logger.Printf("error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again", cred.Profile)
@@ -152,7 +153,7 @@ func init() {
 						logger.Println("File open error: " + err.Error())
 						continue
 					}
-					err = upload.MultipartUpload(ctx, g3i, furObject, file, true)
+					err = upload.MultipartUpload(ctx, bk, furObject, file, true)
 					if err != nil {
 						g3i.Logger().Println(err.Error())
 					} else {
@@ -161,7 +162,7 @@ func init() {
 				}
 			}
 			if len(g3i.Logger().GetSucceededLogMap()) == 0 {
-				upload.RetryFailedUploads(ctx, g3i, g3i.Logger().GetFailedLogMap())
+				upload.RetryFailedUploads(ctx, bk, Logger, g3i.Logger().GetFailedLogMap())
 			}
 			g3i.Logger().Scoreboard().PrintSB()
 		},

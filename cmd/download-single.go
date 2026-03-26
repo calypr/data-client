@@ -4,13 +4,13 @@ import (
 	"context"
 	"log"
 
-	"github.com/calypr/data-client/backend"
-	drsbackend "github.com/calypr/data-client/backend/drs"
-	gen3backend "github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/download"
+	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/localclient"
 	"github.com/calypr/data-client/logs"
+	"github.com/calypr/data-client/transfer"
 	"github.com/spf13/cobra"
 )
 
@@ -35,17 +35,22 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithSucceededLog(), logs.WithScoreboard())
 			defer logCloser()
 
-			g3I, err := g3client.NewGen3Interface(profile, logger)
-			if err != nil {
-				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
-			}
-
-			var bk backend.Backend
+			var dc drs.Client
+			var bk transfer.Backend
 			if backendType == "drs" {
-				cred := g3I.GetCredential()
-				bk = drsbackend.NewDrsBackend(cred.APIEndpoint, logger.Logger, g3I)
+				lc, err := localclient.NewLocalInterface(profile, logger)
+				if err != nil {
+					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+				}
+				dc = lc.DRSClient()
+				bk = lc.DRSClient()
 			} else {
-				bk = gen3backend.NewGen3Backend(g3I)
+				g3I, err := g3client.NewGen3Interface(profile, logger)
+				if err != nil {
+					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
+				}
+				dc = g3I.DRSClient()
+				bk = g3I.DRSClient()
 			}
 
 			objects := []common.ManifestObject{
@@ -53,8 +58,9 @@ func init() {
 					GUID: guid,
 				},
 			}
-			err = download.DownloadMultiple(
+			err := download.DownloadMultiple(
 				context.Background(),
+				dc,
 				bk,
 				objects,
 				downloadPath,
@@ -66,7 +72,7 @@ func init() {
 				skipCompleted,
 			)
 			if err != nil {
-				g3I.Logger().Println(err.Error())
+				logger.Println(err.Error())
 			}
 		},
 	}

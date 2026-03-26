@@ -32,14 +32,14 @@ func init() {
 				log.Fatalf("Fatal NewGen3Interface error: %s\n", err)
 			}
 
-			resourceAccess, err := g3i.Fence().CheckPrivileges(context.Background())
+			resourceAccess, err := g3i.FenceClient().CheckPrivileges(context.Background())
 			if err != nil {
 				g3i.Logger().Fatalf("Fatal authentication error: %s\n", err)
 			} else {
 				if len(resourceAccess) == 0 {
-					g3i.Logger().Printf("\nYou don't currently have access to any resources at %s\n", g3i.GetCredential().APIEndpoint)
+					g3i.Logger().Printf("\nYou don't currently have access to any resources at %s\n", g3i.Credentials().Current().APIEndpoint)
 				} else {
-					g3i.Logger().Printf("\nYou have access to the following resource(s) at %s:\n", g3i.GetCredential().APIEndpoint)
+					g3i.Logger().Printf("\nYou have access to the following resource(s) at %s:\n", g3i.Credentials().Current().APIEndpoint)
 
 					// Sort by resource name
 					resources := make([]string, 0, len(resourceAccess))

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/data-client/hash"
 	"github.com/google/uuid"
 )
 
@@ -129,15 +128,18 @@ func BuildDrsObjWithPrefix(fileName string, checksum string, size int64, drsId s
 
 	drsObj := DRSObject{
 		Id:   drsId,
-		Name: fileName,
+		Name: &fileName,
 		AccessMethods: []AccessMethod{{
 			Type: "s3",
-			AccessURL: AccessURL{
-				URL: fileURL,
+			AccessUrl: &AccessURL{
+				Url: fileURL,
 			},
 			Authorizations: &authorizations,
 		}},
-		Checksums: hash.HashInfo{SHA256: checksum},
+		Checksums: []Checksum{{
+			Type: "sha256",
+			Checksum: checksum,
+		}},
 		Size:      size,
 	}
 
@@ -148,36 +150,32 @@ func BuildDrsObjWithPrefix(fileName string, checksum string, size int64, drsId s
 // This is needed because the server expects checksums as an array of Checksum objects,
 // while DRSObject uses HashInfo (which marshals to the correct format but has different Go types).
 func ConvertToCandidate(obj *DRSObject) DRSObjectCandidate {
-	// Convert HashInfo to []Checksum
-	var checksums []Checksum
-	if obj.Checksums.MD5 != "" {
-		checksums = append(checksums, Checksum{Type: hash.ChecksumTypeMD5, Checksum: NormalizeOid(obj.Checksums.MD5)})
+	var name string
+	if obj.Name != nil {
+		name = *obj.Name
 	}
-	if obj.Checksums.SHA != "" {
-		checksums = append(checksums, Checksum{Type: hash.ChecksumTypeSHA1, Checksum: NormalizeOid(obj.Checksums.SHA)})
+	var version string
+	if obj.Version != nil {
+		version = *obj.Version
 	}
-	if obj.Checksums.SHA256 != "" {
-		checksums = append(checksums, Checksum{Type: hash.ChecksumTypeSHA256, Checksum: NormalizeOid(obj.Checksums.SHA256)})
+	var mimeType string
+	if obj.MimeType != nil {
+		mimeType = *obj.MimeType
 	}
-	if obj.Checksums.SHA512 != "" {
-		checksums = append(checksums, Checksum{Type: hash.ChecksumTypeSHA512, Checksum: NormalizeOid(obj.Checksums.SHA512)})
-	}
-	if obj.Checksums.CRC != "" {
-		checksums = append(checksums, Checksum{Type: hash.ChecksumTypeCRC32C, Checksum: NormalizeOid(obj.Checksums.CRC)})
-	}
-	if obj.Checksums.ETag != "" {
-		checksums = append(checksums, Checksum{Type: hash.ChecksumTypeETag, Checksum: NormalizeOid(obj.Checksums.ETag)})
+	var description string
+	if obj.Description != nil {
+		description = *obj.Description
 	}
 
 	return DRSObjectCandidate{
-		Name:          obj.Name,
+		Name:          name,
 		Size:          obj.Size,
-		Version:       obj.Version,
-		MimeType:      obj.MimeType,
-		Checksums:     checksums,
+		Version:       version,
+		MimeType:      mimeType,
+		Checksums:     obj.Checksums,
 		AccessMethods: obj.AccessMethods,
-		Contents:      obj.Contents,
-		Description:   obj.Description,
+		Contents:      nil, // ContentsObject in gen is different
+		Description:   description,
 		Aliases:       obj.Aliases,
 	}
 }

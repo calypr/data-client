@@ -18,10 +18,10 @@ func TestObjectBuilderBuildSuccess(t *testing.T) {
 	if obj.Id != "did-1" {
 		t.Fatalf("unexpected Id: %s", obj.Id)
 	}
-	if obj.Name != "file.txt" {
-		t.Fatalf("unexpected Name: %s", obj.Name)
+	if *obj.Name != "file.txt" {
+		t.Fatalf("unexpected Name: %s", *obj.Name)
 	}
-	if obj.Checksums.SHA256 != "sha-256" {
+	if obj.Checksums[0].Checksum != "sha-256" {
 		t.Fatalf("unexpected checksum: %v", obj.Checksums)
 	}
 	if obj.Size != 12 {
@@ -30,8 +30,8 @@ func TestObjectBuilderBuildSuccess(t *testing.T) {
 	if len(obj.AccessMethods) != 1 {
 		t.Fatalf("expected 1 access method, got %d", len(obj.AccessMethods))
 	}
-	if !strings.Contains(obj.AccessMethods[0].AccessURL.URL, "bucket/test/project/sha-256") {
-		t.Fatalf("unexpected access URL: %s", obj.AccessMethods[0].AccessURL.URL)
+	if !strings.Contains(obj.AccessMethods[0].AccessUrl.Url, "bucket/test/project/sha-256") {
+		t.Fatalf("unexpected access URL: %s", obj.AccessMethods[0].AccessUrl.Url)
 	}
 	if len(obj.Aliases) != 0 {
 		t.Fatalf("expected no aliases, got: %#v", obj.Aliases)

@@ -8,16 +8,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/backend/gen3"
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/download"
 	"github.com/calypr/data-client/fence"
+	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/mocks"
 	"github.com/calypr/data-client/request"
+	"github.com/calypr/data-client/transfer"
+	gen3signer "github.com/calypr/data-client/transfer/signer/gen3"
 	"github.com/calypr/data-client/upload"
 	"go.uber.org/mock/gomock"
 )
+
+type staticCredentialsManager struct {
+	cred *conf.Credential
+}
+
+func (s *staticCredentialsManager) Current() *conf.Credential { return s.cred }
+func (s *staticCredentialsManager) Export(ctx context.Context, cred *conf.Credential) error {
+	return nil
+}
 
 func TestGetDownloadResponse_withShepherd(t *testing.T) {
 	testGUID := "000000-0000000-0000000-000000"
@@ -29,10 +40,13 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
 	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockDrs := mocks.NewMockDrsClient(mockCtrl)
 
 	// Mock credential
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().Credentials().Return(&staticCredentialsManager{cred: &conf.Credential{}}).AnyTimes()
+	mockGen3.EXPECT().FenceClient().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().DRSClient().Return(mockDrs).AnyTimes()
+	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
 
 	mockFence.EXPECT().
 		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
@@ -62,7 +76,7 @@ func TestGetDownloadResponse_withShepherd(t *testing.T) {
 		Range:    0,
 	}
 
-	bk := gen3.NewGen3Backend(mockGen3)
+	bk := transfer.New(mockGen3, logs.NewGen3Logger(nil, "", "test"), gen3signer.New(mockGen3, &conf.Credential{}, mockDrs, mockFence))
 	err := download.GetDownloadResponse(context.Background(), bk, &mockFDRObj, "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -83,9 +97,12 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
 	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockDrs := mocks.NewMockDrsClient(mockCtrl)
 
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().Credentials().Return(&staticCredentialsManager{cred: &conf.Credential{}}).AnyTimes()
+	mockGen3.EXPECT().FenceClient().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().DRSClient().Return(mockDrs).AnyTimes()
+	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
 
 	mockFence.EXPECT().
 		GetDownloadPresignedUrl(gomock.Any(), testGUID, "").
@@ -115,7 +132,7 @@ func TestGetDownloadResponse_noShepherd(t *testing.T) {
 		Range:    0,
 	}
 
-	bk := gen3.NewGen3Backend(mockGen3)
+	bk := transfer.New(mockGen3, logs.NewGen3Logger(nil, "", "test"), gen3signer.New(mockGen3, &conf.Credential{}, mockDrs, mockFence))
 	err := download.GetDownloadResponse(context.Background(), bk, &mockFDRObj, "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -137,9 +154,12 @@ func TestGeneratePresignedUploadURL_noShepherd(t *testing.T) {
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
 	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockDrs := mocks.NewMockDrsClient(mockCtrl)
 
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{}).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().Credentials().Return(&staticCredentialsManager{cred: &conf.Credential{}}).AnyTimes()
+	mockGen3.EXPECT().FenceClient().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().DRSClient().Return(mockDrs).AnyTimes()
+	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
 
 	// No Shepherd
 	mockFence.EXPECT().
@@ -153,7 +173,8 @@ func TestGeneratePresignedUploadURL_noShepherd(t *testing.T) {
 			GUID: mockGUID,
 		}, nil)
 
-	resp, err := upload.GeneratePresignedUploadURL(context.Background(), mockGen3, testFilename, common.FileMetadata{}, testBucketname)
+	bk := transfer.New(mockGen3, logs.NewGen3Logger(nil, "", "test"), gen3signer.New(mockGen3, &conf.Credential{}, mockDrs, mockFence))
+	resp, err := upload.GeneratePresignedUploadURL(context.Background(), bk, testFilename, common.FileMetadata{}, testBucketname)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -161,8 +182,8 @@ func TestGeneratePresignedUploadURL_noShepherd(t *testing.T) {
 	if resp.URL != mockPresignedURL {
 		t.Errorf("Wanted URL %s, got %s", mockPresignedURL, resp.URL)
 	}
-	if resp.GUID != mockGUID {
-		t.Errorf("Wanted GUID %s, got %s", mockGUID, resp.GUID)
+	if resp.GUID != "" {
+		t.Errorf("Wanted empty GUID, got %s", resp.GUID)
 	}
 }
 
@@ -183,9 +204,12 @@ func TestGeneratePresignedUploadURL_withShepherd(t *testing.T) {
 
 	mockGen3 := mocks.NewMockGen3Interface(mockCtrl)
 	mockFence := mocks.NewMockFenceInterface(mockCtrl)
+	mockDrs := mocks.NewMockDrsClient(mockCtrl)
 
-	mockGen3.EXPECT().GetCredential().Return(&conf.Credential{AccessToken: "token"}).AnyTimes()
-	mockGen3.EXPECT().Fence().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().Credentials().Return(&staticCredentialsManager{cred: &conf.Credential{AccessToken: "token"}}).AnyTimes()
+	mockGen3.EXPECT().FenceClient().Return(mockFence).AnyTimes()
+	mockGen3.EXPECT().DRSClient().Return(mockDrs).AnyTimes()
+	mockGen3.EXPECT().Logger().Return(logs.NewGen3Logger(nil, "", "test")).AnyTimes()
 
 	// Shepherd is deployed
 	mockFence.EXPECT().
@@ -204,7 +228,8 @@ func TestGeneratePresignedUploadURL_withShepherd(t *testing.T) {
 		Do(gomock.Any(), gomock.Any()).
 		Return(shepherdResp, nil)
 
-	respObj, err := upload.GeneratePresignedUploadURL(context.Background(), mockGen3, testFilename, testMetadata, testBucketname)
+	bk := transfer.New(mockGen3, logs.NewGen3Logger(nil, "", "test"), gen3signer.New(mockGen3, &conf.Credential{AccessToken: "token", APIEndpoint: "https://example.com"}, mockDrs, mockFence))
+	respObj, err := upload.GeneratePresignedUploadURL(context.Background(), bk, testFilename, testMetadata, testBucketname)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -212,7 +237,7 @@ func TestGeneratePresignedUploadURL_withShepherd(t *testing.T) {
 	if respObj.URL != mockPresignedURL {
 		t.Errorf("Wanted URL %s, got %s", mockPresignedURL, respObj.URL)
 	}
-	if respObj.GUID != mockGUID {
-		t.Errorf("Wanted GUID %s, got %s", mockGUID, respObj.GUID)
+	if respObj.GUID != "" {
+		t.Errorf("Wanted empty GUID, got %s", respObj.GUID)
 	}
 }
