@@ -20,12 +20,6 @@ OAG_IMAGE ?= openapitools/openapi-generator-cli:latest
 REDOCLY_IMAGE ?= redocly/cli:latest
 YQ_IMAGE ?= mikefarah/yq:latest
 GEN_OUT ?= .tmp/apigen.gen
-LFS_OPENAPI ?= apigen/api/lfs.openapi.yaml
-LFS_GEN_OUT ?= .tmp/apigen-lfs.gen
-BUCKET_OPENAPI ?= apigen/api/bucket.openapi.yaml
-BUCKET_GEN_OUT ?= .tmp/apigen-bucket.gen
-METRICS_OPENAPI ?= apigen/api/metrics.openapi.yaml
-METRICS_GEN_OUT ?= .tmp/apigen-metrics.gen
 INTERNAL_OPENAPI ?= apigen/api/internal.openapi.yaml
 INTERNAL_GEN_OUT ?= .tmp/apigen-internal.gen
 SCHEMAS_SUBMODULE ?= ga4gh/data-repository-service-schemas
@@ -112,73 +106,7 @@ gen:
 	mkdir -p apigen/drs; \
 	find "$(GEN_OUT)" -maxdepth 1 -type f -name '*.go' -exec mv {} apigen/drs/ \; ; \
 	echo "Generated DRS client models into ./apigen/drs"; \
-	if [[ -f "$(LFS_OPENAPI)" ]]; then $(MAKE) gen-lfs; fi; \
-	if [[ -f "$(BUCKET_OPENAPI)" ]]; then $(MAKE) gen-bucket; fi; \
-	if [[ -f "$(METRICS_OPENAPI)" ]]; then $(MAKE) gen-metrics; fi; \
 	if [[ -f "$(INTERNAL_OPENAPI)" ]]; then $(MAKE) gen-internal; fi
-
-.PHONY: gen-lfs
-gen-lfs:
-	@set -euo pipefail; \
-	rm -rf "$(LFS_GEN_OUT)"; \
-	docker run --rm --pull=missing \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(OAG_IMAGE) generate \
-	  -g go \
-	  --skip-validate-spec \
-	  --git-repo-id data-client \
-	  --git-user-id calypr \
-	  -i /local/apigen/api/lfs.openapi.yaml \
-	  -o /local/$(LFS_GEN_OUT) \
-	  --global-property models,modelDocs=false,modelTests=false,supportingFiles=utils.go \
-	  --additional-properties packageName=lfsapi,enumClassPrefix=true; \
-	rm -rf apigen/lfsapi; \
-	mkdir -p apigen/lfsapi; \
-	find "$(LFS_GEN_OUT)" -maxdepth 1 -type f -name '*.go' -exec mv {} apigen/lfsapi/ \; ; \
-	echo "Generated LFS models into ./apigen/lfsapi"
-
-.PHONY: gen-bucket
-gen-bucket:
-	@set -euo pipefail; \
-	rm -rf "$(BUCKET_GEN_OUT)"; \
-	docker run --rm --pull=missing \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(OAG_IMAGE) generate \
-	  -g go \
-	  --skip-validate-spec \
-	  --git-repo-id data-client \
-	  --git-user-id calypr \
-	  -i /local/apigen/api/bucket.openapi.yaml \
-	  -o /local/$(BUCKET_GEN_OUT) \
-	  --global-property models,modelDocs=false,modelTests=false,supportingFiles=utils.go \
-	  --additional-properties packageName=bucketapi,enumClassPrefix=true; \
-	rm -rf apigen/bucketapi; \
-	mkdir -p apigen/bucketapi; \
-	find "$(BUCKET_GEN_OUT)" -maxdepth 1 -type f -name '*.go' -exec mv {} apigen/bucketapi/ \; ; \
-	echo "Generated Bucket models into ./apigen/bucketapi"
-
-.PHONY: gen-metrics
-gen-metrics:
-	@set -euo pipefail; \
-	rm -rf "$(METRICS_GEN_OUT)"; \
-	docker run --rm --pull=missing \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(OAG_IMAGE) generate \
-	  -g go \
-	  --skip-validate-spec \
-	  --git-repo-id data-client \
-	  --git-user-id calypr \
-	  -i /local/apigen/api/metrics.openapi.yaml \
-	  -o /local/$(METRICS_GEN_OUT) \
-	  --global-property models,modelDocs=false,modelTests=false,supportingFiles=utils.go \
-	  --additional-properties packageName=metricsapi,enumClassPrefix=true; \
-	rm -rf apigen/metricsapi; \
-	mkdir -p apigen/metricsapi; \
-	find "$(METRICS_GEN_OUT)" -maxdepth 1 -type f -name '*.go' -exec mv {} apigen/metricsapi/ \; ; \
-	echo "Generated Metrics models into ./apigen/metricsapi"
 
 .PHONY: gen-internal
 gen-internal:
@@ -217,4 +145,3 @@ clean:
 	@rm -f $(BIN_DIR)/$(TARGET_NAME)
 	@rm -f coverage.out coverage.html
 	@rm -rf .tmp
-
