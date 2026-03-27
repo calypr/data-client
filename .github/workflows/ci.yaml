@@ -1,0 +1,40 @@
+name: Data Client CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - development
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint and Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: GOTOOLCHAIN=auto go mod download
+
+      - name: Run go vet
+        run: GOTOOLCHAIN=auto go vet $(GOTOOLCHAIN=auto go list ./... | grep -v '^github.com/calypr/data-client/tests$')
+
+      - name: Run unit tests
+        run: GOTOOLCHAIN=auto go test -v $(GOTOOLCHAIN=auto go list ./... | grep -v '^github.com/calypr/data-client/tests$')
