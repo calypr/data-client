@@ -3,10 +3,6 @@ name: Data Client CI
 on:
   pull_request:
   push:
-    branches:
-      - development
-      - main
-      - master
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +30,7 @@ jobs:
         run: GOTOOLCHAIN=auto go mod download
 
       - name: Run go vet
-        run: GOTOOLCHAIN=auto go vet $(GOTOOLCHAIN=auto go list ./... | grep -v '^github.com/calypr/data-client/tests$')
+        run: GOTOOLCHAIN=auto go vet ./...
 
       - name: Run unit tests
-        run: GOTOOLCHAIN=auto go test -v $(GOTOOLCHAIN=auto go list ./... | grep -v '^github.com/calypr/data-client/tests$')
+        run: GOTOOLCHAIN=auto go test -v ./...
