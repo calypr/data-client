@@ -20,6 +20,29 @@ type Signer struct {
 	client  drs.Client
 }
 
+type bulkUploadRequest struct {
+	Requests []bulkUploadItem `json:"requests"`
+}
+
+type bulkUploadItem struct {
+	FileID   string `json:"file_id"`
+	Bucket   string `json:"bucket,omitempty"`
+	FileName string `json:"file_name,omitempty"`
+}
+
+type bulkUploadResponse struct {
+	Results []bulkUploadResult `json:"results"`
+}
+
+type bulkUploadResult struct {
+	FileID   string `json:"file_id"`
+	Bucket   string `json:"bucket,omitempty"`
+	FileName string `json:"file_name,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Status   int    `json:"status"`
+	Error    string `json:"error,omitempty"`
+}
+
 func New(baseURL string, req request.RequestInterface, dc drs.Client) *Signer {
 	return &Signer{
 		baseURL: baseURL,
@@ -105,6 +128,78 @@ func (d *Signer) ResolveUploadURL(ctx context.Context, guid string, filename str
 		return "", err
 	}
 	return res.URL, nil
+}
+
+func (d *Signer) ResolveUploadURLs(ctx context.Context, requests []common.UploadURLResolveRequest) ([]common.UploadURLResolveResponse, error) {
+	if len(requests) == 0 {
+		return []common.UploadURLResolveResponse{}, nil
+	}
+
+	u, err := d.buildURL("data/upload/bulk")
+	if err != nil {
+		return nil, err
+	}
+
+	payload := bulkUploadRequest{Requests: make([]bulkUploadItem, 0, len(requests))}
+	for _, req := range requests {
+		fileID := strings.TrimSpace(req.GUID)
+		if fileID == "" {
+			fileID = strings.TrimSpace(req.Filename)
+		}
+		payload.Requests = append(payload.Requests, bulkUploadItem{
+			FileID:   fileID,
+			Bucket:   req.Bucket,
+			FileName: req.Filename,
+		})
+	}
+
+	var out bulkUploadResponse
+	if err := d.doJSONRequest(ctx, http.MethodPost, u, payload, &out); err != nil {
+		return nil, err
+	}
+
+	results := make([]common.UploadURLResolveResponse, len(requests))
+	if len(out.Results) == len(requests) {
+		for i := range requests {
+			r := out.Results[i]
+			results[i] = common.UploadURLResolveResponse{
+				GUID:     requests[i].GUID,
+				Filename: requests[i].Filename,
+				Bucket:   requests[i].Bucket,
+				URL:      r.URL,
+				Status:   r.Status,
+				Error:    r.Error,
+			}
+			if results[i].Status == 0 {
+				results[i].Status = http.StatusOK
+			}
+		}
+		return results, nil
+	}
+
+	// If response count mismatches, align by request order and mark unresolved entries.
+	for i := range requests {
+		results[i] = common.UploadURLResolveResponse{
+			GUID:     requests[i].GUID,
+			Filename: requests[i].Filename,
+			Bucket:   requests[i].Bucket,
+			Status:   http.StatusBadGateway,
+			Error:    "missing result for request",
+		}
+	}
+	for i := range out.Results {
+		if i >= len(results) {
+			break
+		}
+		r := out.Results[i]
+		results[i].URL = r.URL
+		results[i].Status = r.Status
+		results[i].Error = r.Error
+		if results[i].Status == 0 {
+			results[i].Status = http.StatusOK
+		}
+	}
+	return results, nil
 }
 
 func (d *Signer) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {

@@ -41,6 +41,9 @@ func (f *fakeGen3Upload) New(method, url string) *request.RequestBuilder {
 func (f *fakeGen3Upload) ResolveUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
 	return "", fmt.Errorf("not implemented")
 }
+func (f *fakeGen3Upload) ResolveUploadURLs(ctx context.Context, requests []common.UploadURLResolveRequest) ([]common.UploadURLResolveResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 
 func (f *fakeGen3Upload) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
 	resp, err := f.Do(ctx, &request.RequestBuilder{Url: common.FenceDataMultipartInitEndpoint})

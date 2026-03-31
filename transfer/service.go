@@ -15,6 +15,7 @@ type Signer interface {
 	Name() string
 	ResolveDownloadURL(ctx context.Context, guid string, accessID string) (string, error)
 	ResolveUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error)
+	ResolveUploadURLs(ctx context.Context, requests []common.UploadURLResolveRequest) ([]common.UploadURLResolveResponse, error)
 	InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error)
 	GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error)
 	CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error
@@ -52,6 +53,10 @@ func (c *client) ResolveDownloadURL(ctx context.Context, guid string, accessID s
 
 func (c *client) ResolveUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
 	return c.signer.ResolveUploadURL(ctx, guid, filename, metadata, bucket)
+}
+
+func (c *client) ResolveUploadURLs(ctx context.Context, requests []common.UploadURLResolveRequest) ([]common.UploadURLResolveResponse, error) {
+	return c.signer.ResolveUploadURLs(ctx, requests)
 }
 
 func (c *client) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {

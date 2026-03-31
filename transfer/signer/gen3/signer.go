@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -104,6 +105,98 @@ func (g *Signer) ResolveUploadURL(ctx context.Context, guid string, filename str
 		return "", err
 	}
 	return res.URL, nil
+}
+
+func (g *Signer) ResolveUploadURLs(ctx context.Context, requests []common.UploadURLResolveRequest) ([]common.UploadURLResolveResponse, error) {
+	if len(requests) == 0 {
+		return []common.UploadURLResolveResponse{}, nil
+	}
+
+	type bulkUploadRequest struct {
+		Requests []struct {
+			FileID   string `json:"file_id"`
+			Bucket   string `json:"bucket,omitempty"`
+			FileName string `json:"file_name,omitempty"`
+		} `json:"requests"`
+	}
+	type bulkUploadResponse struct {
+		Results []struct {
+			FileID   string `json:"file_id"`
+			Bucket   string `json:"bucket,omitempty"`
+			FileName string `json:"file_name,omitempty"`
+			URL      string `json:"url,omitempty"`
+			Status   int    `json:"status"`
+			Error    string `json:"error,omitempty"`
+		} `json:"results"`
+	}
+
+	payload := bulkUploadRequest{
+		Requests: make([]struct {
+			FileID   string `json:"file_id"`
+			Bucket   string `json:"bucket,omitempty"`
+			FileName string `json:"file_name,omitempty"`
+		}, 0, len(requests)),
+	}
+	for _, req := range requests {
+		fileID := strings.TrimSpace(req.GUID)
+		if fileID == "" {
+			fileID = strings.TrimSpace(req.Filename)
+		}
+		payload.Requests = append(payload.Requests, struct {
+			FileID   string `json:"file_id"`
+			Bucket   string `json:"bucket,omitempty"`
+			FileName string `json:"file_name,omitempty"`
+		}{
+			FileID:   fileID,
+			Bucket:   req.Bucket,
+			FileName: req.Filename,
+		})
+	}
+
+	endpoint := strings.TrimRight(strings.TrimSpace(g.cred.APIEndpoint), "/") + "/data/upload/bulk"
+	rb := g.req.New(http.MethodPost, endpoint)
+	if _, err := rb.WithJSONBody(payload); err != nil {
+		return nil, err
+	}
+	resp, err := g.req.Do(ctx, rb)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("bulk upload URL request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var out bulkUploadResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+
+	results := make([]common.UploadURLResolveResponse, len(requests))
+	for i := range requests {
+		results[i] = common.UploadURLResolveResponse{
+			GUID:     requests[i].GUID,
+			Filename: requests[i].Filename,
+			Bucket:   requests[i].Bucket,
+			Status:   http.StatusBadGateway,
+			Error:    "missing result for request",
+		}
+	}
+	for i := range out.Results {
+		if i >= len(results) {
+			break
+		}
+		r := out.Results[i]
+		results[i].URL = r.URL
+		results[i].Status = r.Status
+		results[i].Error = r.Error
+		if results[i].Status == 0 {
+			results[i].Status = http.StatusOK
+		}
+	}
+	return results, nil
 }
 
 func (g *Signer) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
