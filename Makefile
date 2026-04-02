@@ -14,15 +14,8 @@ BIN_DIR := ./bin
 COVERAGE_THRESHOLD := 30
 PACKAGE_COVERAGE_THRESHOLD := 20
 
-# OpenAPI Generation Variables
-OPENAPI ?= ga4gh/data-repository-service-schemas/openapi/data_repository_service.openapi.yaml
-OAG_IMAGE ?= openapitools/openapi-generator-cli:latest
-REDOCLY_IMAGE ?= redocly/cli:latest
-YQ_IMAGE ?= mikefarah/yq:latest
-GEN_OUT ?= .tmp/apigen.gen
-INTERNAL_OPENAPI ?= apigen/api/internal.openapi.yaml
-INTERNAL_GEN_OUT ?= .tmp/apigen-internal.gen
-SCHEMAS_SUBMODULE ?= ga4gh/data-repository-service-schemas
+# OpenAPI generation now lives in syfon.
+SYFON_DIR ?= ../syfon
 
 # --- Targets ---
 
@@ -68,70 +61,22 @@ generate:
 ## gen: Generates Go models from OpenAPI specs
 gen:
 	@set -euo pipefail; \
-	mkdir -p .tmp; \
-	spec="$(OPENAPI)"; \
-	if [[ ! -f "$$spec" ]]; then \
-	  echo "ERROR: OpenAPI spec '$$spec' not found. Run: make init-schemas"; \
+	if [[ ! -d "$(SYFON_DIR)" ]]; then \
+	  echo "ERROR: syfon repo not found at $(SYFON_DIR)"; \
 	  exit 1; \
 	fi; \
-	if ! command -v docker >/dev/null 2>&1; then \
-	  echo "ERROR: docker is required for 'make gen'."; \
-	  exit 1; \
-	fi; \
-	echo "Bundling canonical OpenAPI spec with Redocly..."; \
-	docker run --rm \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(REDOCLY_IMAGE) bundle /local/$$spec --output /local/.tmp/drs.base.yaml --ext yaml; \
-	echo "Merging internal Extensions with yq..."; \
-	docker run --rm \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(YQ_IMAGE) eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' /local/.tmp/drs.base.yaml /local/apigen/specs/drs-extensions-overlay.yaml > apigen/api/openapi.yaml; \
-	rm -rf "$(GEN_OUT)"; \
-	docker run --rm --pull=missing \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(OAG_IMAGE) generate \
-	  -g go \
-	  --skip-validate-spec \
-	  --git-repo-id data-client \
-	  --git-user-id calypr \
-	  -i /local/apigen/api/openapi.yaml \
-	  -o /local/$(GEN_OUT) \
-	  --global-property models,modelDocs=false,modelTests=false,supportingFiles=utils.go \
-	  --additional-properties packageName=drs,enumClassPrefix=true; \
-	mkdir -p apigen/api apigen; \
-	rm -rf apigen/drs; \
-	mkdir -p apigen/drs; \
-	find "$(GEN_OUT)" -maxdepth 1 -type f -name '*.go' -exec mv {} apigen/drs/ \; ; \
-	echo "Generated DRS client models into ./apigen/drs"; \
-	if [[ -f "$(INTERNAL_OPENAPI)" ]]; then $(MAKE) gen-internal; fi
+	echo "--> OpenAPI generation is centralized in syfon"; \
+	$(MAKE) -C "$(SYFON_DIR)" gen
 
 .PHONY: gen-internal
 gen-internal:
 	@set -euo pipefail; \
-	rm -rf "$(INTERNAL_GEN_OUT)"; \
-	docker run --rm --pull=missing \
-	  --user "$$(id -u):$$(id -g)" \
-	  -v "$(PWD):/local" \
-	  $(OAG_IMAGE) generate \
-	  -g go \
-	  --skip-validate-spec \
-	  --git-repo-id data-client \
-	  --git-user-id calypr \
-	  -i /local/apigen/api/internal.openapi.yaml \
-	  -o /local/$(INTERNAL_GEN_OUT) \
-	  --global-property models,modelDocs=false,modelTests=false,supportingFiles=utils.go \
-	  --additional-properties packageName=internalapi,enumClassPrefix=true; \
-	rm -rf apigen/internalapi; \
-	mkdir -p apigen/internalapi; \
-	find "$(INTERNAL_GEN_OUT)" -maxdepth 1 -type f -name '*.go' -exec mv {} apigen/internalapi/ \; ; \
-	echo "Generated Internal models into ./apigen/internalapi"
-
-.PHONY: init-schemas
-init-schemas:
-	@git submodule update --init --recursive --depth 1 "$(SCHEMAS_SUBMODULE)"
+	if [[ ! -d "$(SYFON_DIR)" ]]; then \
+	  echo "ERROR: syfon repo not found at $(SYFON_DIR)"; \
+	  exit 1; \
+	fi; \
+	echo "--> Internal model generation is centralized in syfon"; \
+	$(MAKE) -C "$(SYFON_DIR)" gen-internal
 
 ## tidy: Cleans up module dependencies and formats go files
 tidy:

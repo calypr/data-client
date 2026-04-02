@@ -40,10 +40,10 @@ func (f *fakeBackend) fileDetails(guid string) *drs.DRSObject {
 	name := "payload.bin"
 	accessID := "s3"
 	return &drs.DRSObject{
-		Name: &name,
+		Name: name,
 		Size: size,
 		AccessMethods: []drs.AccessMethod{
-			{AccessId: &accessID, Type: "s3"},
+			{AccessId: accessID, Type: "s3"},
 		},
 	}
 }

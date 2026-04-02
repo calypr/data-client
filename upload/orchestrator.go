@@ -40,12 +40,13 @@ func RegisterFile(ctx context.Context, bk UploadBackend, dc drs.Client, drsObjec
 	if len(drsObject.AccessMethods) > 0 {
 		for _, am := range drsObject.AccessMethods {
 			if am.Type == "s3" || am.Type == "gs" {
-				if am.AccessUrl != nil && am.AccessUrl.Url != "" {
-					parts := strings.Split(am.AccessUrl.Url, "/")
-					if candidate := parts[len(parts)-1]; candidate != "" {
-						uploadFilename = candidate
-						break
-					}
+				if am.AccessUrl.Url == "" {
+					continue
+				}
+				parts := strings.Split(am.AccessUrl.Url, "/")
+				if candidate := parts[len(parts)-1]; candidate != "" {
+					uploadFilename = candidate
+					break
 				}
 			}
 		}

@@ -41,7 +41,7 @@ func NewLocalInterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Log
 	config := conf.NewConfigure(logger.Logger)
 	req := request.NewRequestInterface(logger, cred, config)
 	dc := drs.NewLocalDrsClient(req, cred.APIEndpoint, logger.Logger)
-	tb := transfer.New(req, logger, localsigner.New(cred.APIEndpoint, req, dc))
+	tb := transfer.New(req, logger, localsigner.New(cred.APIEndpoint, cred, dc))
 
 	return &LocalClient{
 		RequestInterface: req,

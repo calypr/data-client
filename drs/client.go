@@ -1,23 +1,21 @@
 package drs
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"strings"
 
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/hash"
 	"github.com/calypr/data-client/request"
+	syclient "github.com/calypr/syfon/client"
 )
 
 type DrsClient struct {
 	request.RequestInterface
 	provider     endpointProvider
+	syfon        *syclient.Client
 	logger       *slog.Logger
 	projectId    string
 	organization string
@@ -43,11 +41,13 @@ type localProvider struct {
 func (p localProvider) APIEndpoint() string { return p.endpoint }
 func (p localProvider) AccessToken() string { return "" }
 
-// NewDrsClient creates a new DrsClient
+// NewDrsClient creates a new DrsClient.
 func NewDrsClient(req request.RequestInterface, cred *conf.Credential, logger *slog.Logger) Client {
+	provider := gen3Provider{cred: cred}
 	return &DrsClient{
 		RequestInterface: req,
-		provider:         gen3Provider{cred: cred},
+		provider:         provider,
+		syfon:            buildSyfonClient(req, provider.APIEndpoint(), provider.AccessToken()),
 		logger:           logger,
 	}
 }
@@ -55,15 +55,25 @@ func NewDrsClient(req request.RequestInterface, cred *conf.Credential, logger *s
 // NewLocalDrsClient creates a DRS client for local/non-Gen3 mode.
 // It intentionally carries no bearer token.
 func NewLocalDrsClient(req request.RequestInterface, endpoint string, logger *slog.Logger) Client {
+	provider := localProvider{endpoint: endpoint}
 	return &DrsClient{
 		RequestInterface: req,
-		provider:         localProvider{endpoint: endpoint},
+		provider:         provider,
+		syfon:            buildSyfonClient(req, provider.APIEndpoint(), ""),
 		logger:           logger,
 	}
 }
 
-func (c *DrsClient) apiEndpoint() string { return c.provider.APIEndpoint() }
-func (c *DrsClient) token() string       { return c.provider.AccessToken() }
+func buildSyfonClient(req request.RequestInterface, endpoint, token string) *syclient.Client {
+	opts := make([]syclient.Option, 0, 2)
+	if strings.TrimSpace(token) != "" {
+		opts = append(opts, syclient.WithBearerToken(token))
+	}
+	if r, ok := req.(*request.Request); ok && r.RetryClient != nil {
+		opts = append(opts, syclient.WithHTTPClient(r.RetryClient.StandardClient()))
+	}
+	return syclient.New(endpoint, opts...)
+}
 
 func (c *DrsClient) GetProjectId() string {
 	return c.projectId
@@ -93,60 +103,27 @@ func (c *DrsClient) WithBucket(bucketName string) Client {
 }
 
 func (c *DrsClient) GetObject(ctx context.Context, id string) (*DRSObject, error) {
-	url := fmt.Sprintf("%s/ga4gh/drs/v1/objects/%s", c.apiEndpoint(), id)
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodGet,
-		Url:    url,
-		Token:  c.token(),
-	})
+	obj, err := c.syfon.DRS().GetObject(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("object %s not found", id)
-	}
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get object %s: %s (status: %d)", id, string(body), resp.StatusCode)
-	}
-
-	var out OutputObject
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return ConvertOutputObjectToDRSObject(&out), nil
+	return &obj, nil
 }
 
 func (c *DrsClient) GetObjectByHash(ctx context.Context, checksum *hash.Checksum) ([]DRSObject, error) {
-	url := fmt.Sprintf("%s/index?hash=%s:%s", c.apiEndpoint(), string(checksum.Type), checksum.Checksum)
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodGet,
-		Url:    url,
-		Headers: map[string]string{
-			"Accept": "application/json",
-		},
-		Token: c.token(),
+	if checksum == nil {
+		return nil, fmt.Errorf("checksum is required")
+	}
+	resp, err := c.syfon.Index().List(ctx, syclient.ListRecordsOptions{
+		Hash: fmt.Sprintf("%s:%s", string(checksum.Type), checksum.Checksum),
 	})
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to query by hash %s:%s: %s (status: %d)", checksum.Type, checksum.Checksum, string(body), resp.StatusCode)
-	}
-
-	var records ListRecords
-	if err := json.NewDecoder(resp.Body).Decode(&records); err != nil {
-		return nil, err
-	}
-
-	out := make([]DRSObject, 0, len(records.Records))
-	for _, r := range records.Records {
-		drsObj, err := r.ToDrsObject()
+	out := make([]DRSObject, 0, len(resp.Records))
+	for _, rec := range resp.Records {
+		drsObj, err := syfonInternalRecordToDRSObject(rec)
 		if err != nil {
 			return nil, err
 		}
@@ -156,146 +133,58 @@ func (c *DrsClient) GetObjectByHash(ctx context.Context, checksum *hash.Checksum
 }
 
 func (c *DrsClient) GetDownloadURL(ctx context.Context, id string, accessType string) (*AccessURL, error) {
-	url := fmt.Sprintf("%s/ga4gh/drs/v1/objects/%s/access/%s", c.apiEndpoint(), id, accessType)
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodGet,
-		Url:    url,
-		Token:  c.token(),
-	})
+	access, err := c.syfon.DRS().GetAccessURL(ctx, id, accessType)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get download URL for %s: %s (status: %d)", id, string(body), resp.StatusCode)
-	}
-
-	var accessURL AccessURL
-	if err := json.NewDecoder(resp.Body).Decode(&accessURL); err != nil {
-		return nil, err
-	}
-	return &accessURL, nil
+	return &AccessURL{Url: access.Url}, nil
 }
 
 func (c *DrsClient) ListObjectsByProject(ctx context.Context, projectId string) (chan DRSObjectResult, error) {
-	const PAGESIZE = 50
-
-	resourcePath, err := ProjectToResource("", projectId)
+	resourcePath, err := ProjectToResource(c.organization, projectId)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(chan DRSObjectResult, PAGESIZE)
+	resp, err := c.syfon.Index().List(ctx, syclient.ListRecordsOptions{Authz: resourcePath})
+	if err != nil {
+		return nil, err
+	}
 
+	out := make(chan DRSObjectResult, len(resp.Records))
 	go func() {
 		defer close(out)
-		pageNum := 0
-		active := true
-
-		for active {
-			url := fmt.Sprintf("%s/index?authz=%s&limit=%d&page=%d",
-				c.apiEndpoint(), resourcePath, PAGESIZE, pageNum)
-
-			resp, err := c.Do(ctx, &request.RequestBuilder{
-				Method: http.MethodGet,
-				Url:    url,
-				Headers: map[string]string{
-					"Accept": "application/json",
-				},
-				Token: c.token(),
-			})
-
+		for _, elem := range resp.Records {
+			drsObj, err := syfonInternalRecordToDRSObject(elem)
 			if err != nil {
 				out <- DRSObjectResult{Error: err}
-				break
+				continue
 			}
-
-			if resp.StatusCode != http.StatusOK {
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				out <- DRSObjectResult{Error: fmt.Errorf("api error %d: %s", resp.StatusCode, string(body))}
-				break
-			}
-
-			var page ListRecords
-			err = json.NewDecoder(resp.Body).Decode(&page)
-			resp.Body.Close()
-
-			if err != nil {
-				out <- DRSObjectResult{Error: err}
-				break
-			}
-
-			if len(page.Records) == 0 {
-				active = false
-				break
-			}
-
-			for _, elem := range page.Records {
-				drsObj, err := elem.ToDrsObject()
-				if err != nil {
-					out <- DRSObjectResult{Error: err}
-					continue
-				}
-				out <- DRSObjectResult{Object: drsObj}
-			}
-			pageNum++
+			out <- DRSObjectResult{Object: drsObj}
 		}
 	}()
-
 	return out, nil
 }
 
 func (c *DrsClient) ListObjects(ctx context.Context) (chan DRSObjectResult, error) {
-	url := fmt.Sprintf("%s/ga4gh/drs/v1/objects", c.apiEndpoint())
-	const PAGESIZE = 50
-	out := make(chan DRSObjectResult, 10)
+	const pageSize = 50
+	out := make(chan DRSObjectResult, pageSize)
 
 	go func() {
 		defer close(out)
-		pageNum := 0
-		active := true
-		for active {
-			fullURL := fmt.Sprintf("%s?limit=%d&page=%d", url, PAGESIZE, pageNum)
-			resp, err := c.Do(ctx, &request.RequestBuilder{
-				Method: http.MethodGet,
-				Url:    fullURL,
-				Token:  c.token(),
-			})
-
+		for page := 0; ; page++ {
+			resp, err := c.syfon.DRS().ListObjects(ctx, pageSize, page)
 			if err != nil {
 				out <- DRSObjectResult{Error: err}
 				return
 			}
-
-			if resp.StatusCode != http.StatusOK {
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				out <- DRSObjectResult{Error: fmt.Errorf("api error %d: %s", resp.StatusCode, string(body))}
+			if len(resp.DrsObjects) == 0 {
 				return
 			}
-
-			var page DRSPage
-			err = json.NewDecoder(resp.Body).Decode(&page)
-			resp.Body.Close()
-
-			if err != nil {
-				out <- DRSObjectResult{Error: err}
-				return
+			for _, elem := range resp.DrsObjects {
+				obj := elem
+				out <- DRSObjectResult{Object: &obj}
 			}
-
-			if len(page.DRSObjects) == 0 {
-				active = false
-				break
-			}
-
-			for _, elem := range page.DRSObjects {
-				elemCopy := elem
-				out <- DRSObjectResult{Object: &elemCopy}
-			}
-			pageNum++
 		}
 	}()
 	return out, nil
@@ -330,47 +219,15 @@ func (c *DrsClient) GetProjectSample(ctx context.Context, projectId string, limi
 }
 
 func (c *DrsClient) RegisterRecord(ctx context.Context, record *DRSObject) (*DRSObject, error) {
-	indexdRecord, err := InternalRecordFromDrsObject(record)
-	if err != nil {
-		return nil, fmt.Errorf("error converting DRS object to internal record: %v", err)
-	}
-
-	indexdObjForm := InternalRecordForm{
-		InternalRecord: *indexdRecord,
-		Form:           "object",
-	}
-
-	jsonBytes, err := json.Marshal(indexdObjForm)
+	internalRecord, err := drsObjectToSyfonInternalRecord(record)
 	if err != nil {
 		return nil, err
 	}
-
-	url := fmt.Sprintf("%s/index", c.apiEndpoint())
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodPost,
-		Url:    url,
-		Body:   bytes.NewBuffer(jsonBytes),
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-			"Accept":       "application/json",
-		},
-		Token: c.token(),
-	})
+	created, err := c.syfon.Index().Create(ctx, internalRecord)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		did := ""
-		if indexdRecord.Did != nil {
-			did = *indexdRecord.Did
-		}
-		return nil, fmt.Errorf("failed to register record %s: %s (status: %d)", did, string(body), resp.StatusCode)
-	}
-
-	return InternalRecordToDrsObject(indexdRecord)
+	return syfonInternalRecordToDRSObject(created)
 }
 
 func (c *DrsClient) RegisterRecords(ctx context.Context, records []*DRSObject) ([]*DRSObject, error) {
@@ -378,226 +235,77 @@ func (c *DrsClient) RegisterRecords(ctx context.Context, records []*DRSObject) (
 		return nil, nil
 	}
 
-	candidates := make([]DRSObjectCandidate, len(records))
+	candidates := make([]syclient.DRSObjectCandidate, len(records))
 	for i, r := range records {
 		candidates[i] = ConvertToCandidate(r)
 	}
 
-	reqBody := RegisterObjectsRequest{
-		Candidates: candidates,
-	}
-
-	jsonBytes, err := json.Marshal(reqBody)
+	resp, err := c.syfon.DRS().RegisterObjects(ctx, syclient.RegisterObjectsRequest{Candidates: candidates})
 	if err != nil {
 		return nil, err
 	}
-
-	url := fmt.Sprintf("%s/ga4gh/drs/v1/objects/register", c.apiEndpoint())
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodPost,
-		Url:    url,
-		Body:   bytes.NewBuffer(jsonBytes),
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-			"Accept":       "application/json",
-		},
-		Token: c.token(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to register records: %s (status: %d)", string(body), resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading registered objects response: %v", err)
-	}
-
-	// Canonical shape from DRS register API.
-	var wrapped struct {
-		Objects []*DRSObject `json:"objects"`
-	}
-	if err := json.Unmarshal(body, &wrapped); err != nil {
-		return nil, fmt.Errorf("unsupported response payload: %s", string(body))
-	}
-	if len(wrapped.Objects) == 0 {
+	if len(resp.Objects) == 0 {
 		return nil, fmt.Errorf("register response did not include objects")
 	}
-	return wrapped.Objects, nil
+
+	out := make([]*DRSObject, 0, len(resp.Objects))
+	for _, obj := range resp.Objects {
+		o := obj
+		out = append(out, &o)
+	}
+	return out, nil
 }
 
 func (c *DrsClient) UpdateRecord(ctx context.Context, updateInfo *DRSObject, did string) (*DRSObject, error) {
-	// Get current revision from existing record
-	record, err := c.getInternalRecordByDID(ctx, did)
-	if err != nil {
-		return nil, fmt.Errorf("could not retrieve existing record for DID %s: %v", did, err)
-	}
-
-	// Build update payload starting with existing record values
-	updatePayload := UpdateInputInfo{
-		URLs:     record.Urls,
-		FileName: record.FileName,
-		Authz:    record.Authz,
-	}
-
-	// Apply updates from updateInfo
-	if len(updateInfo.AccessMethods) > 0 {
-		newURLs := make([]string, 0, len(updateInfo.AccessMethods))
-		for _, a := range updateInfo.AccessMethods {
-			if a.AccessUrl != nil {
-				newURLs = append(newURLs, a.AccessUrl.Url)
-			}
-		}
-		updatePayload.URLs = appendUnique(updatePayload.URLs, newURLs)
-
-		authz := InternalAuthzFromDrsAccessMethods(updateInfo.AccessMethods)
-		updatePayload.Authz = appendUnique(updatePayload.Authz, authz)
-	}
-
-	if updateInfo.Name != nil && *updateInfo.Name != "" {
-		updatePayload.FileName = updateInfo.Name
-	}
-
-	if updateInfo.Version != nil && *updateInfo.Version != "" {
-		updatePayload.Version = updateInfo.Version
-	}
-
-	if updateInfo.Description != nil && *updateInfo.Description != "" {
-		if updatePayload.Metadata == nil {
-			updatePayload.Metadata = make(map[string]any)
-		}
-		updatePayload.Metadata["description"] = *updateInfo.Description
-	}
-
-	jsonBytes, err := json.Marshal(updatePayload)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling indexd update payload: %v", err)
-	}
-
-	rev := ""
-	if record.Rev != nil {
-		rev = *record.Rev
-	}
-	url := fmt.Sprintf("%s/index/%s?rev=%s", c.apiEndpoint(), did, rev)
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodPut,
-		Url:    url,
-		Body:   bytes.NewBuffer(jsonBytes),
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-			"Accept":       "application/json",
-		},
-		Token: c.token(),
-	})
+	existing, err := c.syfon.Index().Get(ctx, did)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to update record %s: %s (status: %d)", did, string(body), resp.StatusCode)
+	updated := existing
+	updated.SetDid(did)
+		if len(updateInfo.AccessMethods) > 0 {
+			newURLs := make([]string, 0, len(updateInfo.AccessMethods))
+			for _, a := range updateInfo.AccessMethods {
+				if a.AccessUrl.Url == "" {
+					continue
+				}
+				newURLs = append(newURLs, a.AccessUrl.Url)
+			}
+			updated.SetUrls(appendUnique(updated.GetUrls(), newURLs))
+
+		authz := InternalAuthzFromDrsAccessMethods(updateInfo.AccessMethods)
+		updated.SetAuthz(appendUnique(updated.GetAuthz(), authz))
 	}
 
-	return c.GetObject(ctx, did)
+	if updateInfo.Name != "" {
+		updated.SetFileName(updateInfo.Name)
+	}
+	if updateInfo.Size > 0 {
+		updated.SetSize(updateInfo.Size)
+	}
+	if len(updateInfo.Checksums) > 0 {
+		updated.SetHashes(hash.ConvertDrsChecksumsToMap(updateInfo.Checksums))
+	}
+
+	res, err := c.syfon.Index().Update(ctx, did, updated)
+	if err != nil {
+		return nil, err
+	}
+	return syfonInternalRecordToDRSObject(res)
 }
 
 func (c *DrsClient) DeleteRecord(ctx context.Context, did string) error {
-	// First get the record to get the revision (rev)
-	record, err := c.getInternalRecordByDID(ctx, did)
-	if err != nil {
-		return err
-	}
-
-	rev := ""
-	if record.Rev != nil {
-		rev = *record.Rev
-	}
-	url := fmt.Sprintf("%s/index/%s?rev=%s", c.apiEndpoint(), did, rev)
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodDelete,
-		Url:    url,
-		Headers: map[string]string{
-			"Accept": "application/json",
-		},
-		Token: c.token(),
-	})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to delete record %s: %s (status: %d)", did, string(body), resp.StatusCode)
-	}
-
-	return nil
+	return c.syfon.Index().Delete(ctx, did)
 }
 
 func (c *DrsClient) DeleteRecordsByProject(ctx context.Context, projectId string) error {
-	recs, err := c.ListObjectsByProject(ctx, projectId)
+	resourcePath, err := ProjectToResource(c.organization, projectId)
 	if err != nil {
 		return err
 	}
-
-	ids := make([]string, 0, 128)
-	seen := make(map[string]struct{})
-	for rec := range recs {
-		if rec.Error != nil {
-			return rec.Error
-		}
-
-		if rec.Object == nil || rec.Object.Id == "" {
-			continue
-		}
-		if _, ok := seen[rec.Object.Id]; ok {
-			continue
-		}
-		seen[rec.Object.Id] = struct{}{}
-		ids = append(ids, rec.Object.Id)
-	}
-
-	for _, id := range ids {
-		err := c.DeleteRecord(ctx, id)
-		if err != nil {
-			if strings.Contains(err.Error(), "404") {
-				continue
-			}
-			c.logger.Error(fmt.Sprintf("DeleteRecordsByProject Error for %s: %v", id, err))
-			continue
-		}
-	}
-	return nil
-}
-
-func (c *DrsClient) getInternalRecordByDID(ctx context.Context, did string) (*OutputInfo, error) {
-	url := fmt.Sprintf("%s/index/%s", c.apiEndpoint(), did)
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodGet,
-		Url:    url,
-		Token:  c.token(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get internal record %s: %s (status: %d)", did, string(body), resp.StatusCode)
-	}
-
-	var info OutputInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return nil, err
-	}
-	return &info, nil
+	_, err = c.syfon.Index().DeleteByQuery(ctx, syclient.DeleteByQueryOptions{Authz: resourcePath})
+	return err
 }
 
 func (c *DrsClient) BatchGetObjectsByHash(ctx context.Context, hashes []string) (map[string][]DRSObject, error) {
@@ -605,46 +313,14 @@ func (c *DrsClient) BatchGetObjectsByHash(ctx context.Context, hashes []string) 
 		return nil, nil
 	}
 
-	reqBody := struct {
-		Hashes []string `json:"hashes"`
-	}{
-		Hashes: hashes,
-	}
-
-	jsonBytes, err := json.Marshal(reqBody)
+	resp, err := c.syfon.Index().BulkHashes(ctx, syclient.BulkHashesRequest{Hashes: hashes})
 	if err != nil {
-		return nil, err
-	}
-
-	url := fmt.Sprintf("%s/index/bulk/hashes", c.apiEndpoint())
-	resp, err := c.Do(ctx, &request.RequestBuilder{
-		Method: http.MethodPost,
-		Url:    url,
-		Body:   bytes.NewBuffer(jsonBytes),
-		Headers: map[string]string{
-			"Content-Type": "application/json",
-			"Accept":       "application/json",
-		},
-		Token: c.token(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to bulk lookup hashes: %s (status: %d)", string(body), resp.StatusCode)
-	}
-
-	var list ListRecords
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		return nil, err
 	}
 
 	result := make(map[string][]DRSObject)
-	for _, r := range list.Records {
-		drsObj, err := r.ToDrsObject()
+	for _, rec := range resp.Records {
+		drsObj, err := syfonInternalRecordToDRSObject(rec)
 		if err != nil {
 			continue
 		}
@@ -653,7 +329,6 @@ func (c *DrsClient) BatchGetObjectsByHash(ctx context.Context, hashes []string) 
 			result[hInfo.SHA256] = append(result[hInfo.SHA256], *drsObj)
 		}
 	}
-
 	return result, nil
 }
 
@@ -671,14 +346,14 @@ func appendUnique(existing []string, toAdd []string) []string {
 	return existing
 }
 
-// BuildDrsObj matches git-drs behavior but moved to core
+// BuildDrsObj matches git-drs behavior but moved to core.
 func (c *DrsClient) BuildDrsObj(fileName string, checksum string, size int64, drsId string) (*DRSObject, error) {
 	return BuildDrsObj(fileName, checksum, size, drsId, c.GetBucketName(), c.GetOrganization(), c.GetProjectId())
 }
 
-// RegisterFile matches git-drs behavior but moved to core
+// RegisterFile matches git-drs behavior but moved to core.
 func (c *DrsClient) RegisterFile(ctx context.Context, oid string, path string) (*DRSObject, error) {
-	// Base implementation without LFS specifics
+	// Base implementation without LFS specifics.
 	return nil, fmt.Errorf("RegisterFile needs specific implementation (e.g. for LFS or cloud)")
 }
 

@@ -36,14 +36,14 @@ func ResolveDownloadURL(ctx context.Context, client Client, guid string, accessI
 
 	if accessID == "" {
 		for _, am := range obj.AccessMethods {
-			if am.AccessId != nil && *am.AccessId != "" {
-				accessID = *am.AccessId
+			if am.AccessId != "" {
+				accessID = am.AccessId
 				break
 			}
 		}
 		if accessID == "" {
 			for _, am := range obj.AccessMethods {
-				if am.AccessUrl != nil && am.AccessUrl.Url != "" {
+				if am.AccessUrl.Url != "" {
 					return am.AccessUrl.Url, nil
 				}
 			}

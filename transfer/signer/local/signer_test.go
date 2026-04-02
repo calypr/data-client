@@ -58,7 +58,7 @@ func TestResolveUploadURLsBatch(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	req := &testRequestClient{client: srv.Client()}
 	dc := drs.NewLocalDrsClient(req, srv.URL, logger)
-	signer := New(srv.URL, req, dc)
+	signer := New(srv.URL, nil, dc)
 
 	out, err := signer.ResolveUploadURLs(context.Background(), []common.UploadURLResolveRequest{
 		{GUID: "did-1", Filename: "one.bin", Bucket: "b1"},

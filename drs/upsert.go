@@ -34,7 +34,7 @@ func (c *DrsClient) UpsertRecord(ctx context.Context, url string, sha256 string,
 		}
 
 		c.logger.Debug("updating existing record with new url")
-		updatedRecord := DRSObject{AccessMethods: []AccessMethod{{AccessUrl: &AccessURL{Url: url}}}}
+		updatedRecord := DRSObject{AccessMethods: []AccessMethod{{AccessUrl: AccessURL{Url: url}}}}
 		return c.UpdateRecord(ctx, &updatedRecord, matchingRecord.Id)
 	}
 

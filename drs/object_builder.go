@@ -59,13 +59,13 @@ func (b ObjectBuilder) Build(fileName string, checksum string, size int64, drsID
 
 	drsObj := DRSObject{
 		Id:   drsID,
-		Name: &fileName,
+		Name: fileName,
 		AccessMethods: []AccessMethod{{
 			Type: accessType,
-			AccessUrl: &AccessURL{
+			AccessUrl: AccessURL{
 				Url: fileURL,
 			},
-			Authorizations: &authorizations,
+			Authorizations: authorizations,
 		}},
 		Checksums: []Checksum{{
 			Type:     "sha256",

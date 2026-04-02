@@ -19,6 +19,7 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/transfer"
+	syxfer "github.com/calypr/syfon/xfer"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -273,30 +274,15 @@ func CompleteMultipartUpload(ctx context.Context, bk transfer.Uploader, key stri
 // uploadPart now returns the ETag and error directly.
 // It accepts a Context to allow for cancellation (e.g., if another part fails).
 func uploadPart(ctx context.Context, url string, data io.Reader, partSize int64) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, data)
+	etag, err := syxfer.Upload(ctx, http.DefaultClient, url, data, partSize)
 	if err != nil {
 		return "", err
 	}
-
-	req.ContentLength = partSize
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return "", fmt.Errorf("upload failed (%d): %s", resp.StatusCode, body)
-	}
-
-	etag := resp.Header.Get("ETag")
 	if etag == "" {
 		return "", errors.New("no ETag returned")
 	}
 
-	return strings.Trim(etag, `"`), nil
+	return etag, nil
 }
 
 func (s *multipartResumeState) matches(req common.FileUploadRequestObject, info os.FileInfo, chunkSize int64) bool {

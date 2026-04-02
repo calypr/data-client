@@ -29,7 +29,7 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
-		Return(&drs.DRSObject{Id: testGUID, Name: &testFileName, Size: testFileSize}, nil)
+		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
 
 	logger := logs.NewGen3Logger(nil, "", "test")
 
@@ -107,7 +107,7 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
-		Return(&drs.DRSObject{Id: testGUID, Name: &testFileName, Size: testFileSize}, nil)
+		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
 
 	logger := logs.NewGen3Logger(nil, "", "test")
 

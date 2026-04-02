@@ -29,3 +29,7 @@
 /build/
 /bin/
 checksums.txt
+# Local caches and binaries
+/.gocache/
+/.tmp/
+/data-client

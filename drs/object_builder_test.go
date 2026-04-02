@@ -18,8 +18,8 @@ func TestObjectBuilderBuildSuccess(t *testing.T) {
 	if obj.Id != "did-1" {
 		t.Fatalf("unexpected Id: %s", obj.Id)
 	}
-	if *obj.Name != "file.txt" {
-		t.Fatalf("unexpected Name: %s", *obj.Name)
+	if obj.Name != "file.txt" {
+		t.Fatalf("unexpected Name: %s", obj.Name)
 	}
 	if obj.Checksums[0].Checksum != "sha-256" {
 		t.Fatalf("unexpected checksum: %v", obj.Checksums)

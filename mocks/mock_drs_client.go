@@ -195,29 +195,41 @@ func (mr *MockDrsClientMockRecorder) New(method, url any) *gomock.Call {
 }
 
 func (m *MockDrsClient) WithProject(projectId string) drs.Client {
-    return m
+	return m
 }
 
 func (m *MockDrsClient) WithOrganization(organization string) drs.Client {
-    return m
+	return m
 }
 
 func (m *MockDrsClient) WithBucket(bucketName string) drs.Client {
-    return m
+	return m
 }
 
-func (m *MockDrsClient) GetProjectId() string { return "" }
-func (m *MockDrsClient) GetBucketName() string { return "" }
+func (m *MockDrsClient) GetProjectId() string    { return "" }
+func (m *MockDrsClient) GetBucketName() string   { return "" }
 func (m *MockDrsClient) GetOrganization() string { return "" }
-func (m *MockDrsClient) RegisterFile(ctx context.Context, oid, path string) (*drs.DRSObject, error) { return nil, nil }
-func (m *MockDrsClient) AddURL(ctx context.Context, blobURL, sha256 string, opts ...drs.AddURLOption) (*drs.DRSObject, error) { return nil, nil }
-func (m *MockDrsClient) ListObjectsByProject(ctx context.Context, projectId string) (chan drs.DRSObjectResult, error) { return nil, nil }
-func (m *MockDrsClient) GetProjectSample(ctx context.Context, projectId string, limit int) ([]drs.DRSObject, error) { return nil, nil }
-func (m *MockDrsClient) DeleteRecordsByProject(ctx context.Context, projectId string) error { return nil }
-func (m *MockDrsClient) BuildDrsObj(fileName string, checksum string, size int64, drsId string) (*drs.DRSObject, error) { return nil, nil }
+func (m *MockDrsClient) RegisterFile(ctx context.Context, oid, path string) (*drs.DRSObject, error) {
+	return nil, nil
+}
+func (m *MockDrsClient) AddURL(ctx context.Context, blobURL, sha256 string, opts ...drs.AddURLOption) (*drs.DRSObject, error) {
+	return nil, nil
+}
+func (m *MockDrsClient) ListObjectsByProject(ctx context.Context, projectId string) (chan drs.DRSObjectResult, error) {
+	return nil, nil
+}
+func (m *MockDrsClient) GetProjectSample(ctx context.Context, projectId string, limit int) ([]drs.DRSObject, error) {
+	return nil, nil
+}
+func (m *MockDrsClient) DeleteRecordsByProject(ctx context.Context, projectId string) error {
+	return nil
+}
+func (m *MockDrsClient) BuildDrsObj(fileName string, checksum string, size int64, drsId string) (*drs.DRSObject, error) {
+	return nil, nil
+}
 func (m *MockDrsClient) DownloadFile(ctx context.Context, oid, destPath string) error { return nil }
-func (m *MockDrsClient) Name() string { return "mock-drs-client" }
-func (m *MockDrsClient) Logger() *logs.Gen3Logger { return nil }
+func (m *MockDrsClient) Name() string                                                 { return "mock-drs-client" }
+func (m *MockDrsClient) Logger() *logs.Gen3Logger                                     { return nil }
 func (m *MockDrsClient) ResolveDownloadURL(ctx context.Context, guid string, accessID string) (string, error) {
 	return "", nil
 }
@@ -226,6 +238,9 @@ func (m *MockDrsClient) Download(ctx context.Context, fdr *common.FileDownloadRe
 }
 func (m *MockDrsClient) ResolveUploadURL(ctx context.Context, guid string, filename string, metadata common.FileMetadata, bucket string) (string, error) {
 	return "", nil
+}
+func (m *MockDrsClient) ResolveUploadURLs(ctx context.Context, requests []common.UploadURLResolveRequest) ([]common.UploadURLResolveResponse, error) {
+	return nil, nil
 }
 func (m *MockDrsClient) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (*common.MultipartUploadInit, error) {
 	return nil, nil
@@ -236,7 +251,9 @@ func (m *MockDrsClient) GetMultipartUploadURL(ctx context.Context, key string, u
 func (m *MockDrsClient) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []common.MultipartUploadPart, bucket string) error {
 	return nil
 }
-func (m *MockDrsClient) Upload(ctx context.Context, url string, body io.Reader, size int64) error { return nil }
+func (m *MockDrsClient) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+	return nil
+}
 func (m *MockDrsClient) UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
 	return "", nil
 }

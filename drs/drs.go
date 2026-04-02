@@ -72,7 +72,7 @@ func FindMatchingRecord(records []DRSObject, organization, projectId string) (*D
 
 	for _, record := range records {
 		for _, access := range record.AccessMethods {
-			if access.Authorizations == nil {
+			if len(access.Authorizations.BearerAuthIssuers) == 0 {
 				continue
 			}
 
@@ -128,13 +128,13 @@ func BuildDrsObjWithPrefix(fileName string, checksum string, size int64, drsId s
 
 	drsObj := DRSObject{
 		Id:   drsId,
-		Name: &fileName,
+		Name: fileName,
 		AccessMethods: []AccessMethod{{
 			Type: "s3",
-			AccessUrl: &AccessURL{
+			AccessUrl: AccessURL{
 				Url: fileURL,
 			},
-			Authorizations: &authorizations,
+			Authorizations: authorizations,
 		}},
 		Checksums: []Checksum{{
 			Type: "sha256",
@@ -150,32 +150,15 @@ func BuildDrsObjWithPrefix(fileName string, checksum string, size int64, drsId s
 // This is needed because the server expects checksums as an array of Checksum objects,
 // while DRSObject uses HashInfo (which marshals to the correct format but has different Go types).
 func ConvertToCandidate(obj *DRSObject) DRSObjectCandidate {
-	var name string
-	if obj.Name != nil {
-		name = *obj.Name
-	}
-	var version string
-	if obj.Version != nil {
-		version = *obj.Version
-	}
-	var mimeType string
-	if obj.MimeType != nil {
-		mimeType = *obj.MimeType
-	}
-	var description string
-	if obj.Description != nil {
-		description = *obj.Description
-	}
-
 	return DRSObjectCandidate{
-		Name:          name,
+		Name:          obj.Name,
 		Size:          obj.Size,
-		Version:       version,
-		MimeType:      mimeType,
+		Version:       obj.Version,
+		MimeType:      obj.MimeType,
 		Checksums:     obj.Checksums,
 		AccessMethods: obj.AccessMethods,
-		Contents:      nil, // ContentsObject in gen is different
-		Description:   description,
+		Contents:      obj.Contents,
+		Description:   obj.Description,
 		Aliases:       obj.Aliases,
 	}
 }

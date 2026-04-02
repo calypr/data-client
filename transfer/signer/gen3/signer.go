@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/request"
+	syclient "github.com/calypr/syfon/client"
 )
 
 type Signer struct {
@@ -20,14 +20,24 @@ type Signer struct {
 	cred  *conf.Credential
 	drs   drs.Client
 	fence fence.FenceInterface
+	sy    *syclient.Client
 }
 
 func New(req request.RequestInterface, cred *conf.Credential, dc drs.Client, fc fence.FenceInterface) *Signer {
+	opts := make([]syclient.Option, 0, 1)
+	baseURL := ""
+	if cred != nil {
+		baseURL = cred.APIEndpoint
+		if token := strings.TrimSpace(cred.AccessToken); token != "" {
+			opts = append(opts, syclient.WithBearerToken(token))
+		}
+	}
 	return &Signer{
 		req:   req,
 		cred:  cred,
 		drs:   dc,
 		fence: fc,
+		sy:    syclient.New(baseURL, opts...),
 	}
 }
 
@@ -112,65 +122,24 @@ func (g *Signer) ResolveUploadURLs(ctx context.Context, requests []common.Upload
 		return []common.UploadURLResolveResponse{}, nil
 	}
 
-	type bulkUploadRequest struct {
-		Requests []struct {
-			FileID   string `json:"file_id"`
-			Bucket   string `json:"bucket,omitempty"`
-			FileName string `json:"file_name,omitempty"`
-		} `json:"requests"`
-	}
-	type bulkUploadResponse struct {
-		Results []struct {
-			FileID   string `json:"file_id"`
-			Bucket   string `json:"bucket,omitempty"`
-			FileName string `json:"file_name,omitempty"`
-			URL      string `json:"url,omitempty"`
-			Status   int    `json:"status"`
-			Error    string `json:"error,omitempty"`
-		} `json:"results"`
-	}
-
-	payload := bulkUploadRequest{
-		Requests: make([]struct {
-			FileID   string `json:"file_id"`
-			Bucket   string `json:"bucket,omitempty"`
-			FileName string `json:"file_name,omitempty"`
-		}, 0, len(requests)),
-	}
+	items := make([]syclient.UploadBulkItem, 0, len(requests))
 	for _, req := range requests {
 		fileID := strings.TrimSpace(req.GUID)
 		if fileID == "" {
 			fileID = strings.TrimSpace(req.Filename)
 		}
-		payload.Requests = append(payload.Requests, struct {
-			FileID   string `json:"file_id"`
-			Bucket   string `json:"bucket,omitempty"`
-			FileName string `json:"file_name,omitempty"`
-		}{
-			FileID:   fileID,
-			Bucket:   req.Bucket,
-			FileName: req.Filename,
-		})
+		item := syclient.UploadBulkItem{FileId: fileID}
+		if req.Bucket != "" {
+			item.SetBucket(req.Bucket)
+		}
+		if req.Filename != "" {
+			item.SetFileName(req.Filename)
+		}
+		items = append(items, item)
 	}
 
-	endpoint := strings.TrimRight(strings.TrimSpace(g.cred.APIEndpoint), "/") + "/data/upload/bulk"
-	rb := g.req.New(http.MethodPost, endpoint)
-	if _, err := rb.WithJSONBody(payload); err != nil {
-		return nil, err
-	}
-	resp, err := g.req.Do(ctx, rb)
+	out, err := g.sy.Data().UploadBulk(ctx, syclient.UploadBulkRequest{Requests: items})
 	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("bulk upload URL request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var out bulkUploadResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
 	}
 
@@ -184,14 +153,14 @@ func (g *Signer) ResolveUploadURLs(ctx context.Context, requests []common.Upload
 			Error:    "missing result for request",
 		}
 	}
-	for i := range out.Results {
+	for i := range out.GetResults() {
 		if i >= len(results) {
 			break
 		}
-		r := out.Results[i]
-		results[i].URL = r.URL
-		results[i].Status = r.Status
-		results[i].Error = r.Error
+		r := out.GetResults()[i]
+		results[i].URL = r.GetUrl()
+		results[i].Status = int(r.GetStatus())
+		results[i].Error = r.GetError()
 		if results[i].Status == 0 {
 			results[i].Status = http.StatusOK
 		}

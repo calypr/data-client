@@ -118,16 +118,20 @@ func RegisterAndUploadFile(ctx context.Context, dc drs.Client, bk transfer.Uploa
 	uploadFilename := filepath.Base(filePath)
 	if res != nil && len(res.AccessMethods) > 0 {
 		for _, am := range res.AccessMethods {
-			if (am.Type == "s3" || am.Type == "gs") && am.AccessUrl != nil && am.AccessUrl.Url != "" {
-				parts := strings.Split(am.AccessUrl.Url, "/")
-				if len(parts) > 0 {
-					candidate := parts[len(parts)-1]
-					if candidate != "" {
-						uploadFilename = candidate
-					}
-				}
-				break
+			if am.Type != "s3" && am.Type != "gs" {
+				continue
 			}
+			if am.AccessUrl.Url == "" {
+				continue
+			}
+			parts := strings.Split(am.AccessUrl.Url, "/")
+			if len(parts) > 0 {
+				candidate := parts[len(parts)-1]
+				if candidate != "" {
+					uploadFilename = candidate
+				}
+			}
+			break
 		}
 	}
 
