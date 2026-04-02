@@ -210,7 +210,7 @@ func (t *Gen3Logger) SucceededContext(ctx context.Context, filePath, guid string
 
 func (t *Gen3Logger) succeededHelper(ctx context.Context, filePath, guid string, skip int) {
 	msg := fmt.Sprintf("Succeeded: %s (GUID: %s)", filePath, guid)
-	t.logWithSkip(ctx, slog.LevelInfo, skip, msg)
+	t.logWithSkip(ctx, slog.LevelDebug, skip, msg)
 	if t.succeededPath != "" {
 		t.writeSucceededSync(filePath, guid)
 	}

@@ -12,7 +12,12 @@ import (
 )
 
 func UploadSingle(ctx context.Context, bk transfer.Uploader, logger *logs.Gen3Logger, req common.FileUploadRequestObject, showProgress bool) error {
-	logger.InfoContext(ctx, "File Upload Request", "request", req)
+	logger.DebugContext(ctx, "File upload request",
+		"source_path", req.SourcePath,
+		"object_key", req.ObjectKey,
+		"guid", req.GUID,
+		"bucket", req.Bucket,
+	)
 
 	// Helper to handle * in path if it was passed, though optimally caller handles this.
 	// We will trust the SourcePath in the request object mostly, but for safety we can check existence.
@@ -79,7 +84,7 @@ func UploadSingle(ctx context.Context, bk transfer.Uploader, logger *logs.Gen3Lo
 		return err
 	}
 
-	logger.InfoContext(ctx, "Successfully uploaded", "file", req.ObjectKey)
+	logger.DebugContext(ctx, "Successfully uploaded", "file", req.ObjectKey)
 	logger.Succeeded(req.SourcePath, req.GUID)
 
 	if showProgress {
