@@ -1,6 +1,6 @@
 package conf
 
-//go:generate mockgen -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/data-client/conf ManagerInterface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/data-client/conf ManagerInterface
 
 import (
 	"encoding/json"
@@ -12,22 +12,13 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/common"
+	syconf "github.com/calypr/syfon/client/conf"
 	"gopkg.in/ini.v1"
 )
 
 var ErrProfileNotFound = errors.New("profile not found in config file")
 
-type Credential struct {
-	Profile            string
-	KeyID              string
-	APIKey             string
-	AccessToken        string
-	APIEndpoint        string
-	UseShepherd        string
-	MinShepherdVersion string
-	Bucket             string
-	ProjectID          string
-}
+type Credential = syconf.Credential
 
 type Manager struct {
 	Logger *slog.Logger

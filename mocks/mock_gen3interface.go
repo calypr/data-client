@@ -14,13 +14,13 @@ import (
 	http "net/http"
 	reflect "reflect"
 
-	credentials "github.com/calypr/data-client/credentials"
-	drs "github.com/calypr/data-client/drs"
 	fence "github.com/calypr/data-client/fence"
 	logs "github.com/calypr/data-client/logs"
 	request "github.com/calypr/data-client/request"
 	requestor "github.com/calypr/data-client/requestor"
 	sower "github.com/calypr/data-client/sower"
+	credentials "github.com/calypr/syfon/client/credentials"
+	drs "github.com/calypr/syfon/client/drs"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -48,6 +48,34 @@ func (m *MockGen3Interface) EXPECT() *MockGen3InterfaceMockRecorder {
 	return m.recorder
 }
 
+// Credentials mocks base method.
+func (m *MockGen3Interface) Credentials() credentials.Manager {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Credentials")
+	ret0, _ := ret[0].(credentials.Manager)
+	return ret0
+}
+
+// Credentials indicates an expected call of Credentials.
+func (mr *MockGen3InterfaceMockRecorder) Credentials() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Credentials", reflect.TypeOf((*MockGen3Interface)(nil).Credentials))
+}
+
+// DRSClient mocks base method.
+func (m *MockGen3Interface) DRSClient() drs.Client {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DRSClient")
+	ret0, _ := ret[0].(drs.Client)
+	return ret0
+}
+
+// DRSClient indicates an expected call of DRSClient.
+func (mr *MockGen3InterfaceMockRecorder) DRSClient() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DRSClient", reflect.TypeOf((*MockGen3Interface)(nil).DRSClient))
+}
+
 // Do mocks base method.
 func (m *MockGen3Interface) Do(ctx context.Context, req *request.RequestBuilder) (*http.Response, error) {
 	m.ctrl.T.Helper()
@@ -63,20 +91,6 @@ func (mr *MockGen3InterfaceMockRecorder) Do(ctx, req any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockGen3Interface)(nil).Do), ctx, req)
 }
 
-// DRSClient mocks base method.
-func (m *MockGen3Interface) DRSClient() drs.ServerClient {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DRSClient")
-	ret0, _ := ret[0].(drs.ServerClient)
-	return ret0
-}
-
-// DRSClient indicates an expected call of DRSClient.
-func (mr *MockGen3InterfaceMockRecorder) DRSClient() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DRSClient", reflect.TypeOf((*MockGen3Interface)(nil).DRSClient))
-}
-
 // FenceClient mocks base method.
 func (m *MockGen3Interface) FenceClient() fence.FenceInterface {
 	m.ctrl.T.Helper()
@@ -89,34 +103,6 @@ func (m *MockGen3Interface) FenceClient() fence.FenceInterface {
 func (mr *MockGen3InterfaceMockRecorder) FenceClient() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FenceClient", reflect.TypeOf((*MockGen3Interface)(nil).FenceClient))
-}
-
-// Credentials mocks base method.
-func (m *MockGen3Interface) Credentials() credentials.Manager {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Credentials")
-	ret0, _ := ret[0].(credentials.Manager)
-	return ret0
-}
-
-// Credentials indicates an expected call of Credentials.
-func (mr *MockGen3InterfaceMockRecorder) Credentials() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Credentials", reflect.TypeOf((*MockGen3Interface)(nil).Credentials))
-}
-
-// RequestorClient mocks base method.
-func (m *MockGen3Interface) RequestorClient() requestor.RequestorInterface {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestorClient")
-	ret0, _ := ret[0].(requestor.RequestorInterface)
-	return ret0
-}
-
-// RequestorClient indicates an expected call of RequestorClient.
-func (mr *MockGen3InterfaceMockRecorder) RequestorClient() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestorClient", reflect.TypeOf((*MockGen3Interface)(nil).RequestorClient))
 }
 
 // Logger mocks base method.
@@ -145,6 +131,20 @@ func (m *MockGen3Interface) New(method, url string) *request.RequestBuilder {
 func (mr *MockGen3InterfaceMockRecorder) New(method, url any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "New", reflect.TypeOf((*MockGen3Interface)(nil).New), method, url)
+}
+
+// RequestorClient mocks base method.
+func (m *MockGen3Interface) RequestorClient() requestor.RequestorInterface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestorClient")
+	ret0, _ := ret[0].(requestor.RequestorInterface)
+	return ret0
+}
+
+// RequestorClient indicates an expected call of RequestorClient.
+func (mr *MockGen3InterfaceMockRecorder) RequestorClient() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestorClient", reflect.TypeOf((*MockGen3Interface)(nil).RequestorClient))
 }
 
 // SowerClient mocks base method.

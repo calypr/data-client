@@ -7,25 +7,25 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/credentials"
-	"github.com/calypr/data-client/drs"
 	"github.com/calypr/data-client/fence"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
 	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
-	"github.com/calypr/data-client/transfer"
-	gen3signer "github.com/calypr/data-client/transfer/signer/gen3"
+	"github.com/calypr/syfon/client/credentials"
+	"github.com/calypr/syfon/client/drs"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	syrequest "github.com/calypr/syfon/client/pkg/request"
 	version "github.com/hashicorp/go-version"
 )
 
-//go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/g3client Gen3Interface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/g3client Gen3Interface
 
 type Gen3Interface interface {
 	request.RequestInterface
 	Logger() *logs.Gen3Logger
 	Credentials() credentials.Manager
-	DRSClient() drs.ServerClient
+	DRSClient() drs.Client
 	FenceClient() fence.FenceInterface
 	RequestorClient() requestor.RequestorInterface
 	SowerClient() sower.SowerInterface
@@ -67,8 +67,13 @@ func (g *Gen3Client) initializeClients() {
 	if shouldInit(FenceClient) {
 		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
 	}
-	if shouldInit(IndexdClient) {
-		g.indexd = drs.NewDrsClient(g.RequestInterface, g.credential, g.logger.Logger)
+	if shouldInit(SyfonClient) {
+		syReq := syrequest.NewRequestInterface(
+			sylogs.NewGen3Logger(g.logger.Logger, "", ""),
+			g.credential,
+			g.config,
+		)
+		g.syfon = drs.NewDrsClient(syReq, g.credential, sylogs.NewGen3Logger(g.logger.Logger, "", ""))
 	}
 	if shouldInit(SowerClient) {
 		g.sower = sower.NewSowerClient(g.RequestInterface, g.credential.APIEndpoint)
@@ -81,8 +86,7 @@ func (g *Gen3Client) initializeClients() {
 type Gen3Client struct {
 	Ctx       context.Context
 	fence     fence.FenceInterface
-	indexd    drs.Client
-	server    drs.ServerClient
+	syfon     drs.Client
 	sower     sower.SowerInterface
 	requestor requestor.RequestorInterface
 	config    conf.ManagerInterface
@@ -91,7 +95,6 @@ type Gen3Client struct {
 	credential *conf.Credential
 	creds      credentials.Manager
 	logger     *logs.Gen3Logger
-	transfer   transfer.Backend
 
 	requestedClients []ClientType
 }
@@ -100,7 +103,7 @@ type ClientType string
 
 const (
 	FenceClient     ClientType = "fence"
-	IndexdClient    ClientType = "indexd"
+	SyfonClient     ClientType = "syfon"
 	SowerClient     ClientType = "sower"
 	RequestorClient ClientType = "requestor"
 )
@@ -113,23 +116,16 @@ func WithClients(clients ...ClientType) Option {
 	}
 }
 
-func (g *Gen3Client) DRSClient() drs.ServerClient {
-	if g.server != nil {
-		return g.server
+func (g *Gen3Client) DRSClient() drs.Client {
+	if g.syfon == nil {
+		syReq := syrequest.NewRequestInterface(
+			sylogs.NewGen3Logger(g.logger.Logger, "", ""),
+			g.credential,
+			g.config,
+		)
+		g.syfon = drs.NewDrsClient(syReq, g.credential, sylogs.NewGen3Logger(g.logger.Logger, "", ""))
 	}
-	if g.transfer != nil {
-		g.server = drs.ComposeServerClient(g.indexd, g.transfer)
-		return g.server
-	}
-	if g.fence == nil {
-		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
-	}
-	if g.indexd == nil {
-		g.indexd = drs.NewDrsClient(g.RequestInterface, g.credential, g.logger.Logger)
-	}
-	g.transfer = transfer.New(g.RequestInterface, g.logger, gen3signer.New(g.RequestInterface, g.credential, g.indexd, g.fence))
-	g.server = drs.ComposeServerClient(g.indexd, g.transfer)
-	return g.server
+	return g.syfon
 }
 
 func (g *Gen3Client) FenceClient() fence.FenceInterface {

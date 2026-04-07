@@ -58,3 +58,8 @@ func (ar *RequestBuilder) WithSkipAuth(skip bool) *RequestBuilder {
 	ar.SkipAuth = skip
 	return ar
 }
+
+func (ar *RequestBuilder) WithPartSize(size int64) *RequestBuilder {
+	ar.PartSize = size
+	return ar
+}

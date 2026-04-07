@@ -9,7 +9,9 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/upload"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	sytransfer "github.com/calypr/syfon/client/transfer"
+	syupload "github.com/calypr/syfon/client/xfer/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +43,6 @@ func init() {
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
-			bk := g3i.DRSClient()
 
 			logger := g3i.Logger()
 			if hasMetadata {
@@ -64,20 +65,16 @@ func init() {
 
 			logger.Println("\nThe following file(s) has been found in path \"" + uploadPath + "\" and will be uploaded:")
 			for _, filePath := range filePaths {
-				// Use ProcessFilename to create the unified object (GUID is empty here, as this command requests a new GUID)
-				// ProcessFilename signature: (uploadPath, filePath, objectId, includeSubDirName, includeMetadata)
-				furObject, err := upload.ProcessFilename(g3i.Logger(), uploadPath, filePath, "", includeSubDirName, hasMetadata)
+				syLogger := sylogs.NewGen3Logger(g3i.Logger().Logger, "", "")
+				furObject, err := syupload.ProcessFilename(syLogger, uploadPath, filePath, "", includeSubDirName, hasMetadata)
 				furObject.Bucket = bucketName
 
-				// Handle case where ProcessFilename fails (e.g., metadata parsing error)
 				if err != nil {
-					// Use the data available for logging the failure
 					g3i.Logger().Failed(filePath, filepath.Base(filePath), common.FileMetadata{}, "", 0, false)
 					logger.Println("Error processing file path or metadata: " + err.Error())
 					continue
 				}
 
-				// Optional: Display file path before proceeding
 				file, _ := os.Open(filePath)
 				if fi, _ := file.Stat(); !fi.IsDir() {
 					logger.Println("\t" + filePath)
@@ -86,83 +83,29 @@ func init() {
 
 				uploadRequestObjects = append(uploadRequestObjects, furObject)
 			}
-			// fmt.Fprintln(os.Stderr)
 			logger.Println()
 
-			if len(uploadRequestObjects) == 0 {
-				logger.Println("No valid file upload requests were created.")
-				return
+			// Unified DRS Client serves as both logical resolver and technical movement writer Across S3, GCS, and Azure.
+			drsClient := g3i.DRSClient()
+			uploader, ok := drsClient.(sytransfer.Uploader)
+			if !ok {
+				logger.Fatal("DRS client does not implement transfer.Uploader")
 			}
-
-			singlePartObjects, multipartObjects := upload.SeparateSingleAndMultipartUploads(bk, uploadRequestObjects)
 
 			if batch {
-				workers, respCh, errCh, batchFURObjects := upload.InitBatchUploadChannels(numParallel, len(singlePartObjects))
-
-				for _, furObject := range singlePartObjects {
-					if len(batchFURObjects) < workers {
-						batchFURObjects = append(batchFURObjects, furObject)
-					} else {
-						upload.BatchUpload(ctx, bk, Logger, batchFURObjects, workers, respCh, errCh, bucketName)
-						batchFURObjects = []common.FileUploadRequestObject{furObject}
-					}
-				}
-				if len(batchFURObjects) > 0 {
-					upload.BatchUpload(ctx, bk, Logger, batchFURObjects, workers, respCh, errCh, bucketName)
-				}
-
-				if len(errCh) > 0 {
-					close(errCh)
-					for err := range errCh {
-						if err != nil {
-							logger.Printf("Error occurred during uploading: %s\n", err.Error())
-						}
-					}
-				}
+				workers, respCh, errCh, _ := syupload.InitBatchUploadChannels(numParallel, len(uploadRequestObjects))
+				syupload.BatchUpload(ctx, uploader, sylogs.NewGen3Logger(Logger.Logger, "", ""), uploadRequestObjects, workers, respCh, errCh, bucketName)
 			} else {
-				for _, furObject := range singlePartObjects {
-					file, err := os.Open(furObject.SourcePath)
+				for _, furObject := range uploadRequestObjects {
+					err := syupload.Upload(ctx, uploader, furObject, true)
 					if err != nil {
-						logger.Failed(furObject.SourcePath, furObject.ObjectKey, furObject.FileMetadata, furObject.GUID, 0, false)
-						logger.Println("File open error: " + err.Error())
-						continue
+						logger.Error("Upload failed", "path", furObject.SourcePath, "error", err)
 					}
-					defer file.Close()
-					fi, err := file.Stat()
-					if err != nil {
-						logger.Failed(furObject.SourcePath, furObject.ObjectKey, furObject.FileMetadata, furObject.GUID, 0, false)
-						logger.Println("File stat error for file" + fi.Name() + ", file may be missing or unreadable because of permissions.\n")
-						continue
-					}
-					upload.UploadSingle(ctx, bk, Logger, furObject, true)
 				}
 			}
 
-			if len(multipartObjects) > 0 {
-				cred := g3i.Credentials().Current()
-				if cred.UseShepherd == "true" ||
-					cred.UseShepherd == "" && common.DefaultUseShepherd == true {
-					logger.Printf("error: Shepherd currently does not support multipart uploads. For the moment, please disable Shepherd with\n    $ data-client configure --profile=%v --use-shepherd=false\nand try again", cred.Profile)
-					return
-				}
-				g3i.Logger().Println("Multipart uploading...")
-				for _, furObject := range multipartObjects {
-					file, err := os.Open(furObject.SourcePath)
-					if err != nil {
-						logger.Failed(furObject.SourcePath, furObject.ObjectKey, furObject.FileMetadata, furObject.GUID, 0, false)
-						logger.Println("File open error: " + err.Error())
-						continue
-					}
-					err = upload.MultipartUpload(ctx, bk, furObject, file, true)
-					if err != nil {
-						g3i.Logger().Println(err.Error())
-					} else {
-						g3i.Logger().Scoreboard().IncrementSB(0)
-					}
-				}
-			}
 			if len(g3i.Logger().GetSucceededLogMap()) == 0 {
-				upload.RetryFailedUploads(ctx, bk, Logger, g3i.Logger().GetFailedLogMap())
+				syupload.RetryFailedUploads(ctx, uploader, sylogs.NewGen3Logger(Logger.Logger, "", ""), g3i.Logger().GetFailedLogMap())
 			}
 			g3i.Logger().Scoreboard().PrintSB()
 		},

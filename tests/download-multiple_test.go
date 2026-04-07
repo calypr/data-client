@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/calypr/data-client/download"
-	drs "github.com/calypr/data-client/drs"
-	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/mocks"
+	"github.com/calypr/syfon/client/drs"
+	"github.com/calypr/syfon/client/mocks"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	"github.com/calypr/syfon/client/xfer/download"
 	"go.uber.org/mock/gomock"
 )
 
@@ -31,7 +31,7 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 		GetObject(gomock.Any(), testGUID).
 		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
 
-	logger := logs.NewGen3Logger(nil, "", "test")
+	logger := sylogs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
 	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
@@ -67,7 +67,7 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 		GetObject(gomock.Any(), testGUID).
 		Return(nil, fmt.Errorf("Indexd error"))
 
-	logger := logs.NewGen3Logger(nil, "", "test")
+	logger := sylogs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
 	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
@@ -109,7 +109,7 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 		GetObject(gomock.Any(), testGUID).
 		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
 
-	logger := logs.NewGen3Logger(nil, "", "test")
+	logger := sylogs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
 	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)

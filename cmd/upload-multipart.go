@@ -8,7 +8,8 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/upload"
+	sytransfer "github.com/calypr/syfon/client/transfer"
+	syupload "github.com/calypr/syfon/client/xfer/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -22,9 +23,9 @@ func init() {
 
 	var uploadMultipartCmd = &cobra.Command{
 		Use:   "upload-multipart",
-		Short: "Upload a single file using multipart upload",
-		Long: `Uploads a large file to object storage using multipart upload.
-This method is resilient to network interruptions and supports resume capability.`,
+		Short: "Upload a single file using managed multipart upload",
+		Long: `Uploads a file to object storage using managed multipart upload
+(init -> presigned part URLs -> complete).`,
 		Example: `./data-client upload-multipart --profile=myprofile --file-path=./large.bam
 ./data-client upload-multipart --profile=myprofile --file-path=./data.bam --guid=existing-guid`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -44,6 +45,10 @@ This method is resilient to network interruptions and supports resume capability
 				logger.Fatalf("failed to initialize Gen3 interface: %v", err)
 			}
 			bk := g3.DRSClient()
+			uploader, ok := bk.(sytransfer.Uploader)
+			if !ok {
+				logger.Fatal("DRS client does not implement transfer.Uploader")
+			}
 
 			absPath, err := common.GetAbsolutePath(filePath)
 			if err != nil {
@@ -57,13 +62,20 @@ This method is resilient to network interruptions and supports resume capability
 				FileMetadata: common.FileMetadata{},
 			}
 
-			file, err := os.Open(absPath)
+			if fileInfo.Bucket == "" {
+				fileInfo.Bucket = bucketName
+			}
+			if fileInfo.Bucket == "" {
+				fileInfo.Bucket = bk.GetBucketName()
+			}
+
+			// Force multipart path by using direct multipart entrypoint.
+			file, err := os.Open(fileInfo.SourcePath)
 			if err != nil {
-				logger.Fatalf("cannot open file %s: %v", absPath, err)
+				logger.Fatal(err)
 			}
 			defer file.Close()
-
-			err = upload.MultipartUpload(context.Background(), bk, fileInfo, file, true)
+			err = syupload.MultipartUpload(context.Background(), uploader, fileInfo, file, true)
 			if err != nil {
 				logger.Fatal(err)
 			}

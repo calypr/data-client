@@ -6,7 +6,9 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/upload"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	sytransfer "github.com/calypr/syfon/client/transfer"
+	syupload "github.com/calypr/syfon/client/xfer/upload"
 
 	"github.com/spf13/cobra"
 )
@@ -33,6 +35,10 @@ func init() {
 				Logger.Fatalf("Failed to initialize client: %v", err)
 			}
 			bk := g3.DRSClient()
+			uploader, ok := bk.(sytransfer.Uploader)
+			if !ok {
+				Logger.Fatalf("DRS client does not implement transfer.Uploader")
+			}
 
 			logger := g3.Logger()
 
@@ -45,7 +51,8 @@ func init() {
 				logger.Fatalf("Cannot read failed log: %v", err)
 			}
 
-			upload.RetryFailedUploads(context.Background(), bk, logger, failedMap)
+			// Unified DRS Client serves as both logical resolver and technical movement writer Across S3, GCS, and Azure.
+			syupload.RetryFailedUploads(context.Background(), uploader, sylogs.NewGen3Logger(Logger.Logger, "", ""), failedMap)
 			sb.PrintSB()
 		},
 	}

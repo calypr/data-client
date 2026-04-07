@@ -23,7 +23,7 @@ import (
 // FenceBucketEndpoint is the endpoint postfix for FENCE bucket list
 const FenceBucketEndpoint = "/data/buckets"
 
-//go:generate mockgen -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
 
 // FenceInterface defines the interface for Fence client
 type FenceInterface interface {

@@ -8,12 +8,13 @@ import (
 	"os"
 
 	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/download"
-	"github.com/calypr/data-client/drs"
+	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/localclient"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/transfer"
+	sydrs "github.com/calypr/syfon/client/drs"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	syrequest "github.com/calypr/syfon/client/pkg/request"
+	sydownload "github.com/calypr/syfon/client/xfer/download"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -23,12 +24,8 @@ import (
 func init() {
 	var manifestPath string
 	var downloadPath string
-	var filenameFormat string
-	var rename bool
-	var noPrompt bool
-	var protocol string
 	var numParallel int
-	var skipCompleted bool
+	var profile string
 
 	var downloadMultipleCmd = &cobra.Command{
 		Use:     "download-multiple",
@@ -36,27 +33,28 @@ func init() {
 		Long:    `Get presigned URLs for multiple of files specified in a manifest file and then download all of them.`,
 		Example: `./data-client download-multiple --profile <profile-name> --manifest <path-to-manifest/manifest.json> --download-path <path-to-file-dir/>`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// don't initialize transmission logs for non-uploading related commands
-
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog())
 			defer logCloser()
 
-			var dc drs.Client
-			var bk transfer.Backend
+			var dc sydrs.Client
 			if backendType == "drs" {
-				lc, err := localclient.NewLocalInterface(profile, logger)
+				config := conf.NewConfigure(logger.Logger)
+				cred, err := config.Load(profile)
 				if err != nil {
 					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 				}
-				dc = lc.DRSClient()
-				bk = lc.DRSClient()
+				req := syrequest.NewRequestInterface(
+					sylogs.NewGen3Logger(logger.Logger, "", ""),
+					cred,
+					config,
+				)
+				dc = sydrs.NewLocalDrsClient(req, cred.APIEndpoint, sylogs.NewGen3Logger(logger.Logger, "", ""))
 			} else {
 				g3i, err := g3client.NewGen3Interface(profile, logger)
 				if err != nil {
 					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 				}
 				dc = g3i.DRSClient()
-				bk = g3i.DRSClient()
 			}
 
 			manifestPath, _ = common.GetAbsolutePath(manifestPath)
@@ -94,18 +92,18 @@ func init() {
 				logger.Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
 			}
 
-			err = download.DownloadMultiple(
+			err = sydownload.DownloadMultiple(
 				context.Background(),
 				dc,
-				bk,
+				dc,
 				objects,
 				downloadPath,
-				filenameFormat,
-				rename,
-				noPrompt,
-				protocol,
+				"original",
+				true,
+				false,
+				"",
 				numParallel,
-				skipCompleted,
+				false,
 			)
 			if err != nil {
 				logger.Fatal(err.Error())
@@ -118,11 +116,6 @@ func init() {
 	downloadMultipleCmd.Flags().StringVar(&manifestPath, "manifest", "", "The manifest file to read from. A valid manifest can be acquired by using the \"Download Manifest\" button in Data Explorer from a data common's portal")
 	downloadMultipleCmd.MarkFlagRequired("manifest") //nolint:errcheck
 	downloadMultipleCmd.Flags().StringVar(&downloadPath, "download-path", ".", "The directory in which to store the downloaded files")
-	downloadMultipleCmd.Flags().StringVar(&filenameFormat, "filename-format", "original", "The format of filename to be used, including \"original\", \"guid\" and \"combined\"")
-	downloadMultipleCmd.Flags().BoolVar(&rename, "rename", false, "Only useful when \"--filename-format=original\", will rename file by appending a counter value to its filename if set to true, otherwise the same filename will be used")
-	downloadMultipleCmd.Flags().BoolVar(&noPrompt, "no-prompt", false, "If set to true, will not display user prompt message for confirmation")
-	downloadMultipleCmd.Flags().StringVar(&protocol, "protocol", "", "Specify the preferred protocol with --protocol=s3")
 	downloadMultipleCmd.Flags().IntVar(&numParallel, "numparallel", 1, "Number of downloads to run in parallel")
-	downloadMultipleCmd.Flags().BoolVar(&skipCompleted, "skip-completed", false, "If set to true, will check for filename and size before download and skip any files in \"download-path\" that matches both")
 	RootCmd.AddCommand(downloadMultipleCmd)
 }
