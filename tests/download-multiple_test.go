@@ -22,11 +22,6 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 
 	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
 
-	// New behavior: tries GetObjectByHash first
-	mockIndexd.EXPECT().
-		GetObjectByHash(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("not a hash"))
-
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
 		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
@@ -58,14 +53,10 @@ func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 
 	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
 
-	// New behavior: tries GetObjectByHash first
-	mockIndexd.EXPECT().
-		GetObjectByHash(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("not a hash"))
-
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
-		Return(nil, fmt.Errorf("Indexd error"))
+		Return(nil, fmt.Errorf("Indexd error")).
+		Times(2)
 
 	logger := sylogs.NewGen3Logger(nil, "", "test")
 
@@ -99,11 +90,6 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
-
-	// New behavior: tries GetObjectByHash first
-	mockIndexd.EXPECT().
-		GetObjectByHash(gomock.Any(), gomock.Any()).
-		Return(nil, fmt.Errorf("not a hash"))
 
 	mockIndexd.EXPECT().
 		GetObject(gomock.Any(), testGUID).
