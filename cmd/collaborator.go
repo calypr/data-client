@@ -14,25 +14,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var collaboratorCmd = &cobra.Command{
-	Use:   "collaborator",
+var collaboratorsCmd = &cobra.Command{
+	Use:   "collaborators",
 	Short: "Manage collaborators and access requests",
 }
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
-
-func validateProjectAndUser(projectID, username string) error {
-	if !emailRegex.MatchString(strings.ToLower(username)) {
-		return fmt.Errorf("invalid username '%s': must be a valid email address", username)
-	}
-
-	parts := strings.Split(projectID, "-")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return fmt.Errorf("invalid project_id '%s': must be in the form 'program-project'", projectID)
-	}
-
-	return nil
-}
 
 func printRequest(r requestor.Request) {
 	b, err := yaml.Marshal(r)
@@ -43,17 +30,17 @@ func printRequest(r requestor.Request) {
 	fmt.Println(string(b))
 }
 
-func getRequestorClient() (requestor.RequestorInterface, func()) {
-	if profile == "" {
-		fmt.Println("Error: profile is required. Please specify a profile using the --profile flag.")
+func getRequestorClient(localProfile string) (requestor.RequestorInterface, func()) {
+	if localProfile == "" {
+		fmt.Println("Error: profile is required.")
 		os.Exit(1)
 	}
 
 	// Initialize logger
-	logger, logCloser := logs.New(profile)
+	logger, logCloser := logs.New(localProfile)
 
 	// Initialize base Gen3 interface and build requestor client from it.
-	g3i, err := g3client.NewGen3Interface(profile, logger)
+	g3i, err := g3client.NewGen3Interface(localProfile, logger)
 	if err != nil {
 		fmt.Printf("Error accessing Gen3: %v\n", err)
 		logCloser()
@@ -64,14 +51,16 @@ func getRequestorClient() (requestor.RequestorInterface, func()) {
 }
 
 var collaboratorListCmd = &cobra.Command{
-	Use:   "ls",
+	Use:   "ls [profile]",
 	Short: "List requests",
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		p := args[0]
 		mine, _ := cmd.Flags().GetBool("mine")
 		active, _ := cmd.Flags().GetBool("active")
 		username, _ := cmd.Flags().GetString("username")
 
-		client, closer := getRequestorClient()
+		client, closer := getRequestorClient(p)
 		defer closer()
 
 		requests, err := client.ListRequests(cmd.Context(), mine, active, username)
@@ -87,10 +76,12 @@ var collaboratorListCmd = &cobra.Command{
 }
 
 var collaboratorPendingCmd = &cobra.Command{
-	Use:   "pending",
+	Use:   "pending [profile]",
 	Short: "List pending requests",
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		client, closer := getRequestorClient()
+		p := args[0]
+		client, closer := getRequestorClient(p)
 		defer closer()
 
 		// Fetch all requests
@@ -110,22 +101,26 @@ var collaboratorPendingCmd = &cobra.Command{
 }
 
 var collaboratorAddUserCmd = &cobra.Command{
-	Use:   "add [project_id] [username]",
+	Use:   "add [profile] [email] [program] [project]",
 	Short: "Add a user to a project",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if err := cobra.ExactArgs(2)(cmd, args); err != nil {
-			return err
-		}
-		return validateProjectAndUser(args[0], args[1])
-	},
+	Args:  cobra.ExactArgs(4),
 	Run: func(cmd *cobra.Command, args []string) {
-		projectID := args[0]
+		p := args[0]
 		username := args[1]
+		program := args[2]
+		project := args[3]
+		projectID := fmt.Sprintf("%s-%s", program, project)
+
+		if !emailRegex.MatchString(strings.ToLower(username)) {
+			fmt.Printf("Error: invalid email address '%s'\n", username)
+			os.Exit(1)
+		}
+
 		write, _ := cmd.Flags().GetBool("write")
 		guppy, _ := cmd.Flags().GetBool("guppy")
 		approve, _ := cmd.Flags().GetBool("approve")
 
-		client, closer := getRequestorClient()
+		client, closer := getRequestorClient(p)
 		defer closer()
 
 		reqs, err := client.AddUser(cmd.Context(), projectID, username, write, guppy)
@@ -156,20 +151,24 @@ var collaboratorAddUserCmd = &cobra.Command{
 }
 
 var collaboratorRemoveUserCmd = &cobra.Command{
-	Use:   "rm [project_id] [username]",
+	Use:   "rm [profile] [email] [program] [project]",
 	Short: "Remove a user from a project",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if err := cobra.ExactArgs(2)(cmd, args); err != nil {
-			return err
-		}
-		return validateProjectAndUser(args[0], args[1])
-	},
+	Args:  cobra.ExactArgs(4),
 	Run: func(cmd *cobra.Command, args []string) {
-		projectID := args[0]
+		p := args[0]
 		username := args[1]
+		program := args[2]
+		project := args[3]
+		projectID := fmt.Sprintf("%s-%s", program, project)
+
+		if !emailRegex.MatchString(strings.ToLower(username)) {
+			fmt.Printf("Error: invalid email address '%s'\n", username)
+			os.Exit(1)
+		}
+
 		approve, _ := cmd.Flags().GetBool("approve")
 
-		client, closer := getRequestorClient()
+		client, closer := getRequestorClient(p)
 		defer closer()
 
 		reqs, err := client.RemoveUser(cmd.Context(), projectID, username)
@@ -199,13 +198,14 @@ var collaboratorRemoveUserCmd = &cobra.Command{
 }
 
 var collaboratorApproveCmd = &cobra.Command{
-	Use:   "approve [request_id]",
+	Use:   "approve [profile] [request_id]",
 	Short: "Approve a request (sign it)",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		requestID := args[0]
+		p := args[0]
+		requestID := args[1]
 
-		client, closer := getRequestorClient()
+		client, closer := getRequestorClient(p)
 		defer closer()
 
 		req, err := client.UpdateRequest(cmd.Context(), requestID, "SIGNED")
@@ -220,15 +220,16 @@ var collaboratorApproveCmd = &cobra.Command{
 }
 
 var collaboratorUpdateCmd = &cobra.Command{
-	Use:    "update [request_id] [status]",
+	Use:    "update [profile] [request_id] [status]",
 	Short:  "Update a request status",
 	Hidden: true,
-	Args:   cobra.ExactArgs(2),
+	Args:   cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
-		requestID := args[0]
-		status := args[1]
+		p := args[0]
+		requestID := args[1]
+		status := args[2]
 
-		client, closer := getRequestorClient()
+		client, closer := getRequestorClient(p)
 		defer closer()
 
 		req, err := client.UpdateRequest(cmd.Context(), requestID, status)
@@ -242,13 +243,13 @@ var collaboratorUpdateCmd = &cobra.Command{
 }
 
 func init() {
-	RootCmd.AddCommand(collaboratorCmd)
-	collaboratorCmd.AddCommand(collaboratorListCmd)
-	collaboratorCmd.AddCommand(collaboratorPendingCmd)
-	collaboratorCmd.AddCommand(collaboratorAddUserCmd)
-	collaboratorCmd.AddCommand(collaboratorRemoveUserCmd)
-	collaboratorCmd.AddCommand(collaboratorApproveCmd)
-	collaboratorCmd.AddCommand(collaboratorUpdateCmd)
+	RootCmd.AddCommand(collaboratorsCmd)
+	collaboratorsCmd.AddCommand(collaboratorListCmd)
+	collaboratorsCmd.AddCommand(collaboratorPendingCmd)
+	collaboratorsCmd.AddCommand(collaboratorAddUserCmd)
+	collaboratorsCmd.AddCommand(collaboratorRemoveUserCmd)
+	collaboratorsCmd.AddCommand(collaboratorApproveCmd)
+	collaboratorsCmd.AddCommand(collaboratorUpdateCmd)
 
 	collaboratorListCmd.Flags().Bool("mine", false, "List my requests")
 	collaboratorListCmd.Flags().Bool("active", false, "List only active requests")
@@ -259,6 +260,4 @@ func init() {
 	collaboratorAddUserCmd.Flags().BoolP("approve", "a", false, "Automatically approve the requests")
 
 	collaboratorRemoveUserCmd.Flags().BoolP("approve", "a", false, "Automatically approve the revoke requests")
-
-	collaboratorCmd.PersistentFlags().StringVar(&profile, "profile", "", "Specify profile to use")
 }
