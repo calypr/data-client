@@ -24,12 +24,15 @@ jobs:
 
       - name: Run Tests with Coverage
         run: |
-          go test -coverprofile=coverage.out -covermode=atomic ./...
+          CORE_PACKAGES=$(go list ./... | grep -Ev '/(cmd|mocks|tests)$')
+          go test -coverprofile=coverage.out -covermode=atomic $CORE_PACKAGES
         continue-on-error: true
 
       - name: Generate Coverage Report
         id: coverage
         run: |
+          CORE_PACKAGES=$(go list ./... | grep -Ev '/(cmd|mocks|tests)$')
+
           # Get overall coverage
           OVERALL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "overall=$OVERALL" >> $GITHUB_OUTPUT
@@ -45,26 +48,43 @@ jobs:
           echo "|---------|----------|" >> coverage-report.md
           
           # Extract package coverage
-          go test -coverprofile=/dev/null -covermode=atomic ./... 2>&1 | \
-            grep "coverage:" | \
-            grep -v "setup failed" | \
-            awk '{
-              pkg=$1; 
-              cov=$4; 
+          go test -coverprofile=/dev/null -covermode=atomic $CORE_PACKAGES 2>&1 | \
+            awk '/^ok[[:space:]]/ {
+              pkg=$2;
+              cov=$5;
               gsub(/github.com\/calypr\/data-client\//, "", pkg);
-              if (cov ~ /statements/) {
-                print "| " pkg " | " cov " |"
-              } else {
-                print "| " pkg " | " cov " |"
-              }
+              print "| " pkg " | " cov " |"
             }' >> coverage-report.md
           
           cat coverage-report.md
 
       - name: Check Coverage Thresholds
         run: |
-          chmod +x ./scripts/check-coverage.sh
-          ./scripts/check-coverage.sh 30 20
+          set -euo pipefail
+
+          CORE_PACKAGES=$(go list ./... | grep -Ev '/(cmd|mocks|tests)$')
+
+          OVERALL=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+          if ! awk -v val="$OVERALL" -v min=30 'BEGIN { if (val + 0 < min) exit 1; exit 0 }'; then
+            echo "Overall coverage ${OVERALL}% is below the required minimum of 30%"
+            exit 1
+          fi
+
+          while read -r pkg cov; do
+            cov=${cov%%%}
+            if ! awk -v val="$cov" -v min=20 'BEGIN { if (val + 0 < min) exit 1; exit 0 }'; then
+              echo "Package ${pkg} coverage ${cov}% is below the required minimum of 20%"
+              exit 1
+            fi
+          done < <(
+            go test -coverprofile=/dev/null -covermode=atomic $CORE_PACKAGES 2>&1 | \
+              awk '/^ok[[:space:]]/ {
+                pkg=$2;
+                cov=$5;
+                gsub(/github.com\/calypr\/data-client\//, "", pkg);
+                print pkg, cov
+              }'
+          )
 
       - name: Upload Coverage to Codecov (Optional)
         uses: codecov/codecov-action@v4

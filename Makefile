@@ -13,6 +13,7 @@ BIN_DIR := ./bin
 # Coverage thresholds
 COVERAGE_THRESHOLD := 30
 PACKAGE_COVERAGE_THRESHOLD := 20
+CORE_PACKAGES := $(shell go list ./... | grep -Ev '/(cmd|mocks|tests)$$')
 
 # OpenAPI generation now lives in syfon.
 SYFON_DIR ?= ../syfon
@@ -38,7 +39,7 @@ test:
 ## test-coverage: Runs tests with coverage profiling
 test-coverage:
 	@echo "--> Running tests with coverage..."
-	@go test -coverprofile=coverage.out -covermode=atomic ./...
+	@go test -coverprofile=coverage.out -covermode=atomic $(CORE_PACKAGES)
 	@echo "--> Coverage report generated: coverage.out"
 	@go tool cover -func=coverage.out | tail -1
 
@@ -51,7 +52,29 @@ coverage-html: test-coverage
 ## coverage-check: Verifies coverage meets minimum thresholds
 coverage-check: test-coverage
 	@echo "--> Checking coverage thresholds..."
-	@./scripts/check-coverage.sh $(COVERAGE_THRESHOLD) $(PACKAGE_COVERAGE_THRESHOLD)
+	@set -euo pipefail; \
+	OVERALL=$$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}'); \
+	if ! awk -v val="$$OVERALL" -v min=$(COVERAGE_THRESHOLD) 'BEGIN { if (val + 0 < min) exit 1; exit 0 }'; then \
+	  echo "Overall coverage $$OVERALL% is below the required minimum of $(COVERAGE_THRESHOLD)%"; \
+	  exit 1; \
+	fi; \
+	go test -coverprofile=/dev/null -covermode=atomic $(CORE_PACKAGES) 2>&1 | \
+	  awk '/^ok[[:space:]]/ { \
+	    pkg=$$2; \
+	    cov=$$5; \
+	    gsub(/github.com\\/calypr\\/data-client\\//, "", pkg); \
+	    print pkg, cov; \
+	  }' | \
+	  while read -r pkg cov; do \
+	    case "$$pkg" in \
+	      cmd|mocks|tests) continue ;; \
+	    esac; \
+	    cov=$${cov%%%}; \
+	    if ! awk -v val="$$cov" -v min=$(PACKAGE_COVERAGE_THRESHOLD) 'BEGIN { if (val + 0 < min) exit 1; exit 0 }'; then \
+	      echo "Package $$pkg coverage $$cov% is below the required minimum of $(PACKAGE_COVERAGE_THRESHOLD)%"; \
+	      exit 1; \
+	    fi; \
+	  done
 
 ## generate: Runs go generate commands to create mocks, embedded assets, etc.
 generate:

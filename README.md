@@ -1,7 +1,9 @@
 # data-client
 
-[![Build Status](https://travis-ci.org/uc-cdis/cdis-data-client.svg?branch=master)](https://travis-ci.org/uc-cdis/cdis-data-client)
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/uc-cdis/cdis-data-client?sort=semver)](https://github.com/uc-cdis/cdis-data-client/releases)
+[![CI](https://github.com/calypr/data-client/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/calypr/data-client/actions/workflows/ci.yaml)
+[![Coverage](https://codecov.io/gh/calypr/data-client/branch/develop/graph/badge.svg)](https://app.codecov.io/gh/calypr/data-client/tree/develop)
+[![Go Report Card](https://goreportcard.com/badge/github.com/calypr/data-client)](https://goreportcard.com/report/github.com/calypr/data-client)
+[![Release](https://img.shields.io/github/v/release/calypr/data-client?sort=semver)](https://github.com/calypr/data-client/releases)
 
 `data-client` is a command-line tool for downloading, uploading, and submitting data files to and from a Gen3 data commons.
 
