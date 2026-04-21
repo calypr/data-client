@@ -13,9 +13,6 @@ import (
 	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
 	"github.com/calypr/syfon/client/credentials"
-	"github.com/calypr/syfon/client/drs"
-	sylogs "github.com/calypr/syfon/client/pkg/logs"
-	syrequest "github.com/calypr/syfon/client/pkg/request"
 	version "github.com/hashicorp/go-version"
 )
 
@@ -25,7 +22,7 @@ type Gen3Interface interface {
 	request.RequestInterface
 	Logger() *logs.Gen3Logger
 	Credentials() credentials.Manager
-	DRSClient() drs.Client
+	SyfonClient() SyfonClientInterface
 	FenceClient() fence.FenceInterface
 	RequestorClient() requestor.RequestorInterface
 	SowerClient() sower.SowerInterface
@@ -68,12 +65,7 @@ func (g *Gen3Client) initializeClients() {
 		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
 	}
 	if shouldInit(SyfonClient) {
-		syReq := syrequest.NewRequestInterface(
-			sylogs.NewGen3Logger(g.logger.Logger, "", ""),
-			g.credential,
-			g.config,
-		)
-		g.syfon = drs.NewDrsClient(syReq, g.credential, sylogs.NewGen3Logger(g.logger.Logger, "", ""))
+		g.syfon = buildSyfonClient(g.credential, g.logger, g.RequestInterface)
 	}
 	if shouldInit(SowerClient) {
 		g.sower = sower.NewSowerClient(g.RequestInterface, g.credential.APIEndpoint)
@@ -86,7 +78,7 @@ func (g *Gen3Client) initializeClients() {
 type Gen3Client struct {
 	Ctx       context.Context
 	fence     fence.FenceInterface
-	syfon     drs.Client
+	syfon     SyfonClientInterface
 	sower     sower.SowerInterface
 	requestor requestor.RequestorInterface
 	config    conf.ManagerInterface
@@ -116,14 +108,9 @@ func WithClients(clients ...ClientType) Option {
 	}
 }
 
-func (g *Gen3Client) DRSClient() drs.Client {
+func (g *Gen3Client) SyfonClient() SyfonClientInterface {
 	if g.syfon == nil {
-		syReq := syrequest.NewRequestInterface(
-			sylogs.NewGen3Logger(g.logger.Logger, "", ""),
-			g.credential,
-			g.config,
-		)
-		g.syfon = drs.NewDrsClient(syReq, g.credential, sylogs.NewGen3Logger(g.logger.Logger, "", ""))
+		g.syfon = buildSyfonClient(g.credential, g.logger, g.RequestInterface)
 	}
 	return g.syfon
 }

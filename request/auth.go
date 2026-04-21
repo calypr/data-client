@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
+	sycommon "github.com/calypr/syfon/client/common"
 )
 
 func (t *AuthTransport) NewAccessToken(ctx context.Context) error {
@@ -21,17 +21,17 @@ func (t *AuthTransport) NewAccessToken(ctx context.Context) error {
 	refreshClient := &http.Client{Transport: t.Base}
 
 	payload := map[string]string{"api_key": t.Cred.APIKey}
-	reader, err := common.ToJSONReader(payload)
+	reader, err := sycommon.ToJSONReader(payload)
 	if err != nil {
 		return err
 	}
 
-	refreshUrl := t.Cred.APIEndpoint + common.FenceAccessTokenEndpoint
+	refreshUrl := t.Cred.APIEndpoint + sycommon.DataAccessTokenEndpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshUrl, reader)
 	if err != nil {
 		return err
 	}
-	req.Header.Set(common.HeaderContentType, common.MIMEApplicationJSON)
+	req.Header.Set(sycommon.HeaderContentType, sycommon.MIMEApplicationJSON)
 
 	resp, err := refreshClient.Do(req)
 	if err != nil {
@@ -43,7 +43,9 @@ func (t *AuthTransport) NewAccessToken(ctx context.Context) error {
 		return errors.New("failed to refresh token, status: " + strconv.Itoa(resp.StatusCode))
 	}
 
-	var result common.AccessTokenStruct
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return err
 	}

@@ -14,14 +14,29 @@ import (
 
 	"log/slog"
 
-	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/request"
+	sycommon "github.com/calypr/syfon/client/common"
 	"github.com/hashicorp/go-version"
 )
 
 // FenceBucketEndpoint is the endpoint postfix for FENCE bucket list
 const FenceBucketEndpoint = "/data/buckets"
+
+const (
+	fenceAccessTokenEndpoint           = "/user/credentials/api/access_token"
+	fenceUserEndpoint                  = "/user/user"
+	fenceDataEndpoint                  = "/user/data"
+	fenceDataUploadEndpoint            = fenceDataEndpoint + "/upload"
+	fenceDataDownloadEndpoint          = fenceDataEndpoint + "/download"
+	fenceDataMultipartInitEndpoint     = fenceDataEndpoint + "/multipart/init"
+	fenceDataMultipartUploadEndpoint   = fenceDataEndpoint + "/multipart/upload"
+	fenceDataMultipartCompleteEndpoint = fenceDataEndpoint + "/multipart/complete"
+	shepherdEndpoint                   = "/mds"
+	shepherdVersionEndpoint            = "/mds/version"
+	defaultUseShepherd                 = false
+	defaultMinShepherdVersion          = "2.0.0"
+)
 
 //go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
 
@@ -85,8 +100,8 @@ func (f *FenceClient) NewAccessToken(ctx context.Context) (string, error) {
 		ctx,
 		&request.RequestBuilder{
 			Method:  http.MethodPost,
-			Url:     f.cred.APIEndpoint + common.FenceAccessTokenEndpoint,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+			Url:     f.cred.APIEndpoint + fenceAccessTokenEndpoint,
+			Headers: map[string]string{sycommon.HeaderContentType: sycommon.MIMEApplicationJSON},
 			Body:    bodyReader,
 		},
 	)
@@ -101,7 +116,9 @@ func (f *FenceClient) NewAccessToken(ctx context.Context) (string, error) {
 		return "", errors.New("failed to refresh token, status: " + strconv.Itoa(resp.StatusCode))
 	}
 
-	var result common.AccessTokenStruct
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", errors.New("failed to parse token response: " + err.Error())
 	}
@@ -121,7 +138,7 @@ func (f *FenceClient) RefreshToken(ctx context.Context) error {
 func (f *FenceClient) CheckPrivileges(ctx context.Context) (map[string]any, error) {
 	resp, err := f.Do(ctx,
 		&request.RequestBuilder{
-			Url:    f.cred.APIEndpoint + common.FenceUserEndpoint,
+			Url:    f.cred.APIEndpoint + fenceUserEndpoint,
 			Method: http.MethodGet,
 			Token:  f.cred.AccessToken,
 		},
@@ -160,21 +177,21 @@ func (f *FenceClient) CheckForShepherdAPI(ctx context.Context) (bool, error) {
 	if f.cred.UseShepherd == "false" {
 		return false, nil
 	}
-	if f.cred.UseShepherd != "true" && common.DefaultUseShepherd == false {
+	if f.cred.UseShepherd != "true" && defaultUseShepherd == false {
 		return false, nil
 	}
 	// If Shepherd is enabled, make sure that the commons has a compatible version of Shepherd deployed.
 	// Compare the version returned from the Shepherd version endpoint with the minimum acceptable Shepherd version.
 	var minShepherdVersion string
 	if f.cred.MinShepherdVersion == "" {
-		minShepherdVersion = common.DefaultMinShepherdVersion
+		minShepherdVersion = defaultMinShepherdVersion
 	} else {
 		minShepherdVersion = f.cred.MinShepherdVersion
 	}
 
 	res, err := f.Do(ctx,
 		&request.RequestBuilder{
-			Url:    f.cred.APIEndpoint + common.ShepherdVersionEndpoint,
+			Url:    f.cred.APIEndpoint + shepherdVersionEndpoint,
 			Method: http.MethodGet,
 			Token:  f.cred.AccessToken,
 		},
@@ -216,7 +233,7 @@ func (f *FenceClient) DeleteRecord(ctx context.Context, guid string) (string, er
 	} else if hasShepherd {
 		resp, err := f.Do(ctx,
 			&request.RequestBuilder{
-				Url:    f.cred.APIEndpoint + common.ShepherdEndpoint + "/objects/" + guid,
+				Url:    f.cred.APIEndpoint + shepherdEndpoint + "/objects/" + guid,
 				Method: http.MethodDelete,
 				Token:  f.cred.AccessToken,
 			},
@@ -233,7 +250,7 @@ func (f *FenceClient) DeleteRecord(ctx context.Context, guid string) (string, er
 
 	resp, err := f.Do(ctx,
 		&request.RequestBuilder{
-			Url:    f.cred.APIEndpoint + common.FenceDataEndpoint + "/" + guid,
+			Url:    f.cred.APIEndpoint + fenceDataEndpoint + "/" + guid,
 			Method: http.MethodDelete,
 			Token:  f.cred.AccessToken,
 		},
@@ -263,7 +280,7 @@ func (f *FenceClient) GetDownloadPresignedUrl(ctx context.Context, guid, protoco
 }
 
 func (f *FenceClient) resolveFromShepherd(ctx context.Context, guid string) (string, error) {
-	url := fmt.Sprintf("%s%s/objects/%s/download", f.cred.APIEndpoint, common.ShepherdEndpoint, guid)
+	url := fmt.Sprintf("%s%s/objects/%s/download", f.cred.APIEndpoint, shepherdEndpoint, guid)
 	resp, err := f.Do(ctx, &request.RequestBuilder{
 		Url:    url,
 		Method: http.MethodGet,
@@ -292,7 +309,7 @@ func (f *FenceClient) resolveFromFence(ctx context.Context, guid, protocolText s
 	resp, err := f.Do(
 		ctx,
 		&request.RequestBuilder{
-			Url:    f.cred.APIEndpoint + common.FenceDataDownloadEndpoint + "/" + guid + protocolText,
+			Url:    f.cred.APIEndpoint + fenceDataDownloadEndpoint + "/" + guid + protocolText,
 			Method: http.MethodGet,
 			Token:  f.cred.AccessToken,
 		},
@@ -352,7 +369,7 @@ func (f *FenceClient) InitUpload(ctx context.Context, filename string, bucket st
 		payload["guid"] = guid
 	}
 
-	buf, err := common.ToJSONReader(payload)
+	buf, err := sycommon.ToJSONReader(payload)
 	if err != nil {
 		return FenceResponse{}, err
 	}
@@ -361,8 +378,8 @@ func (f *FenceClient) InitUpload(ctx context.Context, filename string, bucket st
 		ctx,
 		&request.RequestBuilder{
 			Method:  http.MethodPost,
-			Url:     f.cred.APIEndpoint + common.FenceDataUploadEndpoint,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+			Url:     f.cred.APIEndpoint + fenceDataUploadEndpoint,
+			Headers: map[string]string{sycommon.HeaderContentType: sycommon.MIMEApplicationJSON},
 			Body:    buf,
 			Token:   f.cred.AccessToken,
 		})
@@ -375,7 +392,7 @@ func (f *FenceClient) InitUpload(ctx context.Context, filename string, bucket st
 }
 
 func (f *FenceClient) GetUploadPresignedUrl(ctx context.Context, guid string, filename string, bucket string) (FenceResponse, error) {
-	endPointPostfix := common.FenceDataUploadEndpoint + "/" + guid + "?file_name=" + url.QueryEscape(filename)
+	endPointPostfix := fenceDataUploadEndpoint + "/" + guid + "?file_name=" + url.QueryEscape(filename)
 	if bucket != "" {
 		endPointPostfix += "&bucket=" + bucket
 	}
@@ -384,7 +401,7 @@ func (f *FenceClient) GetUploadPresignedUrl(ctx context.Context, guid string, fi
 		ctx,
 		&request.RequestBuilder{
 			Url:     f.cred.APIEndpoint + endPointPostfix,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+			Headers: map[string]string{sycommon.HeaderContentType: sycommon.MIMEApplicationJSON},
 			Token:   f.cred.AccessToken,
 			Method:  http.MethodGet,
 		},
@@ -398,7 +415,7 @@ func (f *FenceClient) GetUploadPresignedUrl(ctx context.Context, guid string, fi
 }
 
 func (f *FenceClient) InitMultipartUpload(ctx context.Context, filename string, bucket string, guid string) (FenceResponse, error) {
-	reader, err := common.ToJSONReader(
+	reader, err := sycommon.ToJSONReader(
 		InitRequestObject{
 			Filename: filename,
 			Bucket:   bucket,
@@ -413,8 +430,8 @@ func (f *FenceClient) InitMultipartUpload(ctx context.Context, filename string, 
 		ctx,
 		&request.RequestBuilder{
 			Method:  http.MethodPost,
-			Url:     f.cred.APIEndpoint + common.FenceDataMultipartInitEndpoint,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+			Url:     f.cred.APIEndpoint + fenceDataMultipartInitEndpoint,
+			Headers: map[string]string{sycommon.HeaderContentType: sycommon.MIMEApplicationJSON},
 			Body:    reader,
 			Token:   f.cred.AccessToken,
 		},
@@ -429,7 +446,7 @@ func (f *FenceClient) InitMultipartUpload(ctx context.Context, filename string, 
 }
 
 func (f *FenceClient) GenerateMultipartPresignedURL(ctx context.Context, key string, uploadID string, partNumber int, bucket string) (string, error) {
-	reader, err := common.ToJSONReader(
+	reader, err := sycommon.ToJSONReader(
 		MultipartUploadRequestObject{
 			Key:        key,
 			UploadID:   uploadID,
@@ -444,8 +461,8 @@ func (f *FenceClient) GenerateMultipartPresignedURL(ctx context.Context, key str
 	resp, err := f.Do(
 		ctx,
 		&request.RequestBuilder{
-			Url:     f.cred.APIEndpoint + common.FenceDataMultipartUploadEndpoint,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+			Url:     f.cred.APIEndpoint + fenceDataMultipartUploadEndpoint,
+			Headers: map[string]string{sycommon.HeaderContentType: sycommon.MIMEApplicationJSON},
 			Method:  http.MethodPost,
 			Body:    reader,
 			Token:   f.cred.AccessToken,
@@ -467,7 +484,7 @@ func (f *FenceClient) GenerateMultipartPresignedURL(ctx context.Context, key str
 func (f *FenceClient) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []MultipartPart, bucket string) error {
 	multipartCompleteObject := MultipartCompleteRequestObject{Key: key, UploadID: uploadID, Parts: parts, Bucket: bucket}
 
-	reader, err := common.ToJSONReader(multipartCompleteObject)
+	reader, err := sycommon.ToJSONReader(multipartCompleteObject)
 	if err != nil {
 		return err
 	}
@@ -475,8 +492,8 @@ func (f *FenceClient) CompleteMultipartUpload(ctx context.Context, key string, u
 	resp, err := f.Do(
 		ctx,
 		&request.RequestBuilder{
-			Url:     f.cred.APIEndpoint + common.FenceDataMultipartCompleteEndpoint,
-			Headers: map[string]string{common.HeaderContentType: common.MIMEApplicationJSON},
+			Url:     f.cred.APIEndpoint + fenceDataMultipartCompleteEndpoint,
+			Headers: map[string]string{sycommon.HeaderContentType: sycommon.MIMEApplicationJSON},
 			Body:    reader,
 			Method:  http.MethodPost,
 			Token:   f.cred.AccessToken,
@@ -548,7 +565,7 @@ func (f *FenceClient) ParseFenceURLResponse(resp *http.Response) (FenceResponse,
 
 func (f *FenceClient) UserPing(ctx context.Context) (*PingResp, error) {
 	resp, err := f.Do(ctx, &request.RequestBuilder{
-		Url:    f.cred.APIEndpoint + common.FenceUserEndpoint,
+		Url:    f.cred.APIEndpoint + fenceUserEndpoint,
 		Method: http.MethodGet,
 		Token:  f.cred.AccessToken,
 	})

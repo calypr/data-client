@@ -4,13 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	sydrs "github.com/calypr/syfon/client/drs"
-	sylogs "github.com/calypr/syfon/client/pkg/logs"
-	syrequest "github.com/calypr/syfon/client/pkg/request"
 	sydownload "github.com/calypr/syfon/client/xfer/download"
 	"github.com/spf13/cobra"
 )
@@ -29,45 +24,16 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithSucceededLog(), logs.WithScoreboard())
 			defer logCloser()
 
-			var dc sydrs.Client
-			if backendType == "drs" {
-				config := conf.NewConfigure(logger.Logger)
-				cred, err := config.Load(profile)
-				if err != nil {
-					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
-				}
-				req := syrequest.NewRequestInterface(
-					sylogs.NewGen3Logger(logger.Logger, "", ""),
-					cred,
-					config,
-				)
-				dc = sydrs.NewLocalDrsClient(req, cred.APIEndpoint, sylogs.NewGen3Logger(logger.Logger, "", ""))
-			} else {
-				g3I, err := g3client.NewGen3Interface(profile, logger)
-				if err != nil {
-					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
-				}
-				dc = g3I.DRSClient()
+			g3I, err := g3client.NewGen3Interface(profile, logger)
+			if err != nil {
+				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
 
-			objects := []common.ManifestObject{
-				{
-					GUID: guid,
-				},
+			syfon := g3I.SyfonClient()
+			if syfon == nil {
+				logger.Fatal("failed to initialize syfon client")
 			}
-			err := sydownload.DownloadMultiple(
-				context.Background(),
-				dc,
-				dc,
-				objects,
-				downloadPath,
-				"original",
-				true,
-				false,
-				"",
-				1,
-				false,
-			)
+			err = sydownload.DownloadSingleWithProgress(context.Background(), syfon.DRS(), syfon.Data(), guid, downloadPath, "original")
 			if err != nil {
 				logger.Println(err.Error())
 			}

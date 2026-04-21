@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
@@ -20,11 +19,11 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
-		case r.Method == http.MethodPost && path == common.FenceAccessTokenEndpoint:
+		case r.Method == http.MethodPost && path == fenceAccessTokenEndpoint:
 			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(common.AccessTokenStruct{AccessToken: "new-access-token"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "new-access-token"})
 			return
-		case r.Method == http.MethodGet && path == common.FenceUserEndpoint:
+		case r.Method == http.MethodGet && path == fenceUserEndpoint:
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"username": "test-user",
@@ -35,14 +34,14 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 				},
 			})
 			return
-		case r.Method == http.MethodGet && path == common.ShepherdVersionEndpoint:
+		case r.Method == http.MethodGet && path == shepherdVersionEndpoint:
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`"2.0.0"`))
 			return
-		case r.Method == http.MethodDelete && strings.HasPrefix(path, common.ShepherdEndpoint+"/objects/"):
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, shepherdEndpoint+"/objects/"):
 			w.WriteHeader(http.StatusNoContent)
 			return
-		case r.Method == http.MethodDelete && strings.HasPrefix(path, common.FenceDataEndpoint+"/"):
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, fenceDataEndpoint+"/"):
 			w.WriteHeader(http.StatusNoContent)
 			return
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/download"):
@@ -50,7 +49,7 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]string{"url": "https://download.url"})
 			return
-		case r.Method == http.MethodGet && strings.Contains(path, common.FenceDataDownloadEndpoint+"/"):
+		case r.Method == http.MethodGet && strings.Contains(path, fenceDataDownloadEndpoint+"/"):
 			// Fence download
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(FenceResponse{URL: "https://download.url"})
@@ -67,11 +66,11 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 				},
 			})
 			return
-		case r.Method == http.MethodPost && path == common.FenceDataUploadEndpoint:
+		case r.Method == http.MethodPost && path == fenceDataUploadEndpoint:
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(FenceResponse{GUID: "new-guid", URL: "https://upload.url"})
 			return
-		case r.Method == http.MethodGet && strings.HasPrefix(path, common.FenceDataUploadEndpoint+"/"):
+		case r.Method == http.MethodGet && strings.HasPrefix(path, fenceDataUploadEndpoint+"/"):
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(FenceResponse{URL: "https://upload.url"})
 			return

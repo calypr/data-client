@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/calypr/data-client/common"
+	sycommon "github.com/calypr/syfon/client/common"
 )
 
 // ProgressHandler is a slog.Handler that captures log messages and
@@ -29,16 +29,16 @@ func (h *ProgressHandler) Handle(ctx context.Context, r slog.Record) error {
 	err := h.next.Handle(ctx, r)
 
 	// In addition, try to bubble up to progress callback
-	cb := common.GetProgress(ctx)
+	cb := sycommon.GetProgress(ctx)
 	if cb != nil {
-		oid := common.GetOid(ctx)
+		oid := sycommon.GetOid(ctx)
 		// We send an event of type "log"
 		attrs := make(map[string]any)
 		r.Attrs(func(a slog.Attr) bool {
 			attrs[a.Key] = a.Value.Any()
 			return true
 		})
-		_ = cb(common.ProgressEvent{
+		_ = cb(sycommon.ProgressEvent{
 			Event:   "log",
 			Oid:     oid,
 			Message: r.Message,

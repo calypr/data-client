@@ -15,12 +15,12 @@ import (
 	reflect "reflect"
 
 	fence "github.com/calypr/data-client/fence"
+	g3client "github.com/calypr/data-client/g3client"
 	logs "github.com/calypr/data-client/logs"
 	request "github.com/calypr/data-client/request"
 	requestor "github.com/calypr/data-client/requestor"
 	sower "github.com/calypr/data-client/sower"
 	credentials "github.com/calypr/syfon/client/credentials"
-	drs "github.com/calypr/syfon/client/drs"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -62,18 +62,18 @@ func (mr *MockGen3InterfaceMockRecorder) Credentials() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Credentials", reflect.TypeOf((*MockGen3Interface)(nil).Credentials))
 }
 
-// DRSClient mocks base method.
-func (m *MockGen3Interface) DRSClient() drs.Client {
+// SyfonClient mocks base method.
+func (m *MockGen3Interface) SyfonClient() g3client.SyfonClientInterface {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DRSClient")
-	ret0, _ := ret[0].(drs.Client)
+	ret := m.ctrl.Call(m, "SyfonClient")
+	ret0, _ := ret[0].(g3client.SyfonClientInterface)
 	return ret0
 }
 
-// DRSClient indicates an expected call of DRSClient.
-func (mr *MockGen3InterfaceMockRecorder) DRSClient() *gomock.Call {
+// SyfonClient indicates an expected call of SyfonClient.
+func (mr *MockGen3InterfaceMockRecorder) SyfonClient() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DRSClient", reflect.TypeOf((*MockGen3Interface)(nil).DRSClient))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyfonClient", reflect.TypeOf((*MockGen3Interface)(nil).SyfonClient))
 }
 
 // Do mocks base method.

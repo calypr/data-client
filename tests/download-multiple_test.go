@@ -5,31 +5,30 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/calypr/syfon/client/drs"
-	"github.com/calypr/syfon/client/mocks"
-	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	sylogs "github.com/calypr/syfon/client/logs"
+	"github.com/calypr/syfon/client/transfer"
 	"github.com/calypr/syfon/client/xfer/download"
-	"go.uber.org/mock/gomock"
 )
+
+type fakeResolver struct {
+	obj *transfer.ResolvedObject
+	err error
+}
+
+func (f *fakeResolver) Resolve(ctx context.Context, id string) (*transfer.ResolvedObject, error) {
+	return f.obj, f.err
+}
 
 func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 	testGUID := "000000-0000000-0000000-000000"
 	testFileName := "test-file"
 	testFileSize := int64(120)
 
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
-
-	mockIndexd.EXPECT().
-		GetObject(gomock.Any(), testGUID).
-		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
-
 	logger := sylogs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
+	resolver := &fakeResolver{obj: &transfer.ResolvedObject{Id: testGUID, Name: testFileName, Size: testFileSize}}
+	info, err := download.GetFileInfo(context.Background(), resolver, logger, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Error(err)
 	}
@@ -48,20 +47,11 @@ func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
 func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
 	testGUID := "000000-0000000-0000000-000000"
 
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
-
-	mockIndexd.EXPECT().
-		GetObject(gomock.Any(), testGUID).
-		Return(nil, fmt.Errorf("Indexd error")).
-		Times(2)
-
 	logger := sylogs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
+	resolver := &fakeResolver{err: fmt.Errorf("Indexd error")}
+	info, err := download.GetFileInfo(context.Background(), resolver, logger, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,19 +76,11 @@ func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
 	testFileName := "test-file"
 	testFileSize := int64(120)
 
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockIndexd := mocks.NewMockDrsClient(mockCtrl)
-
-	mockIndexd.EXPECT().
-		GetObject(gomock.Any(), testGUID).
-		Return(&drs.DRSObject{Id: testGUID, Name: testFileName, Size: testFileSize}, nil)
-
 	logger := sylogs.NewGen3Logger(nil, "", "test")
 
 	skipped := []download.RenamedOrSkippedFileInfo{}
-	info, err := download.GetFileInfo(context.Background(), mockIndexd, logger, testGUID, "", "", "original", true, &skipped)
+	resolver := &fakeResolver{obj: &transfer.ResolvedObject{Id: testGUID, Name: testFileName, Size: testFileSize}}
+	info, err := download.GetFileInfo(context.Background(), resolver, logger, testGUID, "", "", "original", true, &skipped)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,7 @@ package request
 import (
 	"io"
 
-	"github.com/calypr/data-client/common"
+	sycommon "github.com/calypr/syfon/client/common"
 )
 
 // New addition to your request package
@@ -33,13 +33,13 @@ func (ar *RequestBuilder) WithToken(token string) *RequestBuilder {
 }
 
 func (ar *RequestBuilder) WithJSONBody(v any) (*RequestBuilder, error) {
-	reader, err := common.ToJSONReader(v)
+	reader, err := sycommon.ToJSONReader(v)
 	if err != nil {
 		return nil, err
 	}
 
 	ar.Body = reader
-	ar.Headers[common.HeaderContentType] = common.MIMEApplicationJSON
+	ar.Headers[sycommon.HeaderContentType] = sycommon.MIMEApplicationJSON
 	return ar, nil
 
 }

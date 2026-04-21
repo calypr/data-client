@@ -3,18 +3,11 @@ package cmd
 // Deprecated: Use "upload" instead for new uploads (without pre-existing GUIDs).
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
 
-	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	sylogs "github.com/calypr/syfon/client/pkg/logs"
-	sytransfer "github.com/calypr/syfon/client/transfer"
-	syupload "github.com/calypr/syfon/client/xfer/upload"
+	syclient "github.com/calypr/syfon/client"
 	"github.com/spf13/cobra"
 )
 
@@ -47,85 +40,22 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			if err != nil {
 				logger.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
-			bk := g3i.DRSClient()
-			uploader, ok := bk.(sytransfer.Uploader)
-			if !ok {
-				logger.Fatalf("DRS client does not implement transfer.Uploader")
-			}
 
-			// Basic config validation
-			profileConfig := g3i.Credentials().Current()
-			if profileConfig.APIEndpoint == "" {
-				logger.Fatal("No APIEndpoint found in configuration. Run \"./data-client configure\" first.")
+			syfon := g3i.SyfonClient()
+			if syfon == nil {
+				logger.Fatal("failed to initialize syfon client")
 			}
-			host, err := url.Parse(profileConfig.APIEndpoint)
+			err = syclient.Upload(ctx, syfon.Data(), uploadPath, syclient.UploadOptions{
+				Bucket:            bucketName,
+				IncludeSubDirName: includeSubDirName,
+				Batch:             batch,
+				NumParallel:       numParallel,
+				ManifestPath:      manifestPath,
+				ShowProgress:      true,
+			})
 			if err != nil {
-				logger.Fatal("Error parsing APIEndpoint:", err)
+				logger.Println("Upload failed:", err)
 			}
-			dataExplorerURL := host.Scheme + "://" + host.Host + "/explorer"
-
-			// Load manifest
-			var objects []common.ManifestObject
-			manifestBytes, err := os.ReadFile(manifestPath)
-			if err != nil {
-				logger.Fatalf("Failed reading manifest %s: %v\nA valid manifest can be acquired from %s", manifestPath, err, dataExplorerURL)
-			}
-			if err := json.Unmarshal(manifestBytes, &objects); err != nil {
-				logger.Fatalf("Invalid manifest JSON: %v", err)
-			}
-
-			absUploadPath, err := common.GetAbsolutePath(uploadPath)
-			if err != nil {
-				logger.Fatalf("Error resolving upload path: %v", err)
-			}
-
-			// Build FileUploadRequestObjects using existing GUIDs
-			var requests []common.FileUploadRequestObject
-			logger.Println("\nProcessing manifest entries...")
-
-			for _, obj := range objects {
-				localFilePath := filepath.Join(absUploadPath, obj.Title)
-
-				fur, err := syupload.ProcessFilename(sylogs.NewGen3Logger(logger.Logger, "", ""), absUploadPath, localFilePath, obj.GUID, includeSubDirName, false)
-				if err != nil {
-					logger.Printf("Skipping %s: %v\n", localFilePath, err)
-					logger.Failed(localFilePath, filepath.Base(localFilePath), common.FileMetadata{}, obj.GUID, 0, false)
-					continue
-				}
-
-				// GUID comes from manifest → override
-				fur.GUID = obj.GUID
-				fur.Bucket = bucketName
-
-				logger.Println("\t" + localFilePath + " → GUID " + obj.GUID)
-				requests = append(requests, fur)
-			}
-
-			if len(requests) == 0 {
-				logger.Println("No valid files found to upload from manifest.")
-				return
-			}
-
-			if batch {
-				workers, respCh, errCh, _ := syupload.InitBatchUploadChannels(numParallel, len(requests))
-				syupload.BatchUpload(ctx, uploader, sylogs.NewGen3Logger(logger.Logger, "", ""), requests, workers, respCh, errCh, bucketName)
-			} else {
-				for _, req := range requests {
-					err = syupload.Upload(ctx, uploader, req, true)
-					if err != nil {
-						logger.Println("Upload failed:", err)
-					}
-				}
-			}
-
-			// Retry logic
-			if len(logger.GetSucceededLogMap()) == 0 {
-				failed := logger.GetFailedLogMap()
-				if len(failed) > 0 {
-					syupload.RetryFailedUploads(ctx, uploader, sylogs.NewGen3Logger(logger.Logger, "", ""), failed)
-				}
-			}
-
 			logger.Scoreboard().PrintSB()
 		},
 	}

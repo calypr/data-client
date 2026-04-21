@@ -11,8 +11,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/calypr/data-client/common"
 	syconf "github.com/calypr/syfon/client/conf"
+	sycommon "github.com/calypr/syfon/client/common"
 	"gopkg.in/ini.v1"
 )
 
@@ -50,9 +50,9 @@ func (man *Manager) configPath() (string, error) {
 	}
 	configPath := path.Join(
 		homeDir +
-			common.PathSeparator +
+			sycommon.PathSeparator +
 			".gen3" +
-			common.PathSeparator +
+			sycommon.PathSeparator +
 			"gen3_client_config.ini",
 	)
 	return configPath, nil
@@ -94,7 +94,7 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 		man.Logger.Error(errs.Error())
 		return nil, errs
 	}
-	configPath := path.Join(homeDir + common.PathSeparator + ".gen3" + common.PathSeparator + "gen3_client_config.ini")
+	configPath := path.Join(homeDir + sycommon.PathSeparator + ".gen3" + sycommon.PathSeparator + "gen3_client_config.ini")
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("%w Run configure command (with a profile if desired) to set up account credentials \n"+
@@ -218,7 +218,7 @@ func (man *Manager) Import(filePath, fenceToken string) (*Credential, error) {
 	var cred Credential
 
 	if filePath != "" {
-		fullPath, err := common.GetAbsolutePath(filePath)
+		fullPath, err := sycommon.GetAbsolutePath(filePath)
 		if err != nil {
 			man.Logger.Error("error parsing credential file path: " + err.Error())
 			return nil, err

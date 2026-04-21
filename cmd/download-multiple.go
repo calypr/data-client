@@ -3,21 +3,13 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"io"
+	"fmt"
 	"log"
 	"os"
 
-	"github.com/calypr/data-client/common"
-	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	sydrs "github.com/calypr/syfon/client/drs"
-	sylogs "github.com/calypr/syfon/client/pkg/logs"
-	syrequest "github.com/calypr/syfon/client/pkg/request"
 	sydownload "github.com/calypr/syfon/client/xfer/download"
-	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
-
 	"github.com/spf13/cobra"
 )
 
@@ -36,75 +28,21 @@ func init() {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog())
 			defer logCloser()
 
-			var dc sydrs.Client
-			if backendType == "drs" {
-				config := conf.NewConfigure(logger.Logger)
-				cred, err := config.Load(profile)
-				if err != nil {
-					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
-				}
-				req := syrequest.NewRequestInterface(
-					sylogs.NewGen3Logger(logger.Logger, "", ""),
-					cred,
-					config,
-				)
-				dc = sydrs.NewLocalDrsClient(req, cred.APIEndpoint, sylogs.NewGen3Logger(logger.Logger, "", ""))
-			} else {
-				g3i, err := g3client.NewGen3Interface(profile, logger)
-				if err != nil {
-					log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
-				}
-				dc = g3i.DRSClient()
-			}
-
-			manifestPath, _ = common.GetAbsolutePath(manifestPath)
-			manifestFile, err := os.Open(manifestPath)
+			g3i, err := g3client.NewGen3Interface(profile, logger)
 			if err != nil {
-				logger.Fatalf("Failed to open manifest file %s, %v\n", manifestPath, err)
+				log.Fatalf("Failed to parse config on profile %s, %v", profile, err)
 			}
-			defer manifestFile.Close()
-			manifestFileStat, err := manifestFile.Stat()
+
+			guids, err := loadManifestGuids(manifestPath)
 			if err != nil {
-				logger.Fatalf("Failed to get manifest file stats %s, %v\n", manifestPath, err)
-			}
-			logger.Println("Reading manifest...")
-			manifestFileSize := manifestFileStat.Size()
-			manifestProgress := mpb.New(mpb.WithOutput(os.Stdout))
-			manifestFileBar := manifestProgress.AddBar(manifestFileSize,
-				mpb.PrependDecorators(
-					decor.Name("Manifest "),
-					decor.CountersKibiByte("% .1f / % .1f"),
-				),
-				mpb.AppendDecorators(decor.Percentage()),
-			)
-
-			manifestFileReader := manifestFileBar.ProxyReader(manifestFile)
-
-			manifestBytes, err := io.ReadAll(manifestFileReader)
-			if err != nil {
-				logger.Fatalf("Failed reading manifest %s, %v\n", manifestPath, err)
-			}
-			manifestProgress.Wait()
-
-			var objects []common.ManifestObject
-			err = json.Unmarshal(manifestBytes, &objects)
-			if err != nil {
-				logger.Fatalf("Error has occurred during unmarshalling manifest object: %v\n", err)
+				log.Fatalf("Failed to read manifest %s: %v", manifestPath, err)
 			}
 
-			err = sydownload.DownloadMultiple(
-				context.Background(),
-				dc,
-				dc,
-				objects,
-				downloadPath,
-				"original",
-				true,
-				false,
-				"",
-				numParallel,
-				false,
-			)
+			syfon := g3i.SyfonClient()
+			if syfon == nil {
+				logger.Fatal("failed to initialize syfon client")
+			}
+			err = sydownload.DownloadMultiple(context.Background(), syfon.DRS(), syfon.Data(), guids, downloadPath, numParallel, false)
 			if err != nil {
 				logger.Fatal(err.Error())
 			}
@@ -118,4 +56,29 @@ func init() {
 	downloadMultipleCmd.Flags().StringVar(&downloadPath, "download-path", ".", "The directory in which to store the downloaded files")
 	downloadMultipleCmd.Flags().IntVar(&numParallel, "numparallel", 1, "Number of downloads to run in parallel")
 	RootCmd.AddCommand(downloadMultipleCmd)
+}
+
+func loadManifestGuids(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []struct {
+		GUID string `json:"guid"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+
+	guids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.GUID != "" {
+			guids = append(guids, entry.GUID)
+		}
+	}
+	if len(guids) == 0 {
+		return nil, fmt.Errorf("manifest %s did not contain any GUIDs", path)
+	}
+	return guids, nil
 }

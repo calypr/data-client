@@ -1,6 +1,6 @@
 package request
 
-//go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/syfon/client/pkg/request RequestInterface
+//go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/syfon/client/request RequestInterface
 
 import (
 	"context"

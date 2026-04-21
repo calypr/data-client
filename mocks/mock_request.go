@@ -14,7 +14,7 @@ import (
 	http "net/http"
 	reflect "reflect"
 
-	request "github.com/calypr/syfon/client/pkg/request"
+	request "github.com/calypr/syfon/client/request"
 	gomock "go.uber.org/mock/gomock"
 )
 
