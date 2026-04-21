@@ -1,59 +1,17 @@
 package common
 
-import (
-	"io"
-	"net/http"
-)
+import sycommon "github.com/calypr/syfon/client/pkg/common"
 
-type AccessTokenStruct struct {
-	AccessToken string `json:"access_token"`
-}
-
-// FileUploadRequestObject defines a object for file upload
-type FileUploadRequestObject struct {
-	SourcePath   string
-	ObjectKey    string
-	FileMetadata FileMetadata
-	GUID         string
-	PresignedURL string
-	Bucket       string `json:"bucket,omitempty"`
-}
-
-// FileDownloadResponseObject defines a object for file download
-type FileDownloadResponseObject struct {
-	DownloadPath string
-	Filename     string
-	GUID         string
-	PresignedURL string
-	Range        int64
-	Overwrite    bool
-	Skip         bool
-	Response     *http.Response
-	Writer       io.Writer
-}
-
-// FileMetadata defines the metadata accepted by the new object management API, Shepherd
-type FileMetadata struct {
-	Authz   []string `json:"authz"`
-	Aliases []string `json:"aliases"`
-	// Metadata is an encoded JSON string of any arbitrary metadata the user wishes to upload.
-	Metadata map[string]any `json:"metadata"`
-}
-
-// RetryObject defines a object for retry upload
-type RetryObject struct {
-	SourcePath   string
-	ObjectKey    string
-	FileMetadata FileMetadata
-	GUID         string
-	RetryCount   int
-	Multipart    bool
-	Bucket       string
-}
-
-type ManifestObject struct {
-	GUID      string `json:"object_id"`
-	SubjectID string `json:"subject_id"`
-	Title     string `json:"title"`
-	Size      int64  `json:"size"`
-}
+type AccessTokenStruct = sycommon.AccessTokenStruct
+type FileUploadRequestObject = sycommon.FileUploadRequestObject
+type FileDownloadResponseObject = sycommon.FileDownloadResponseObject
+type FileMetadata = sycommon.FileMetadata
+type RetryObject = sycommon.RetryObject
+type MultipartUploadInit = sycommon.MultipartUploadInit
+type MultipartUploadPart = sycommon.MultipartUploadPart
+type ManifestObject = sycommon.ManifestObject
+type ShepherdInitRequestObject = sycommon.ShepherdInitRequestObject
+type ShepherdAuthz = sycommon.ShepherdAuthz
+type PresignedURLResponse = sycommon.PresignedURLResponse
+type UploadURLResolveRequest = sycommon.UploadURLResolveRequest
+type UploadURLResolveResponse = sycommon.UploadURLResolveResponse

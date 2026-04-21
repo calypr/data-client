@@ -76,7 +76,9 @@ func (t *AuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.mu.RUnlock()
 
 	// Just add the header and pass it down
-	req.Header.Set("Authorization", "Bearer "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	return t.Base.RoundTrip(req)
 }
 

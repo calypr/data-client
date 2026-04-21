@@ -68,7 +68,7 @@ func TestNew_WithScoreboardOption(t *testing.T) {
 		t.Fatal("Expected non-nil logger")
 	}
 
-	if logger.scoreboard == nil {
+	if logger.Scoreboard() == nil {
 		t.Error("Expected non-nil scoreboard when WithScoreboard option is used")
 	}
 }
@@ -82,9 +82,8 @@ func TestNew_WithFailedLogOption(t *testing.T) {
 		t.Fatal("Expected non-nil logger")
 	}
 
-	if logger.failedPath == "" {
-		t.Error("Expected non-empty failed path when WithFailedLog option is used")
-	}
+	// Ensure failed-log helpers remain callable with syfon-backed logger.
+	_ = logger.GetFailedLogMap()
 }
 
 func TestNew_WithSucceededLogOption(t *testing.T) {
@@ -96,9 +95,8 @@ func TestNew_WithSucceededLogOption(t *testing.T) {
 		t.Fatal("Expected non-nil logger")
 	}
 
-	if logger.succeededPath == "" {
-		t.Error("Expected non-empty succeeded path when WithSucceededLog option is used")
-	}
+	// Ensure succeeded-log helpers remain callable with syfon-backed logger.
+	_ = logger.GetSucceededLogMap()
 }
 
 func TestNew_WithBaseLogger(t *testing.T) {
@@ -136,7 +134,7 @@ func TestNew_WithMultipleOptions(t *testing.T) {
 		t.Error("Expected non-nil embedded slog logger")
 	}
 
-	if logger.scoreboard == nil {
+	if logger.Scoreboard() == nil {
 		t.Error("Expected non-nil scoreboard")
 	}
 

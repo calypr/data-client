@@ -12,7 +12,9 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/upload"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	sytransfer "github.com/calypr/syfon/client/transfer"
+	syupload "github.com/calypr/syfon/client/xfer/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -45,9 +47,14 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			if err != nil {
 				logger.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
+			bk := g3i.DRSClient()
+			uploader, ok := bk.(sytransfer.Uploader)
+			if !ok {
+				logger.Fatalf("DRS client does not implement transfer.Uploader")
+			}
 
 			// Basic config validation
-			profileConfig := g3i.GetCredential()
+			profileConfig := g3i.Credentials().Current()
 			if profileConfig.APIEndpoint == "" {
 				logger.Fatal("No APIEndpoint found in configuration. Run \"./data-client configure\" first.")
 			}
@@ -79,7 +86,7 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 			for _, obj := range objects {
 				localFilePath := filepath.Join(absUploadPath, obj.Title)
 
-				fur, err := upload.ProcessFilename(logger, absUploadPath, localFilePath, obj.GUID, includeSubDirName, false)
+				fur, err := syupload.ProcessFilename(sylogs.NewGen3Logger(logger.Logger, "", ""), absUploadPath, localFilePath, obj.GUID, includeSubDirName, false)
 				if err != nil {
 					logger.Printf("Skipping %s: %v\n", localFilePath, err)
 					logger.Failed(localFilePath, filepath.Base(localFilePath), common.FileMetadata{}, obj.GUID, 0, false)
@@ -99,50 +106,23 @@ Options to run multipart uploads for large files and parallel batch uploading ar
 				return
 			}
 
-			// Classify single vs multipart
-			single, multi := upload.SeparateSingleAndMultipartUploads(g3i, requests)
-
-			// Upload single-part files
 			if batch {
-				workers, respCh, errCh, batchFURObjects := upload.InitBatchUploadChannels(numParallel, len(single))
-				for i, furObject := range single {
-					// FileInfo processing and path normalization are already done, so we use the object directly
-					if len(batchFURObjects) < workers {
-						batchFURObjects = append(batchFURObjects, furObject)
-					} else {
-						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
-						batchFURObjects = []common.FileUploadRequestObject{furObject}
-					}
-					if i == len(single)-1 && len(batchFURObjects) > 0 {
-						upload.BatchUpload(ctx, g3i, batchFURObjects, workers, respCh, errCh, bucketName)
-					}
-				}
+				workers, respCh, errCh, _ := syupload.InitBatchUploadChannels(numParallel, len(requests))
+				syupload.BatchUpload(ctx, uploader, sylogs.NewGen3Logger(logger.Logger, "", ""), requests, workers, respCh, errCh, bucketName)
 			} else {
-				for _, req := range single {
-					upload.UploadSingle(ctx, g3i, req, true)
+				for _, req := range requests {
+					err = syupload.Upload(ctx, uploader, req, true)
+					if err != nil {
+						logger.Println("Upload failed:", err)
+					}
 				}
 			}
 
-			// Upload multipart files
-			for _, req := range multi {
-
-				file, err := os.Open(req.SourcePath)
-				if err != nil {
-					g3i.Logger().Printf("Error opening file %s : %v", req.SourcePath, err)
-					continue
-				}
-
-				err = upload.MultipartUpload(ctx, g3i, req, file, true)
-				if err != nil {
-					logger.Println("Multipart upload failed:", err)
-				}
-			}
-
-			// Retry logic (only if nothing succeeded initially)
+			// Retry logic
 			if len(logger.GetSucceededLogMap()) == 0 {
 				failed := logger.GetFailedLogMap()
 				if len(failed) > 0 {
-					upload.RetryFailedUploads(ctx, g3i, failed)
+					syupload.RetryFailedUploads(ctx, uploader, sylogs.NewGen3Logger(logger.Logger, "", ""), failed)
 				}
 			}
 

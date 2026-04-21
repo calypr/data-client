@@ -55,12 +55,13 @@ func (m *mockFenceServer) handler(t *testing.T) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(FenceResponse{URL: "https://download.url"})
 			return
-		case r.Method == http.MethodGet && path == "/user/data/buckets":
+		case r.Method == http.MethodGet && path == "/data/buckets":
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(S3BucketsResponse{
 				S3Buckets: map[string]*S3Bucket{
 					"test-bucket": {
 						EndpointURL: "https://s3.amazonaws.com",
+						Provider:    "s3",
 						Region:      "us-east-1",
 					},
 				},
@@ -173,6 +174,9 @@ func TestFenceClient_GetBucketDetails(t *testing.T) {
 	if info.Region != "us-east-1" {
 		t.Errorf("expected region us-east-1, got %s", info.Region)
 	}
+	if info.Provider != "s3" {
+		t.Errorf("expected provider s3, got %s", info.Provider)
+	}
 
 	info, err = client.GetBucketDetails(context.Background(), "unknown-bucket")
 	if err != nil {
@@ -244,7 +248,7 @@ func TestFenceClient_UserPing(t *testing.T) {
 	}
 
 	if resp.BucketPrograms["test-bucket"] != "" {
-		// Our mock for /user/data/buckets returns a bucket but no programs by default unless we update it
+		// Our mock for /data/buckets returns a bucket but no programs by default unless we update it
 		// In my update to types.go, I added Programs to S3Bucket.
 	}
 }

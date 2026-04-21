@@ -7,15 +7,15 @@ import (
 
 const (
 	// B is bytes
-	B int64 = iota
+	B int64 = 1
 	// KB is kilobytes
-	KB int64 = 1 << (10 * iota)
+	KB int64 = 1024 * B
 	// MB is megabytes
-	MB
+	MB int64 = 1024 * KB
 	// GB is gigabytes
-	GB
+	GB int64 = 1024 * MB
 	// TB is terabytes
-	TB
+	TB int64 = 1024 * GB
 )
 const (
 	// DefaultUseShepherd sets whether gen3client will attempt to use the Shepherd / Object Management API
@@ -36,31 +36,31 @@ const (
 	ShepherdVersionEndpoint = "/mds/version"
 
 	// IndexdIndexEndpoint is the endpoint postfix for INDEXD index
-	IndexdIndexEndpoint = "/index/index"
+	IndexdIndexEndpoint = "/index"
 
 	// FenceUserEndpoint is the endpoint postfix for FENCE user
 	FenceUserEndpoint = "/user/user"
 
-	// FenceDataEndpoint is the endpoint postfix for FENCE data
-	FenceDataEndpoint = "/user/data"
+	// FenceDataEndpoint is the canonical endpoint prefix for upload/delete flows
+	FenceDataEndpoint = "/data/upload"
 
 	// FenceAccessTokenEndpoint is the endpoint postfix for FENCE access token
 	FenceAccessTokenEndpoint = "/user/credentials/api/access_token"
 
-	// FenceDataUploadEndpoint is the endpoint postfix for FENCE data upload
-	FenceDataUploadEndpoint = FenceDataEndpoint + "/upload"
+	// FenceDataUploadEndpoint is the endpoint postfix for upload init/presigned-url
+	FenceDataUploadEndpoint = FenceDataEndpoint
 
-	// FenceDataDownloadEndpoint is the endpoint postfix for FENCE data download
-	FenceDataDownloadEndpoint = FenceDataEndpoint + "/download"
+	// FenceDataDownloadEndpoint is the endpoint postfix for download presigned-url
+	FenceDataDownloadEndpoint = "/data/download"
 
-	// FenceDataMultipartInitEndpoint is the endpoint postfix for FENCE multipart init
-	FenceDataMultipartInitEndpoint = FenceDataEndpoint + "/multipart/init"
+	// FenceDataMultipartInitEndpoint is the endpoint postfix for multipart init
+	FenceDataMultipartInitEndpoint = "/data/multipart/init"
 
-	// FenceDataMultipartUploadEndpoint is the endpoint postfix for FENCE multipart upload
-	FenceDataMultipartUploadEndpoint = FenceDataEndpoint + "/multipart/upload"
+	// FenceDataMultipartUploadEndpoint is the endpoint postfix for multipart upload
+	FenceDataMultipartUploadEndpoint = "/data/multipart/upload"
 
-	// FenceDataMultipartCompleteEndpoint is the endpoint postfix for FENCE multipart complete
-	FenceDataMultipartCompleteEndpoint = FenceDataEndpoint + "/multipart/complete"
+	// FenceDataMultipartCompleteEndpoint is the endpoint postfix for multipart complete
+	FenceDataMultipartCompleteEndpoint = "/data/multipart/complete"
 
 	// PathSeparator is os dependent path separator char
 	PathSeparator = string(os.PathSeparator)

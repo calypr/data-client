@@ -1,6 +1,6 @@
 package conf
 
-//go:generate mockgen -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/data-client/conf ManagerInterface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/data-client/conf ManagerInterface
 
 import (
 	"encoding/json"
@@ -12,20 +12,13 @@ import (
 	"strings"
 
 	"github.com/calypr/data-client/common"
+	syconf "github.com/calypr/syfon/client/conf"
 	"gopkg.in/ini.v1"
 )
 
 var ErrProfileNotFound = errors.New("profile not found in config file")
 
-type Credential struct {
-	Profile            string
-	KeyID              string
-	APIKey             string
-	AccessToken        string
-	APIEndpoint        string
-	UseShepherd        string
-	MinShepherdVersion string
-}
+type Credential = syconf.Credential
 
 type Manager struct {
 	Logger *slog.Logger
@@ -127,6 +120,8 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 		APIEndpoint:        sec.Key("api_endpoint").String(),
 		UseShepherd:        sec.Key("use_shepherd").String(),
 		MinShepherdVersion: sec.Key("min_shepherd_version").String(),
+		Bucket:             sec.Key("bucket").String(),
+		ProjectID:          sec.Key("project_id").String(),
 	}
 
 	if profileConfig.KeyID == "" && profileConfig.APIKey == "" && profileConfig.AccessToken == "" {
@@ -178,6 +173,8 @@ func (man *Manager) Save(profileConfig *Credential) error {
 
 	section.Key("use_shepherd").SetValue(profileConfig.UseShepherd)
 	section.Key("min_shepherd_version").SetValue(profileConfig.MinShepherdVersion)
+	section.Key("bucket").SetValue(profileConfig.Bucket)
+	section.Key("project_id").SetValue(profileConfig.ProjectID)
 	err = cfg.SaveTo(configPath)
 	if err != nil {
 		errs := fmt.Errorf("error occurred when saving config file: %s", err.Error())

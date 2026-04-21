@@ -139,3 +139,10 @@ func CanDownloadFile(signedURL string) error {
 
 	return fmt.Errorf("failed to access file, HTTP status: %d", resp.StatusCode)
 }
+func IsCloudPresignedURL(url string) bool {
+	return strings.Contains(url, "X-Amz-Signature") ||
+		strings.Contains(url, "X-Goog-Signature") ||
+		strings.Contains(url, "Signature=") ||
+		strings.Contains(url, "AWSAccessKeyId=") ||
+		strings.Contains(url, "Expires=")
+}

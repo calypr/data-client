@@ -8,24 +8,27 @@ import (
 
 	"github.com/calypr/data-client/conf"
 	"github.com/calypr/data-client/fence"
-	"github.com/calypr/data-client/indexd"
 	"github.com/calypr/data-client/logs"
 	"github.com/calypr/data-client/request"
 	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
+	"github.com/calypr/syfon/client/credentials"
+	"github.com/calypr/syfon/client/drs"
+	sylogs "github.com/calypr/syfon/client/pkg/logs"
+	syrequest "github.com/calypr/syfon/client/pkg/request"
 	version "github.com/hashicorp/go-version"
 )
 
-//go:generate mockgen -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/g3client Gen3Interface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/g3client Gen3Interface
 
 type Gen3Interface interface {
-	GetCredential() *conf.Credential
+	request.RequestInterface
 	Logger() *logs.Gen3Logger
-	ExportCredential(ctx context.Context, cred *conf.Credential) error
-	Fence() fence.FenceInterface
-	Indexd() indexd.IndexdInterface
-	Sower() sower.SowerInterface
-	Requestor() requestor.RequestorInterface
+	Credentials() credentials.Manager
+	DRSClient() drs.Client
+	FenceClient() fence.FenceInterface
+	RequestorClient() requestor.RequestorInterface
+	SowerClient() sower.SowerInterface
 }
 
 func NewGen3InterfaceFromCredential(cred *conf.Credential, logger *logs.Gen3Logger, opts ...Option) Gen3Interface {
@@ -64,8 +67,13 @@ func (g *Gen3Client) initializeClients() {
 	if shouldInit(FenceClient) {
 		g.fence = fence.NewFenceClient(g.RequestInterface, g.credential, g.logger.Logger)
 	}
-	if shouldInit(IndexdClient) {
-		g.indexd = indexd.NewIndexdClient(g.RequestInterface, g.credential, g.logger.Logger)
+	if shouldInit(SyfonClient) {
+		syReq := syrequest.NewRequestInterface(
+			sylogs.NewGen3Logger(g.logger.Logger, "", ""),
+			g.credential,
+			g.config,
+		)
+		g.syfon = drs.NewDrsClient(syReq, g.credential, sylogs.NewGen3Logger(g.logger.Logger, "", ""))
 	}
 	if shouldInit(SowerClient) {
 		g.sower = sower.NewSowerClient(g.RequestInterface, g.credential.APIEndpoint)
@@ -78,13 +86,14 @@ func (g *Gen3Client) initializeClients() {
 type Gen3Client struct {
 	Ctx       context.Context
 	fence     fence.FenceInterface
-	indexd    indexd.IndexdInterface
+	syfon     drs.Client
 	sower     sower.SowerInterface
 	requestor requestor.RequestorInterface
 	config    conf.ManagerInterface
 	request.RequestInterface
 
 	credential *conf.Credential
+	creds      credentials.Manager
 	logger     *logs.Gen3Logger
 
 	requestedClients []ClientType
@@ -94,7 +103,7 @@ type ClientType string
 
 const (
 	FenceClient     ClientType = "fence"
-	IndexdClient    ClientType = "indexd"
+	SyfonClient     ClientType = "syfon"
 	SowerClient     ClientType = "sower"
 	RequestorClient ClientType = "requestor"
 )
@@ -107,31 +116,31 @@ func WithClients(clients ...ClientType) Option {
 	}
 }
 
-func (g *Gen3Client) Fence() fence.FenceInterface {
+func (g *Gen3Client) DRSClient() drs.Client {
+	if g.syfon == nil {
+		syReq := syrequest.NewRequestInterface(
+			sylogs.NewGen3Logger(g.logger.Logger, "", ""),
+			g.credential,
+			g.config,
+		)
+		g.syfon = drs.NewDrsClient(syReq, g.credential, sylogs.NewGen3Logger(g.logger.Logger, "", ""))
+	}
+	return g.syfon
+}
+
+func (g *Gen3Client) FenceClient() fence.FenceInterface {
 	return g.fence
 }
 
-func (g *Gen3Client) Indexd() indexd.IndexdInterface {
-	return g.indexd
-}
-
-func (g *Gen3Client) Sower() sower.SowerInterface {
-	return g.sower
-}
-
-func (g *Gen3Client) Requestor() requestor.RequestorInterface {
+func (g *Gen3Client) RequestorClient() requestor.RequestorInterface {
 	return g.requestor
 }
 
-func (g *Gen3Client) Logger() *logs.Gen3Logger {
-	return g.logger
+func (g *Gen3Client) SowerClient() sower.SowerInterface {
+	return g.sower
 }
 
-func (g *Gen3Client) GetCredential() *conf.Credential {
-	return g.credential
-}
-
-func (g *Gen3Client) ExportCredential(ctx context.Context, cred *conf.Credential) error {
+func (g *Gen3Client) exportCredential(ctx context.Context, cred *conf.Credential) error {
 	if cred.Profile == "" {
 		return fmt.Errorf("profile name is required")
 	}
@@ -185,6 +194,25 @@ func (g *Gen3Client) ExportCredential(ctx context.Context, cred *conf.Credential
 	}
 
 	return nil
+}
+
+type gen3Credentials struct {
+	client *Gen3Client
+}
+
+func (c *gen3Credentials) Current() *conf.Credential {
+	return c.client.credential
+}
+
+func (c *gen3Credentials) Export(ctx context.Context, cred *conf.Credential) error {
+	return c.client.exportCredential(ctx, cred)
+}
+
+func (g *Gen3Client) Credentials() credentials.Manager {
+	if g.creds == nil {
+		g.creds = &gen3Credentials{client: g}
+	}
+	return g.creds
 }
 
 // EnsureValidCredential checks if the credential is valid and refreshes it if the access token is expired but the API key is valid.
@@ -244,3 +272,4 @@ func NewGen3Interface(profile string, logger *logs.Gen3Logger, opts ...Option) (
 
 	return client, nil
 }
+func (g *Gen3Client) Logger() *logs.Gen3Logger { return g.logger }

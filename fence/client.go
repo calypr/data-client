@@ -21,9 +21,9 @@ import (
 )
 
 // FenceBucketEndpoint is the endpoint postfix for FENCE bucket list
-const FenceBucketEndpoint = "/user/data/buckets"
+const FenceBucketEndpoint = "/data/buckets"
 
-//go:generate mockgen -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
 
 // FenceInterface defines the interface for Fence client
 type FenceInterface interface {
@@ -311,7 +311,7 @@ func (f *FenceClient) resolveFromFence(ctx context.Context, guid, protocolText s
 }
 
 func (f *FenceClient) GetBucketDetails(ctx context.Context, bucket string) (*S3Bucket, error) {
-	url := f.cred.APIEndpoint + "/user/data/buckets"
+	url := f.cred.APIEndpoint + "/data/buckets"
 	resp, err := f.Do(ctx, &request.RequestBuilder{
 		Method: http.MethodGet,
 		Url:    url,
@@ -506,31 +506,36 @@ func (f *FenceClient) ParseFenceURLResponse(resp *http.Response) (FenceResponse,
 		return msg, fmt.Errorf("failed to read response body: %w", err)
 	}
 	bodyStr := string(bodyBytes)
+	strURL := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		strURL = resp.Request.URL.String()
+	}
+
+	// Handle HTTP error statuses first so plain-text error bodies (for example:
+	// "Unauthorized") are reported accurately instead of as JSON decode failures.
+	if !(resp.StatusCode == 200 || resp.StatusCode == 201 || resp.StatusCode == 204) {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return msg, fmt.Errorf("401 Unauthorized: %s (URL: %s)", bodyStr, strURL)
+		case http.StatusForbidden:
+			return msg, fmt.Errorf("403 Forbidden: %s (URL: %s)", bodyStr, strURL)
+		case http.StatusNotFound:
+			return msg, fmt.Errorf("404 Not Found: %s (URL: %s)", bodyStr, strURL)
+		case http.StatusInternalServerError:
+			return msg, fmt.Errorf("500 Internal Server Error: %s (URL: %s)", bodyStr, strURL)
+		case http.StatusServiceUnavailable:
+			return msg, fmt.Errorf("503 Service Unavailable: %s (URL: %s)", bodyStr, strURL)
+		case http.StatusBadGateway:
+			return msg, fmt.Errorf("502 Bad Gateway: %s (URL: %s)", bodyStr, strURL)
+		default:
+			return msg, fmt.Errorf("unexpected error (%d): %s (URL: %s)", resp.StatusCode, bodyStr, strURL)
+		}
+	}
 
 	if len(bodyBytes) > 0 {
 		err = json.Unmarshal(bodyBytes, &msg)
 		if err != nil {
-			return msg, fmt.Errorf("failed to decode JSON: %w (Raw body: %s)", err, bodyStr)
-		}
-	}
-
-	if !(resp.StatusCode == 200 || resp.StatusCode == 201 || resp.StatusCode == 204) {
-		strUrl := resp.Request.URL.String()
-		switch resp.StatusCode {
-		case http.StatusUnauthorized:
-			return msg, fmt.Errorf("401 Unauthorized: %s (URL: %s)", bodyStr, strUrl)
-		case http.StatusForbidden:
-			return msg, fmt.Errorf("403 Forbidden: %s (URL: %s)", bodyStr, strUrl)
-		case http.StatusNotFound:
-			return msg, fmt.Errorf("404 Not Found: %s (URL: %s)", bodyStr, strUrl)
-		case http.StatusInternalServerError:
-			return msg, fmt.Errorf("500 Internal Server Error: %s (URL: %s)", bodyStr, strUrl)
-		case http.StatusServiceUnavailable:
-			return msg, fmt.Errorf("503 Service Unavailable: %s (URL: %s)", bodyStr, strUrl)
-		case http.StatusBadGateway:
-			return msg, fmt.Errorf("502 Bad Gateway: %s (URL: %s)", bodyStr, strUrl)
-		default:
-			return msg, fmt.Errorf("unexpected error (%d): %s (URL: %s)", resp.StatusCode, bodyStr, strUrl)
+			return msg, fmt.Errorf("failed to decode JSON response (status=%d, url=%s): %w (raw body: %s)", resp.StatusCode, strURL, err, bodyStr)
 		}
 	}
 

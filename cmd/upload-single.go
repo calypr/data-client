@@ -9,7 +9,8 @@ import (
 	"github.com/calypr/data-client/common"
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/upload"
+	sytransfer "github.com/calypr/syfon/client/transfer"
+	syupload "github.com/calypr/syfon/client/xfer/upload"
 	"github.com/spf13/cobra"
 )
 
@@ -31,14 +32,20 @@ func init() {
 			if err != nil {
 				log.Fatalf("Failed to parse config on profile %s: %v", profile, err)
 			}
+			bk := g3i.DRSClient()
+			uploader, ok := bk.(sytransfer.Uploader)
+			if !ok {
+				log.Fatalln("DRS client does not implement transfer.Uploader")
+			}
 
-			req := common.FileUploadRequestObject{
+			fur := common.FileUploadRequestObject{
 				SourcePath: filePath,
 				ObjectKey:  filepath.Base(filePath),
 				Bucket:     bucketName,
 				GUID:       guid,
 			}
-			err = upload.UploadSingle(context.Background(), g3i, req, true)
+			// Unified DRS client serves as its own transport writer Across S3, GCS, and Azure.
+			err = syupload.Upload(context.Background(), uploader, fur, true)
 			if err != nil {
 				log.Fatalln(err.Error())
 			}

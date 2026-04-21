@@ -14,6 +14,9 @@ BIN_DIR := ./bin
 COVERAGE_THRESHOLD := 30
 PACKAGE_COVERAGE_THRESHOLD := 20
 
+# OpenAPI generation now lives in syfon.
+SYFON_DIR ?= ../syfon
+
 # --- Targets ---
 
 .PHONY: all build test test-coverage coverage-html coverage-check generate tidy clean help
@@ -55,6 +58,26 @@ generate:
 	@echo "--> Running code generation (go generate)..."
 	@go generate ./...
 
+## gen: Generates Go models from OpenAPI specs
+gen:
+	@set -euo pipefail; \
+	if [[ ! -d "$(SYFON_DIR)" ]]; then \
+	  echo "ERROR: syfon repo not found at $(SYFON_DIR)"; \
+	  exit 1; \
+	fi; \
+	echo "--> OpenAPI generation is centralized in syfon"; \
+	$(MAKE) -C "$(SYFON_DIR)" gen
+
+.PHONY: gen-internal
+gen-internal:
+	@set -euo pipefail; \
+	if [[ ! -d "$(SYFON_DIR)" ]]; then \
+	  echo "ERROR: syfon repo not found at $(SYFON_DIR)"; \
+	  exit 1; \
+	fi; \
+	echo "--> Internal model generation is centralized in syfon"; \
+	$(MAKE) -C "$(SYFON_DIR)" gen-internal
+
 ## tidy: Cleans up module dependencies and formats go files
 tidy:
 	@echo "--> Tidying go.mod and formatting files..."
@@ -66,4 +89,4 @@ clean:
 	@echo "--> Cleaning up..."
 	@rm -f $(BIN_DIR)/$(TARGET_NAME)
 	@rm -f coverage.out coverage.html
-
+	@rm -rf .tmp
