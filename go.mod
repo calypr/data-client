@@ -3,8 +3,8 @@ module github.com/calypr/data-client
 go 1.26.2
 
 require (
-	github.com/calypr/syfon/apigen v0.2.3
-	github.com/calypr/syfon/client v0.2.3
+	github.com/calypr/syfon/apigen v0.2.4
+	github.com/calypr/syfon/client v0.2.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.9.0

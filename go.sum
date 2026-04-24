@@ -8,8 +8,12 @@ github.com/apapsch/go-jsonmerge/v2 v2.0.0/go.mod h1:lvDnEdqiQrp0O42VQGgmlKpxL1AP
 github.com/bmatcuk/doublestar v1.1.1/go.mod h1:UD6OnuiIn0yFxxA2le/rnRU1G4RaI4UvFv1sNto9p6w=
 github.com/calypr/syfon/apigen v0.2.3 h1:32Wk60IN18Ir8aTjo2UfMpB/yeOfF2XItiqk6/33Kkk=
 github.com/calypr/syfon/apigen v0.2.3/go.mod h1:9JNwTgR57yKJlWqZpdqP+/l4zCNzH1EIFrW+e20PyMQ=
+github.com/calypr/syfon/apigen v0.2.4 h1:LMK7IChGjDZ/7u7mTlVQTW4BR+TnF+4we/qLouk/S6Q=
+github.com/calypr/syfon/apigen v0.2.4/go.mod h1:9JNwTgR57yKJlWqZpdqP+/l4zCNzH1EIFrW+e20PyMQ=
 github.com/calypr/syfon/client v0.2.3 h1:5vIwLgAoEZd9/LjxmyjPfjJkfOpop4Y2ZFgjPoaCmis=
 github.com/calypr/syfon/client v0.2.3/go.mod h1:Yb0nHJER/8BWUwiBNY3idqQQO087do9gS9kXn1+UOik=
+github.com/calypr/syfon/client v0.2.4 h1:9wOleoF86lGoE7/CLhMLmkdUrBVLbuKRiBHrGILZdmE=
+github.com/calypr/syfon/client v0.2.4/go.mod h1:44Xfegl+Ti5FQB/KJHq3cJP8hEUa7L0P059iqAVW2kg=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
