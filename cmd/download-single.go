@@ -6,7 +6,7 @@ import (
 
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/logs"
-	sydownload "github.com/calypr/syfon/client/xfer/download"
+	sydownload "github.com/calypr/syfon/client/transfer/download"
 	"github.com/spf13/cobra"
 )
 

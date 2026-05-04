@@ -150,6 +150,62 @@ var collaboratorAddUserCmd = &cobra.Command{
 	},
 }
 
+var collaboratorBulkAddUserCmd = &cobra.Command{
+	Use:   "bulk-add [profile] [email] [resource_paths...]",
+	Short: "Add a user to multiple project resources",
+	Long:  "Add a user to multiple project resources from a comma-delimited list. Resource paths may be /programs/<organization>/projects/<project> or organization/project.",
+	Args:  cobra.MinimumNArgs(3),
+	Run: func(cmd *cobra.Command, args []string) {
+		p := args[0]
+		username := args[1]
+		resourceList := strings.Join(args[2:], " ")
+
+		if !emailRegex.MatchString(strings.ToLower(username)) {
+			fmt.Printf("Error: invalid email address '%s'\n", username)
+			os.Exit(1)
+		}
+
+		resources, err := requestor.ParseProjectResources(resourceList)
+		if err != nil {
+			fmt.Printf("Error parsing resource paths: %v\n", err)
+			os.Exit(1)
+		}
+
+		write, _ := cmd.Flags().GetBool("write")
+		guppy, _ := cmd.Flags().GetBool("guppy")
+		approve, _ := cmd.Flags().GetBool("approve")
+
+		client, closer := getRequestorClient(p)
+		defer closer()
+
+		fmt.Printf("Creating collaborator requests for %d project resources...\n", len(resources))
+		reqs, err := client.AddUserToResources(cmd.Context(), resources, username, write, guppy)
+		if err != nil {
+			fmt.Printf("Error adding user to resources: %v\n", err)
+			os.Exit(1)
+		}
+
+		if approve {
+			fmt.Println("\nAuto-approving requests...")
+			for _, r := range reqs {
+				updatedReq, err := client.UpdateRequest(cmd.Context(), r.RequestID, "SIGNED")
+				if err != nil {
+					fmt.Printf("Error approving request %s: %v\n", r.RequestID, err)
+				} else {
+					fmt.Printf("Approved request %s:\n", updatedReq.RequestID)
+					printRequest(*updatedReq)
+				}
+			}
+		} else {
+			fmt.Println("Created requests:")
+			for _, r := range reqs {
+				printRequest(r)
+			}
+			fmt.Printf("\nAn authorized user must approve these requests to add %s to %d project resources\n", username, len(resources))
+		}
+	},
+}
+
 var collaboratorRemoveUserCmd = &cobra.Command{
 	Use:   "rm [profile] [email] [program] [project]",
 	Short: "Remove a user from a project",
@@ -247,6 +303,7 @@ func init() {
 	collaboratorsCmd.AddCommand(collaboratorListCmd)
 	collaboratorsCmd.AddCommand(collaboratorPendingCmd)
 	collaboratorsCmd.AddCommand(collaboratorAddUserCmd)
+	collaboratorsCmd.AddCommand(collaboratorBulkAddUserCmd)
 	collaboratorsCmd.AddCommand(collaboratorRemoveUserCmd)
 	collaboratorsCmd.AddCommand(collaboratorApproveCmd)
 	collaboratorsCmd.AddCommand(collaboratorUpdateCmd)
@@ -258,6 +315,10 @@ func init() {
 	collaboratorAddUserCmd.Flags().BoolP("write", "w", false, "Grant write access")
 	collaboratorAddUserCmd.Flags().BoolP("guppy", "g", false, "Grant guppy admin access")
 	collaboratorAddUserCmd.Flags().BoolP("approve", "a", false, "Automatically approve the requests")
+
+	collaboratorBulkAddUserCmd.Flags().BoolP("write", "w", false, "Grant write access")
+	collaboratorBulkAddUserCmd.Flags().BoolP("guppy", "g", false, "Grant guppy admin access")
+	collaboratorBulkAddUserCmd.Flags().BoolP("approve", "a", false, "Automatically approve the requests")
 
 	collaboratorRemoveUserCmd.Flags().BoolP("approve", "a", false, "Automatically approve the revoke requests")
 }

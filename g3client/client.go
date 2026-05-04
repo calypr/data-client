@@ -12,7 +12,7 @@ import (
 	"github.com/calypr/data-client/request"
 	"github.com/calypr/data-client/requestor"
 	"github.com/calypr/data-client/sower"
-	"github.com/calypr/syfon/client/credentials"
+	syconfig "github.com/calypr/syfon/client/config"
 	version "github.com/hashicorp/go-version"
 )
 
@@ -21,7 +21,7 @@ import (
 type Gen3Interface interface {
 	request.RequestInterface
 	Logger() *logs.Gen3Logger
-	Credentials() credentials.Manager
+	Credentials() syconfig.CredentialManager
 	SyfonClient() SyfonClientInterface
 	FenceClient() fence.FenceInterface
 	RequestorClient() requestor.RequestorInterface
@@ -85,7 +85,7 @@ type Gen3Client struct {
 	request.RequestInterface
 
 	credential *conf.Credential
-	creds      credentials.Manager
+	creds      syconfig.CredentialManager
 	logger     *logs.Gen3Logger
 
 	requestedClients []ClientType
@@ -195,7 +195,7 @@ func (c *gen3Credentials) Export(ctx context.Context, cred *conf.Credential) err
 	return c.client.exportCredential(ctx, cred)
 }
 
-func (g *Gen3Client) Credentials() credentials.Manager {
+func (g *Gen3Client) Credentials() syconfig.CredentialManager {
 	if g.creds == nil {
 		g.creds = &gen3Credentials{client: g}
 	}

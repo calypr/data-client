@@ -98,8 +98,8 @@ gen-internal:
 	  echo "ERROR: syfon repo not found at $(SYFON_DIR)"; \
 	  exit 1; \
 	fi; \
-	echo "--> Internal model generation is centralized in syfon"; \
-	$(MAKE) -C "$(SYFON_DIR)" gen-internal
+	echo "--> OpenAPI generation is centralized in syfon make gen"; \
+	$(MAKE) -C "$(SYFON_DIR)" gen
 
 ## tidy: Cleans up module dependencies and formats go files
 tidy:

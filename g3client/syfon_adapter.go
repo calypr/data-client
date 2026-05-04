@@ -19,7 +19,7 @@ import (
 	"github.com/calypr/syfon/apigen/client/metricsapi"
 	sylogs "github.com/calypr/syfon/client/logs"
 	syrequest "github.com/calypr/syfon/client/request"
-	"github.com/calypr/syfon/client/syfonclient"
+	syfonclient "github.com/calypr/syfon/client/services"
 )
 
 // SyfonClientInterface groups the syfon service interfaces that data-client needs.

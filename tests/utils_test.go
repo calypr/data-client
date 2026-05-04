@@ -10,7 +10,7 @@ import (
 	sycommon "github.com/calypr/syfon/client/common"
 	sylogs "github.com/calypr/syfon/client/logs"
 	"github.com/calypr/syfon/client/transfer"
-	"github.com/calypr/syfon/client/xfer/upload"
+	"github.com/calypr/syfon/client/transfer/upload"
 )
 
 type fakeDownloader struct {

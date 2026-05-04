@@ -7,7 +7,7 @@ import (
 
 	sylogs "github.com/calypr/syfon/client/logs"
 	"github.com/calypr/syfon/client/transfer"
-	"github.com/calypr/syfon/client/xfer/download"
+	"github.com/calypr/syfon/client/transfer/download"
 )
 
 type fakeResolver struct {

@@ -20,7 +20,7 @@ import (
 	request "github.com/calypr/data-client/request"
 	requestor "github.com/calypr/data-client/requestor"
 	sower "github.com/calypr/data-client/sower"
-	credentials "github.com/calypr/syfon/client/credentials"
+	syconfig "github.com/calypr/syfon/client/config"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -49,10 +49,10 @@ func (m *MockGen3Interface) EXPECT() *MockGen3InterfaceMockRecorder {
 }
 
 // Credentials mocks base method.
-func (m *MockGen3Interface) Credentials() credentials.Manager {
+func (m *MockGen3Interface) Credentials() syconfig.CredentialManager {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Credentials")
-	ret0, _ := ret[0].(credentials.Manager)
+	ret0, _ := ret[0].(syconfig.CredentialManager)
 	return ret0
 }
 

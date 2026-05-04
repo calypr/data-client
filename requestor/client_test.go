@@ -118,6 +118,67 @@ func TestLoadPoliciesAndFormatPolicy(t *testing.T) {
 	}
 }
 
+func TestParseProjectResources(t *testing.T) {
+	resources, err := ParseProjectResources(`denied resource paths: /programs/HTAN_INT/projects/BForePC, /programs/cbds/projects/git_drs_test, aced/evotypes`)
+	if err != nil {
+		t.Fatalf("ParseProjectResources returned error: %v", err)
+	}
+	if len(resources) != 3 {
+		t.Fatalf("expected 3 resources, got %+v", resources)
+	}
+	want := []string{
+		"/programs/HTAN_INT/projects/BForePC",
+		"/programs/cbds/projects/git_drs_test",
+		"/programs/aced/projects/evotypes",
+	}
+	for i, expected := range want {
+		if resources[i].ResourcePath != expected {
+			t.Fatalf("resource %d = %q, want %q", i, resources[i].ResourcePath, expected)
+		}
+	}
+}
+
+func TestParseProjectResourcesFromScopeMessage(t *testing.T) {
+	resources, err := ParseProjectResources(`denied organization/project scopes: HTAN_INT/BForePC, cbds/git_drs_test`)
+	if err != nil {
+		t.Fatalf("ParseProjectResources returned error: %v", err)
+	}
+	if len(resources) != 2 {
+		t.Fatalf("expected 2 resources, got %+v", resources)
+	}
+	if got := resources[0].ResourcePath; got != "/programs/HTAN_INT/projects/BForePC" {
+		t.Fatalf("unexpected first resource: %q", got)
+	}
+}
+
+func TestParseProjectResourcesFromPreflightCopyPasteBlock(t *testing.T) {
+	raw := `migration import preflight failed: missing create access for 1320/82628 records across 323 scopes
+first denied record: 04ae835f-9a18-5867-8a63-fa527dedf425
+
+Copy/paste scope list:
+Ellrott_Lab/embedding_rotation, HTAN_INT/TestUpload1, cbds/017549802cd04d108524ae3f196ffacd
+
+2026/05/01 12:01:42 ERROR command execution failed err="target authorization preflight failed: missing create access"`
+
+	resources, err := ParseProjectResources(raw)
+	if err != nil {
+		t.Fatalf("ParseProjectResources returned error: %v", err)
+	}
+	if len(resources) != 3 {
+		t.Fatalf("expected 3 resources, got %+v", resources)
+	}
+	want := []string{
+		"/programs/Ellrott_Lab/projects/embedding_rotation",
+		"/programs/HTAN_INT/projects/TestUpload1",
+		"/programs/cbds/projects/017549802cd04d108524ae3f196ffacd",
+	}
+	for i, expected := range want {
+		if resources[i].ResourcePath != expected {
+			t.Fatalf("resource %d = %q, want %q", i, resources[i].ResourcePath, expected)
+		}
+	}
+}
+
 func TestRequestorClientListCreateAndUpdate(t *testing.T) {
 	client := &RequestorClient{
 		RequestInterface: &fakeRequest{
@@ -232,5 +293,54 @@ func TestRequestorClientAddAndRemoveUser(t *testing.T) {
 	}
 	if revokeCount == 0 {
 		t.Fatal("expected revoke query parameter to be seen for revocation requests")
+	}
+}
+
+func TestAddUserToResourcesCreatesRequestsPerResource(t *testing.T) {
+	var payloads []CreateRequestRequest
+	client := &RequestorClient{
+		RequestInterface: &fakeRequest{
+			doFn: func(rb *request.RequestBuilder) (*http.Response, error) {
+				if rb.Method != http.MethodPost {
+					return jsonResponse(http.StatusMethodNotAllowed, nil), nil
+				}
+				var payload CreateRequestRequest
+				if err := json.NewDecoder(rb.Body).Decode(&payload); err != nil {
+					return nil, err
+				}
+				payloads = append(payloads, payload)
+				return jsonResponse(http.StatusOK, Request{RequestID: "req-ok", Status: "open"}), nil
+			},
+		},
+		Endpoint: "https://example.org",
+	}
+
+	resources, err := ParseProjectResources("/programs/cbds/projects/git_drs_test, /programs/aced/projects/evotypes")
+	if err != nil {
+		t.Fatalf("ParseProjectResources returned error: %v", err)
+	}
+	created, err := client.AddUserToResources(context.Background(), resources, "bob@example.org", true, true)
+	if err != nil {
+		t.Fatalf("AddUserToResources failed: %v", err)
+	}
+	if len(created) != 5 {
+		t.Fatalf("expected 5 deduplicated requests, got %d", len(created))
+	}
+
+	seen := map[string]bool{}
+	for _, payload := range payloads {
+		if payload.Username != "bob@example.org" {
+			t.Fatalf("unexpected username in payload: %+v", payload)
+		}
+		seen[strings.Join(payload.RoleIDs, ",")+"|"+strings.Join(payload.ResourcePaths, ",")] = true
+	}
+	if !seen["reader|/programs/cbds/projects/git_drs_test"] {
+		t.Fatalf("missing reader request for cbds/git_drs_test: %+v", payloads)
+	}
+	if !seen["writer|/programs/aced/projects/evotypes"] {
+		t.Fatalf("missing writer request for aced/evotypes: %+v", payloads)
+	}
+	if !seen["guppy_admin_user|/guppy_admin"] {
+		t.Fatalf("missing deduplicated guppy admin request: %+v", payloads)
 	}
 }

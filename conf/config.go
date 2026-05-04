@@ -11,8 +11,8 @@ import (
 	"path"
 	"strings"
 
-	syconf "github.com/calypr/syfon/client/conf"
 	sycommon "github.com/calypr/syfon/client/common"
+	syconf "github.com/calypr/syfon/client/config"
 	"gopkg.in/ini.v1"
 )
 

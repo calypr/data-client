@@ -32,3 +32,16 @@ type UpdateRequestRequest struct {
 type PolicyConfig struct {
 	Policies []CreateRequestRequest `yaml:"policies"`
 }
+
+type ProjectResource struct {
+	Program      string
+	Project      string
+	ResourcePath string
+}
+
+func (r ProjectResource) DisplayName() string {
+	if r.Program == "" || r.Project == "" {
+		return r.ResourcePath
+	}
+	return r.Program + "/" + r.Project
+}
