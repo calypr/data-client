@@ -10,6 +10,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func mergeImportedCredential(target *conf.Credential, imported *conf.Credential) {
+	if target == nil || imported == nil {
+		return
+	}
+	target.KeyID = imported.KeyID
+	target.APIKey = imported.APIKey
+	if target.APIEndpoint == "" && imported.APIEndpoint != "" {
+		target.APIEndpoint = imported.APIEndpoint
+	}
+	target.AccessToken = ""
+}
+
 func init() {
 	var profile string
 	var credFile string
@@ -41,12 +53,7 @@ func init() {
 				if err != nil {
 					logger.Fatal(err) // or return proper error
 				}
-				cred.KeyID = readCred.KeyID
-				cred.APIKey = readCred.APIKey
-				if readCred.APIEndpoint != "" {
-					cred.APIEndpoint = readCred.APIEndpoint
-				}
-				cred.AccessToken = ""
+				mergeImportedCredential(cred, readCred)
 			}
 
 			g3i := g3client.NewGen3InterfaceFromCredential(cred, logger, g3client.WithClients())

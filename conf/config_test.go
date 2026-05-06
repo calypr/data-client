@@ -79,6 +79,47 @@ func TestImport_WithCredentialFile(t *testing.T) {
 	}
 }
 
+func TestImport_WithSnakeCaseCredentialFields(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	manager := &Manager{Logger: logger}
+
+	tmpDir := t.TempDir()
+	credFile := path.Join(tmpDir, "cred.json")
+
+	credContent := `{
+		"key_id": "test-key-id",
+		"api_key": "test-api-key",
+		"access_token": "test-access-token",
+		"api_endpoint": "https://example.org",
+		"project_id": "project-1"
+	}`
+
+	if err := os.WriteFile(credFile, []byte(credContent), 0644); err != nil {
+		t.Fatalf("Failed to create test credential file: %v", err)
+	}
+
+	cred, err := manager.Import(credFile, "")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if cred.KeyID != "test-key-id" {
+		t.Fatalf("KeyID = %q, want %q", cred.KeyID, "test-key-id")
+	}
+	if cred.APIKey != "test-api-key" {
+		t.Fatalf("APIKey = %q, want %q", cred.APIKey, "test-api-key")
+	}
+	if cred.AccessToken != "test-access-token" {
+		t.Fatalf("AccessToken = %q, want %q", cred.AccessToken, "test-access-token")
+	}
+	if cred.APIEndpoint != "https://example.org" {
+		t.Fatalf("APIEndpoint = %q, want %q", cred.APIEndpoint, "https://example.org")
+	}
+	if cred.ProjectID != "project-1" {
+		t.Fatalf("ProjectID = %q, want %q", cred.ProjectID, "project-1")
+	}
+}
+
 func TestImport_WithFenceToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	manager := &Manager{Logger: logger}
@@ -180,6 +221,27 @@ func TestLoad_ProfileNotFound(t *testing.T) {
 	// Should contain profile not found error
 	if !contains(err.Error(), "profile not found") && !contains(err.Error(), "Need to run") {
 		t.Logf("Got error (may be expected): %v", err)
+	}
+}
+
+func TestIsCredentialValid_RejectsAccessTokenMatchingAPIKey(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	manager := &Manager{Logger: logger}
+
+	cred := &Credential{
+		APIKey:      "same-token",
+		AccessToken: "same-token",
+	}
+
+	valid, err := manager.IsCredentialValid(cred)
+	if err == nil {
+		t.Fatal("expected error when access token matches api key")
+	}
+	if valid {
+		t.Fatal("expected credential to be invalid")
+	}
+	if !contains(err.Error(), "access_token matches api_key") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

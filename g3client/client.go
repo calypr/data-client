@@ -162,6 +162,7 @@ func (g *Gen3Client) exportCredential(ctx context.Context, cred *conf.Credential
 			return fmt.Errorf("failed to refresh access token: %w", err)
 		}
 		g.credential.AccessToken = token
+		cred.AccessToken = token
 	} else {
 		g.logger.Warn("WARNING: Your profile will only be valid for 24 hours since you have only provided a refresh token for authentication")
 	}

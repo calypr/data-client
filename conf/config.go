@@ -238,6 +238,9 @@ func (man *Manager) Import(filePath, fenceToken string) (*Credential, error) {
 		// Normalize keys from snake_case to CamelCase for unmarshaling
 		jsonStr = strings.ReplaceAll(jsonStr, "key_id", "KeyID")
 		jsonStr = strings.ReplaceAll(jsonStr, "api_key", "APIKey")
+		jsonStr = strings.ReplaceAll(jsonStr, "access_token", "AccessToken")
+		jsonStr = strings.ReplaceAll(jsonStr, "api_endpoint", "APIEndpoint")
+		jsonStr = strings.ReplaceAll(jsonStr, "project_id", "ProjectID")
 
 		if err := json.Unmarshal([]byte(jsonStr), &cred); err != nil {
 			errMsg := fmt.Errorf("cannot parse JSON credential file: %w", err)

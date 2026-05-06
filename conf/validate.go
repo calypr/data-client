@@ -74,6 +74,12 @@ func (man *Manager) IsCredentialValid(profileConfig *Credential) (bool, error) {
 		return false, fmt.Errorf("profileConfig is nil")
 	}
 
+	if profileConfig.AccessToken != "" &&
+		profileConfig.APIKey != "" &&
+		profileConfig.AccessToken == profileConfig.APIKey {
+		return false, fmt.Errorf("access_token matches api_key and appears to be misconfigured")
+	}
+
 	accessTokenValid, accessErr := man.IsTokenValid(profileConfig.AccessToken)
 	apiKeyValid, apiErr := man.IsTokenValid(profileConfig.APIKey)
 

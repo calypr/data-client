@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/calypr/data-client/conf"
@@ -84,16 +85,32 @@ func (t *AuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.Base.RoundTrip(req)
 }
 
-func (t *AuthTransport) refreshOnce(ctx context.Context) error {
+func extractBearerToken(header string) string {
+	if !strings.HasPrefix(strings.ToLower(header), "bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(header[len("Bearer "):])
+}
+
+func (t *AuthTransport) refreshOnce(ctx context.Context, failedToken string) error {
 	t.refreshMu.Lock()
 	defer t.refreshMu.Unlock()
 
 	t.mu.RLock()
-	if t.Cred.AccessToken != "" {
-		t.mu.RUnlock()
+	currentToken := t.Cred.AccessToken
+	t.mu.RUnlock()
+
+	// Another goroutine may already have refreshed the token after the failing
+	// request was sent. If the credential token has changed, use that one and
+	// avoid a redundant refresh call.
+	if failedToken != "" && currentToken != "" && currentToken != failedToken {
 		return nil
 	}
-	t.mu.RUnlock()
+
+	if currentToken != "" && failedToken == "" {
+		// Without the failed token, we cannot distinguish a stale token from a
+		// freshly refreshed one, so fall through and refresh explicitly.
+	}
 
 	return t.NewAccessToken(ctx)
 }

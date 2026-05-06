@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/calypr/data-client/conf"
@@ -61,7 +62,11 @@ func NewRequestInterface(
 
 		if resp != nil &&
 			(resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadGateway) {
-			err := authTransport.refreshOnce(ctx)
+			failedToken := ""
+			if resp.Request != nil {
+				failedToken = extractBearerToken(resp.Request.Header.Get("Authorization"))
+			}
+			err := authTransport.refreshOnce(ctx, strings.TrimSpace(failedToken))
 			if err != nil {
 				return false, err
 			}
