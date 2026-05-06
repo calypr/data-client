@@ -77,7 +77,8 @@ func TestIsTokenValid(t *testing.T) {
 func TestIsCredentialValid(t *testing.T) {
 	man := &Manager{}
 	now := time.Now().UTC()
-	validToken := createTestToken(now.Add(time.Hour), now.Add(-time.Hour))
+	validAccessToken := createTestToken(now.Add(time.Hour), now.Add(-time.Hour))
+	validAPIKey := createTestToken(now.Add(2*time.Hour), now.Add(-time.Hour))
 	expiredToken := createTestToken(now.Add(-time.Hour), now.Add(-2*time.Hour))
 
 	tests := []struct {
@@ -89,8 +90,8 @@ func TestIsCredentialValid(t *testing.T) {
 		{
 			name: "Both Valid",
 			cred: &Credential{
-				AccessToken: validToken,
-				APIKey:      validToken,
+				AccessToken: validAccessToken,
+				APIKey:      validAPIKey,
 			},
 			want:    true,
 			wantErr: false,
@@ -99,7 +100,16 @@ func TestIsCredentialValid(t *testing.T) {
 			name: "AccessToken Invalid, APIKey Valid (Needs Refresh)",
 			cred: &Credential{
 				AccessToken: expiredToken,
-				APIKey:      validToken,
+				APIKey:      validAPIKey,
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "AccessToken Matches APIKey",
+			cred: &Credential{
+				AccessToken: validAccessToken,
+				APIKey:      validAccessToken,
 			},
 			want:    false,
 			wantErr: true,
