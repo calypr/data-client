@@ -16,6 +16,7 @@ import (
 
 	fence "github.com/calypr/data-client/fence"
 	g3client "github.com/calypr/data-client/g3client"
+	gecko "github.com/calypr/data-client/gecko"
 	logs "github.com/calypr/data-client/logs"
 	request "github.com/calypr/data-client/request"
 	requestor "github.com/calypr/data-client/requestor"
@@ -103,6 +104,20 @@ func (m *MockGen3Interface) FenceClient() fence.FenceInterface {
 func (mr *MockGen3InterfaceMockRecorder) FenceClient() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FenceClient", reflect.TypeOf((*MockGen3Interface)(nil).FenceClient))
+}
+
+// GeckoClient mocks base method.
+func (m *MockGen3Interface) GeckoClient() gecko.GeckoInterface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GeckoClient")
+	ret0, _ := ret[0].(gecko.GeckoInterface)
+	return ret0
+}
+
+// GeckoClient indicates an expected call of GeckoClient.
+func (mr *MockGen3InterfaceMockRecorder) GeckoClient() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GeckoClient", reflect.TypeOf((*MockGen3Interface)(nil).GeckoClient))
 }
 
 // Logger mocks base method.

@@ -34,6 +34,13 @@ func jsonResponse(status int, v any) *http.Response {
 	return &http.Response{StatusCode: status, Body: body}
 }
 
+func TestRequestorClientStatusError(t *testing.T) {
+	err := request.StatusError(jsonResponse(http.StatusBadRequest, map[string]string{"error": "bad request"}), "failed")
+	if err == nil || !strings.Contains(err.Error(), "failed: status 400") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestGetPolicyKey(t *testing.T) {
 	c := &RequestorClient{}
 
@@ -113,7 +120,7 @@ func TestLoadPoliciesAndFormatPolicy(t *testing.T) {
 	if formatted.ResourceDisplayName != "demo-program-demo-project" {
 		t.Fatalf("expected display name to be replaced, got %q", formatted.ResourceDisplayName)
 	}
-	if got := formatted.ResourcePaths[0]; got != "/demo/projects/program/data" {
+	if got := formatted.ResourcePaths[0]; got != "/demo/projects/program-demo-project/data" {
 		t.Fatalf("unexpected formatted path: %q", got)
 	}
 }
@@ -293,6 +300,72 @@ func TestRequestorClientAddAndRemoveUser(t *testing.T) {
 	}
 	if revokeCount == 0 {
 		t.Fatal("expected revoke query parameter to be seen for revocation requests")
+	}
+}
+
+func TestRequestorClientAddUserPreservesEmbeddedDashInProject(t *testing.T) {
+	var payloads []CreateRequestRequest
+
+	client := &RequestorClient{
+		RequestInterface: &fakeRequest{
+			doFn: func(rb *request.RequestBuilder) (*http.Response, error) {
+				u, err := url.Parse(rb.Url)
+				if err != nil {
+					return nil, err
+				}
+				if rb.Method != http.MethodPost || u.Path != "/requestor/request" {
+					return jsonResponse(http.StatusNotFound, nil), nil
+				}
+
+				var payload CreateRequestRequest
+				if err := json.NewDecoder(rb.Body).Decode(&payload); err != nil {
+					return nil, err
+				}
+				payloads = append(payloads, payload)
+				return jsonResponse(http.StatusOK, Request{RequestID: "req-ok", Status: "open"}), nil
+			},
+		},
+		Endpoint: "https://example.org",
+	}
+
+	created, err := client.AddUser(context.Background(), "cbds-aaa-bbb", "bob@example.org", true, true)
+	if err != nil {
+		t.Fatalf("AddUser failed: %v", err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected AddUser to create requests")
+	}
+	if len(payloads) == 0 {
+		t.Fatal("expected request payloads to be captured")
+	}
+
+	wantPath := "/programs/cbds/projects/aaa-bbb"
+	foundProjectScopedPayload := false
+	for _, payload := range payloads {
+		if payload.ResourceDisplayName != "cbds-aaa-bbb" {
+			t.Fatalf("unexpected display name: %+v", payload)
+		}
+
+		hasProjectPlaceholderPath := false
+		found := false
+		for _, path := range payload.ResourcePaths {
+			if strings.Contains(path, "/programs/") {
+				hasProjectPlaceholderPath = true
+			}
+			if path == wantPath || strings.Contains(path, wantPath+"/") {
+				found = true
+				break
+			}
+		}
+		if hasProjectPlaceholderPath && !found {
+			t.Fatalf("expected payload to target %q, got %+v", wantPath, payload.ResourcePaths)
+		}
+		if found {
+			foundProjectScopedPayload = true
+		}
+	}
+	if !foundProjectScopedPayload {
+		t.Fatalf("expected at least one project-scoped payload to target %q", wantPath)
 	}
 }
 

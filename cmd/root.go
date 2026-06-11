@@ -11,10 +11,11 @@ var backendType string
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use:     "data-client",
-	Short:   "Use the data-client to interact with a Gen3 Data Commons",
-	Long:    "Gen3 Client for downloading, uploading and submitting data to data commons.\ndata-client version: " + gitversion + ", commit: " + gitcommit,
-	Version: gitversion,
+	Use:           "data-client",
+	Short:         "Use the data-client to interact with a Gen3 Data Commons",
+	Long:          "Gen3 Client for downloading, uploading and submitting data to data commons.\ndata-client version: " + gitversion + ", commit: " + gitcommit,
+	Version:       gitversion,
+	SilenceErrors: true,
 }
 
 // Execute adds all child commands to the root command sets flags appropriately

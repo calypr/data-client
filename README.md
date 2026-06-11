@@ -11,6 +11,25 @@ Read more about what it does and how to use it in the `data-client` [user guide]
 
 `data-client` is built on Cobra, a library providing a simple interface to create powerful modern CLI interfaces similar to git & go tools. Read more about Cobra [here](https://github.com/spf13/cobra).
 
+## Calypr Extensions
+
+This fork includes additional operator-focused command groups for Arborist and
+Gecko.
+
+### Support Matrix
+
+| Command group | Purpose | Supported surface | Not supported |
+| --- | --- | --- | --- |
+| `data-client arborist` | Ownership, direct access, org membership, and auth mapping power tools | Public Gen3 `/authz` routes exposed through revproxy | Raw Arborist catalog/admin CRUD such as users, roles, resources, and arbitrary policy mutation |
+| `data-client gecko` | Gecko health checks and configuration management | Public `/gecko` routes exposed through revproxy | Direct backend-only Gecko paths or undocumented admin-only config flows |
+
+### Guides
+
+- [docs/arborist-cli.md](docs/arborist-cli.md): current Arborist support,
+  command examples, and deliberate non-support.
+- [docs/gecko-cli.md](docs/gecko-cli.md): current Gecko support, command
+  shapes, JSON payload expectations, and config-route behavior.
+
 ## Installation
 
 (The following instruction is for compiling and installing the `data-client` from source code. There are also binary executables can be found at [here](https://github.com/uc-cdis/cdis-data-client/releases))

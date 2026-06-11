@@ -2,9 +2,6 @@ package sower
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 
@@ -38,9 +35,7 @@ func NewSowerClient(req request.RequestInterface, endpoint string) *SowerClient 
 }
 
 func (sc *SowerClient) fullURL(path string) string {
-	u, _ := url.Parse(sc.Endpoint)
-	u.Path = path
-	return u.String()
+	return request.JoinURL(sc.Endpoint, path)
 }
 
 func (sc *SowerClient) DispatchJob(ctx context.Context, name string, args *DispatchArgs) (*StatusResp, error) {
@@ -49,26 +44,20 @@ func (sc *SowerClient) DispatchJob(ctx context.Context, name string, args *Dispa
 		Input:  *args,
 	}
 
-	rb := sc.New(http.MethodPost, sc.fullURL(sowerDispatch))
-	rb, err := rb.WithJSONBody(body)
+	rb, err := request.NewJSON(sc.RequestInterface, http.MethodPost, sc.fullURL(sowerDispatch), body)
 	if err != nil {
 		return nil, err
-	}
-
-	resp, err := sc.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("sower dispatch failed: %d %s", resp.StatusCode, string(b))
 	}
 
 	statusResp := &StatusResp{}
-	err = json.NewDecoder(resp.Body).Decode(statusResp)
-	if err != nil {
+	if err := request.DoJSON(
+		ctx,
+		sc.RequestInterface,
+		rb,
+		statusResp,
+		request.WithAction("sower dispatch failed"),
+		request.WithExpectedStatus(http.StatusOK),
+	); err != nil {
 		return nil, err
 	}
 	return statusResp, nil
@@ -80,21 +69,15 @@ func (sc *SowerClient) Status(ctx context.Context, uid string) (*StatusResp, err
 	q.Add("UID", uid)
 	u.RawQuery = q.Encode()
 
-	rb := sc.New(http.MethodGet, u.String())
-	resp, err := sc.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("sower status failed: %d %s", resp.StatusCode, string(b))
-	}
-
 	statusResp := &StatusResp{}
-	err = json.NewDecoder(resp.Body).Decode(statusResp)
-	if err != nil {
+	if err := request.DoJSON(
+		ctx,
+		sc.RequestInterface,
+		sc.New(http.MethodGet, u.String()),
+		statusResp,
+		request.WithAction("sower status failed"),
+		request.WithExpectedStatus(http.StatusOK),
+	); err != nil {
 		return nil, err
 	}
 	return statusResp, nil
@@ -106,42 +89,30 @@ func (sc *SowerClient) Output(ctx context.Context, uid string) (*OutputResp, err
 	q.Add("UID", uid)
 	u.RawQuery = q.Encode()
 
-	rb := sc.New(http.MethodGet, u.String())
-	resp, err := sc.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("sower output failed: %d %s", resp.StatusCode, string(b))
-	}
-
 	var outputResp OutputResp
-	err = json.NewDecoder(resp.Body).Decode(&outputResp)
-	if err != nil {
+	if err := request.DoJSON(
+		ctx,
+		sc.RequestInterface,
+		sc.New(http.MethodGet, u.String()),
+		&outputResp,
+		request.WithAction("sower output failed"),
+		request.WithExpectedStatus(http.StatusOK),
+	); err != nil {
 		return nil, err
 	}
 	return &outputResp, nil
 }
 
 func (sc *SowerClient) List(ctx context.Context) ([]StatusResp, error) {
-	rb := sc.New(http.MethodGet, sc.fullURL(sowerList))
-	resp, err := sc.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("sower list failed: %d %s", resp.StatusCode, string(b))
-	}
-
 	var listResp []StatusResp
-	err = json.NewDecoder(resp.Body).Decode(&listResp)
-	if err != nil {
+	if err := request.DoJSON(
+		ctx,
+		sc.RequestInterface,
+		sc.New(http.MethodGet, sc.fullURL(sowerList)),
+		&listResp,
+		request.WithAction("sower list failed"),
+		request.WithExpectedStatus(http.StatusOK),
+	); err != nil {
 		return nil, err
 	}
 	return listResp, nil
