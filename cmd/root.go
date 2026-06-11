@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -13,7 +14,7 @@ var backendType string
 var RootCmd = &cobra.Command{
 	Use:           "calypr-cli",
 	Short:         "Calypr CLI for data transfer, permissions, collaboration, and portal operations",
-	Long:          "Calypr CLI for data transfer, permissions, collaboration, and portal operations.\ncalypr-cli version: " + gitversion + ", commit: " + gitcommit,
+	Long:          "Calypr CLI for data transfer, permissions, collaboration, and portal operations.\ncalypr-cli version: " + gitversion + ", commit: " + gitcommit + ", build date: " + gitdate,
 	Version:       gitversion,
 	SilenceErrors: true,
 }
@@ -31,4 +32,5 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&profile, "profile", "", "Specify profile to use")
 	RootCmd.PersistentFlags().StringVar(&backendType, "backend", "gen3", "Specify backend to use (gen3 or drs)")
 	_ = RootCmd.MarkFlagRequired("profile")
+	RootCmd.SetVersionTemplate(fmt.Sprintf("calypr-cli %s\ncommit: %s\nbuild date: %s\n", "{{.Version}}", gitcommit, gitdate))
 }

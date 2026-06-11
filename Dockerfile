@@ -19,6 +19,7 @@ RUN COMMIT=$(git rev-parse HEAD); \
     ''\
     'const ('\
     '    gitcommit="'"${COMMIT}"'"'\
+    '    gitdate="'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"'\
     '    gitversion="'"${VERSION}"'"'\
     ')' > cmd/gitversion.go \
     && go build -o /calypr-cli .
