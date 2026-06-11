@@ -1,0 +1,41 @@
+version: 2
+
+project_name: calypr-cli
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: calypr-cli
+    main: .
+    binary: calypr-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/calypr/calypr-cli/cmd.gitversion={{ .Version }} -X github.com/calypr/calypr-cli/cmd.gitcommit={{ .Commit }}
+
+archives:
+  - id: default
+    builds:
+      - calypr-cli
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true

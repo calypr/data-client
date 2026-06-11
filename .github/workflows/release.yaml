@@ -1,33 +1,134 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - '*'
+  workflow_run:
+    workflows:
+      - Calypr CLI CI
+    types:
+      - completed
   workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  tag-release:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.next-tag.outputs.release_tag }}
+      release_sha: ${{ steps.resolve-sha.outputs.release_sha }}
     steps:
-      -
-        name: Checkout
+      - name: Check out code
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_sha }}
+
+      - name: Resolve release SHA
+        id: resolve-sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "release_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine next release tag
+        id: next-tag
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const parseVersion = (tag) => {
+              const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(tag || "");
+              if (!match) {
+                throw new Error(`Latest release tag "${tag}" is not semver (expected vMAJOR.MINOR.PATCH)`);
+              }
+              return {
+                major: Number(match[1]),
+                minor: Number(match[2]),
+                patch: Number(match[3]),
+              };
+            };
+
+            let latestTag = "v0.0.0";
+
+            try {
+              const latestRelease = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              latestTag = latestRelease.data.tag_name || latestTag;
+              core.info(`Latest GitHub release tag: ${latestTag}`);
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+              core.info("No GitHub release found yet; falling back to repository tags.");
+              const tags = await github.paginate(github.rest.repos.listTags, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              });
+              const semverTags = tags
+                .map((tag) => tag.name)
+                .filter((tag) => /^v?\d+\.\d+\.\d+$/.test(tag))
+                .sort((a, b) => {
+                  const pa = parseVersion(a);
+                  const pb = parseVersion(b);
+                  if (pa.major !== pb.major) return pb.major - pa.major;
+                  if (pa.minor !== pb.minor) return pb.minor - pa.minor;
+                  return pb.patch - pa.patch;
+                });
+              if (semverTags.length > 0) {
+                latestTag = semverTags[0];
+                core.info(`Latest repository tag fallback: ${latestTag}`);
+              }
+            }
+
+            const { major, minor, patch } = parseVersion(latestTag);
+            const nextTag = `v${major}.${minor}.${patch + 1}`;
+            core.info(`Next release tag: ${nextTag}`);
+            core.setOutput("release_tag", nextTag);
+
+      - name: Create annotated tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.next-tag.outputs.release_tag }}" "${{ steps.resolve-sha.outputs.release_sha }}" -m "Release ${{ steps.next-tag.outputs.release_tag }}"
+          git push origin "${{ steps.next-tag.outputs.release_tag }}"
+
+  goreleaser:
+    needs: tag-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
           submodules: recursive
-      -
-        name: Set up Go
+          ref: ${{ needs.tag-release.outputs.release_tag }}
+      - name: Set up Go
         uses: actions/setup-go@v5
-      -
-        name: Run GoReleaser
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser
-          # 'latest', 'nightly', or a semver
           version: 'latest'
           args: release --clean
         env:

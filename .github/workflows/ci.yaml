@@ -1,4 +1,4 @@
-name: Data Client CI
+name: Calypr CLI CI
 
 on:
   pull_request:
