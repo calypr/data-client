@@ -1,6 +1,9 @@
 package conf
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,5 +139,43 @@ func TestIsCredentialValid(t *testing.T) {
 				t.Errorf("IsCredentialValid() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsTokenValid_WarnsWhenTokenExpiresWithinSevenDays(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	man := &Manager{Logger: logger}
+	now := time.Now().UTC()
+
+	token := createTestToken(now.Add(6*24*time.Hour+2*time.Hour), now.Add(-time.Hour))
+	valid, err := man.IsTokenValid(token)
+	if err != nil {
+		t.Fatalf("IsTokenValid returned error: %v", err)
+	}
+	if !valid {
+		t.Fatal("expected token to be valid")
+	}
+	if !strings.Contains(out.String(), "Token will expire in") {
+		t.Fatalf("expected expiration warning, got %q", out.String())
+	}
+}
+
+func TestIsTokenValid_DoesNotWarnWhenTokenExpiresAfterSevenDays(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	man := &Manager{Logger: logger}
+	now := time.Now().UTC()
+
+	token := createTestToken(now.Add(8*24*time.Hour), now.Add(-time.Hour))
+	valid, err := man.IsTokenValid(token)
+	if err != nil {
+		t.Fatalf("IsTokenValid returned error: %v", err)
+	}
+	if !valid {
+		t.Fatal("expected token to be valid")
+	}
+	if strings.Contains(out.String(), "Token will expire in") {
+		t.Fatalf("did not expect expiration warning, got %q", out.String())
 	}
 }

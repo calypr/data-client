@@ -9,6 +9,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const tokenExpiryWarningThreshold = 7 * 24 * time.Hour
+
 func ValidateUrl(apiEndpoint string) (*url.URL, error) {
 	parsedURL, err := url.Parse(apiEndpoint)
 	if err != nil {
@@ -58,10 +60,14 @@ func (man *Manager) IsTokenValid(tokenStr string) (bool, error) {
 	}
 
 	delta := expTime.Sub(now)
-	// threshold days set to 10
-	if delta > 0 && delta.Hours() < float64(10*24) {
-		daysUntilExpiration := int(delta.Hours() / 24)
-		if daysUntilExpiration > 0 && man.Logger != nil {
+	if delta > 0 && delta <= tokenExpiryWarningThreshold && man.Logger != nil {
+		if delta < 24*time.Hour {
+			man.Logger.Warn(fmt.Sprintf("Token will expire in less than 24 hours, on %s", expTime.Format(time.RFC3339)))
+		} else {
+			daysUntilExpiration := int(delta.Hours() / 24)
+			if daysUntilExpiration < 1 {
+				daysUntilExpiration = 1
+			}
 			man.Logger.Warn(fmt.Sprintf("Token will expire in %d days, on %s", daysUntilExpiration, expTime.Format(time.RFC3339)))
 		}
 	}

@@ -2,11 +2,8 @@ name: "Test Coverage Check"
 
 on:
   pull_request:
-    branches:
-      - master
   push:
-    branches:
-      - master
+  workflow_dispatch:
 
 jobs:
   coverage:
@@ -20,7 +17,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.2'
+          go-version-file: go.mod
+          cache: true
 
       - name: Run Tests with Coverage
         run: |
@@ -52,7 +50,7 @@ jobs:
             awk '/^ok[[:space:]]/ {
               pkg=$2;
               cov=$5;
-              gsub(/github.com\/calypr\/data-client\//, "", pkg);
+              gsub(/github.com\/calypr\/calypr-cli\//, "", pkg);
               print "| " pkg " | " cov " |"
             }' >> coverage-report.md
           
@@ -81,7 +79,7 @@ jobs:
               awk '/^ok[[:space:]]/ {
                 pkg=$2;
                 cov=$5;
-                gsub(/github.com\/calypr\/data-client\//, "", pkg);
+                gsub(/github.com\/calypr\/calypr-cli\//, "", pkg);
                 print pkg, cov
               }'
           )

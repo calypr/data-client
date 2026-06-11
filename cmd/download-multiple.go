@@ -7,8 +7,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	sydownload "github.com/calypr/syfon/client/transfer/download"
 	"github.com/spf13/cobra"
 )
@@ -20,10 +20,11 @@ func init() {
 	var profile string
 
 	var downloadMultipleCmd = &cobra.Command{
+		Hidden:  true,
 		Use:     "download-multiple",
 		Short:   "Download multiple of files from a specified manifest",
 		Long:    `Get presigned URLs for multiple of files specified in a manifest file and then download all of them.`,
-		Example: `./data-client download-multiple --profile <profile-name> --manifest <path-to-manifest/manifest.json> --download-path <path-to-file-dir/>`,
+		Example: `./calypr-cli download-multiple --profile <profile-name> --manifest <path-to-manifest/manifest.json> --download-path <path-to-file-dir/>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			logger, logCloser := logs.New(profile, logs.WithConsole(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithSucceededLog())
 			defer logCloser()

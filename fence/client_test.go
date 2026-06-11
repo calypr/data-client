@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/logs"
+	"github.com/calypr/calypr-cli/request"
 )
 
 type mockFenceServer struct{}

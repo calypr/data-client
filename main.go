@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/calypr/data-client/cmd"
+	"github.com/calypr/calypr-cli/cmd"
 )
 
 func main() {

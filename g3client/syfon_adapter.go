@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/logs"
+	"github.com/calypr/calypr-cli/request"
 	"github.com/calypr/syfon/apigen/client/bucketapi"
 	"github.com/calypr/syfon/apigen/client/drs"
 	"github.com/calypr/syfon/apigen/client/internalapi"

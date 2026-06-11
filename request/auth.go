@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/calypr/data-client/conf"
+	"github.com/calypr/calypr-cli/conf"
 	sycommon "github.com/calypr/syfon/client/common"
 )
 

@@ -3,8 +3,8 @@ package cmd
 import (
 	"context"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	syclient "github.com/calypr/syfon/client"
 	"github.com/spf13/cobra"
 )
@@ -18,12 +18,13 @@ func init() {
 	)
 
 	var uploadMultipartCmd = &cobra.Command{
-		Use:   "upload-multipart",
-		Short: "Upload a single file using managed multipart upload",
+		Hidden: true,
+		Use:    "upload-multipart",
+		Short:  "Upload a single file using managed multipart upload",
 		Long: `Uploads a file to object storage using managed multipart upload
 (init -> presigned part URLs -> complete).`,
-		Example: `./data-client upload-multipart --profile=myprofile --file-path=./large.bam
-./data-client upload-multipart --profile=myprofile --file-path=./data.bam --guid=existing-guid`,
+		Example: `./calypr-cli upload-multipart --profile=myprofile --file-path=./large.bam
+./calypr-cli upload-multipart --profile=myprofile --file-path=./data.bam --guid=existing-guid`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Initialize logger
 			logger, logCloser := logs.New(profile, logs.WithConsole())

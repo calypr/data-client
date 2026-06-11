@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/fence"
-	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/fence"
+	"github.com/calypr/calypr-cli/logs"
+	"github.com/calypr/calypr-cli/request"
 )
 
 // EnsureValidCredential validates a profile credential and refreshes its

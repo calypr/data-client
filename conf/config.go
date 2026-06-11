@@ -1,6 +1,6 @@
 package conf
 
-//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/data-client/conf ManagerInterface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_configure.go -package=mocks github.com/calypr/calypr-cli/conf ManagerInterface
 
 import (
 	"encoding/json"
@@ -98,7 +98,7 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("%w Run configure command (with a profile if desired) to set up account credentials \n"+
-			"Example: ./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org", ErrProfileNotFound)
+			"Example: ./calypr-cli configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org", ErrProfileNotFound)
 	}
 
 	// If profile not in config file, prompt user to set up config first
@@ -109,7 +109,7 @@ func (man *Manager) Load(profile string) (*Credential, error) {
 	}
 	sec, err := cfg.GetSection(profile)
 	if err != nil {
-		return nil, fmt.Errorf("%w: Need to run \"data-client configure --profile="+profile+" --cred=<path-to-credential/cred.json> --apiendpoint=<api_endpoint_url>\" first", ErrProfileNotFound)
+		return nil, fmt.Errorf("%w: Need to run \"calypr-cli configure --profile="+profile+" --cred=<path-to-credential/cred.json> --apiendpoint=<api_endpoint_url>\" first", ErrProfileNotFound)
 	}
 
 	profileConfig := &Credential{

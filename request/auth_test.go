@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/logs"
 )
 
 type trackingConfigManager struct {

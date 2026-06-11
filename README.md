@@ -1,94 +1,124 @@
-# data-client
+# calypr-cli
 
-[![CI](https://github.com/calypr/data-client/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/calypr/data-client/actions/workflows/ci.yaml)
-[![Coverage](https://codecov.io/gh/calypr/data-client/branch/develop/graph/badge.svg)](https://app.codecov.io/gh/calypr/data-client/tree/develop)
-[![Go Report Card](https://goreportcard.com/badge/github.com/calypr/data-client)](https://goreportcard.com/report/github.com/calypr/data-client)
-[![Release](https://img.shields.io/github/v/release/calypr/data-client?sort=semver)](https://github.com/calypr/data-client/releases)
+[![CI](https://github.com/calypr/calypr-cli/actions/workflows/ci.yaml/badge.svg)](https://github.com/calypr/calypr-cli/actions/workflows/ci.yaml)
+[![Coverage](https://github.com/calypr/calypr-cli/actions/workflows/coverage.yaml/badge.svg)](https://github.com/calypr/calypr-cli/actions/workflows/coverage.yaml)
+[![Release](https://img.shields.io/github/v/release/calypr/calypr-cli?sort=semver)](https://github.com/calypr/calypr-cli/releases)
 
-`data-client` is a command-line tool for downloading, uploading, and submitting data files to and from a Gen3 data commons.
+`calypr-cli` is Calypr's command-line client for working with Gen3-style data
+commons from a terminal. It combines the standard data transfer flows with
+operator-oriented surfaces for permissions, collaborators, and portal
+configuration.
 
-Read more about what it does and how to use it in the `data-client` [user guide](https://gen3.org/resources/user/data-client/).
+## What It Does
 
-`data-client` is built on Cobra, a library providing a simple interface to create powerful modern CLI interfaces similar to git & go tools. Read more about Cobra [here](https://github.com/spf13/cobra).
+The CLI currently groups into four main areas:
 
-## Installation
+| Command group | Purpose |
+| --- | --- |
+| `configure`, `auth` | Store credentials, create named profiles, and check connectivity |
+| `upload*`, `download*`, `retry-upload` | Transfer files to and from supported backends |
+| `collaborators` | Manage collaboration requests and approvals |
+| `permissions`, `portal` | Operator workflows for Arborist-backed permissions and Gecko-backed portal config |
 
-(The following instruction is for compiling and installing the `data-client` from source code. There are also binary executables can be found at [here](https://github.com/uc-cdis/cdis-data-client/releases))
+Most commands require a configured `--profile`, and the default backend is
+`gen3`.
 
-First, [install Go and the Go tools](https://golang.org/doc/install) if you have not already done so. [Set up your workspace and your GOPATH.](https://golang.org/doc/code.html)
+## Operator Surfaces
 
-Then:
+Two command groups are specific to the Calypr fork rather than the legacy data
+transfer client:
 
+| Command group | Supported surface | Deliberate non-goals |
+| --- | --- | --- |
+| `permissions` | Public Gen3 `/authz` routes exposed through revproxy | Raw Arborist catalog/admin CRUD and arbitrary policy mutation |
+| `portal` | Public `/gecko` routes exposed through revproxy | Backend-only Gecko paths and undocumented admin-only flows |
+
+Detailed operator docs live here:
+
+- [permissions CLI guide](docs/permissions-cli.md)
+- [portal CLI guide](docs/portal-cli.md)
+- [developer docs](docs/DEVELOPER_DOCS.md)
+
+## Install And Build
+
+The repo keeps a root `main` package, so the primary local build path is the
+repo root:
+
+```bash
+go build .
 ```
-go get -d github.com/calypr/data-client
-go install
-```
 
-_TODO: Remove after GitHub repo is renamed_
-**_For now, the above actually won't work because the GitHub repo needs to be renamed. Do this instead:_**
+To install the current checkout:
 
-```
-mkdir -p $GOPATH/src/github.com/uc-cdis
-cd $GOPATH/src/github.com/uc-cdis
-git clone git@github.com:uc-cdis/cdis-data-client.git
-mv cdis-data-client data-client
-cd data-client
-go get -d ./...
+```bash
 go install .
 ```
 
-Now you should have `data-client` successfully installed. For a comprehensive instruction on how to configure and use `data-client` for uploading / downloading object files, please refer to the `data-client` [user guide](https://gen3.org/resources/user/data-client/).
+There is also a compatibility entrypoint under `./cmd/calypr-cli` if you need a
+subdirectory main package explicitly:
 
-## Enabling New Gen3 Object Management API
-
-Some Gen3 data commons support uploading files through the new Gen3 Object Management API.
-
-> NOTE: The service powering this API is sometimes referred to as our object "Shepherd"
-
-To enable data-client to upload using the Gen3 Object Management API, pass the `use-shepherd=true` to `data-client configure`, e.g.:
-
-```
-$ data-client configure --profile=myprofile --cred=/path/to/cred --apiendpoint=https://example.com --use-shepherd=true
+```bash
+go build ./cmd/calypr-cli
 ```
 
-If this flag is set, the data-client will attempt to use the Gen3 Object Management API to upload files, falling back to Fence/Indexd in case of failure.
+## Common Setup
 
-> You may also need to configure the version of the Gen3 Object Management API that the client will interact with. This is set to a default of Gen3 Object Management API `v2.0.0`, but can
-> be raised or lowered by passing the `min-shepherd-version` flag to `data-client configure`, e.g.:
->
-> ```
-> $ data-client configure --profile=myprofile --cred=/path/to/cred --apiendpoint=https://example.com --use-shepherd=true --min-shepherd-version=1.3.0
-> ```
+Configure a profile with credentials and an API endpoint:
 
-### Uploading Additional File Object Metadata to Gen3 Object Management API
-
-The Gen3 Object Management API supports uploading additional _public access_ file object metadata when uploading data files.
-
-> WARNING: Additional File Object Metadata is exposed publically and thus should not be controlled/sensitive data
-
-You can upload file metadata using the `data-client upload` command with the `--metadata` flag. E.g.:
-
-```
-data-client upload --profile=my-profile --upload-path=/path/to/myfile.bam --metadata
+```bash
+calypr-cli configure \
+  --profile=myprofile \
+  --cred=/path/to/credentials.json \
+  --apiendpoint=https://example.com
 ```
 
-This will tell `data-client` to look for a metadata file `myfile_metadata.json` in the same folder as `myfile.bam`.
-A metadata file should be located in the same folder as the file to be uploaded, and should be named `[filename]_metadata.json`.
+Check the resulting profile or auth state:
 
-The metadata file should be a JSON file in the format:
-
+```bash
+calypr-cli auth --profile=myprofile
 ```
+
+## Upload Behavior
+
+`calypr-cli` supports the newer Gen3 object management upload flow via the
+`--use-shepherd=true` configure flag. When enabled, uploads attempt that API
+first and fall back to the older Fence/Indexd path if needed.
+
+Example:
+
+```bash
+calypr-cli configure \
+  --profile=myprofile \
+  --cred=/path/to/credentials.json \
+  --apiendpoint=https://example.com \
+  --use-shepherd=true
+```
+
+Uploads can also attach public file object metadata with `--metadata`. The CLI
+looks for a sibling file named `[filename]_metadata.json`.
+
+Example:
+
+```bash
+calypr-cli upload \
+  --profile=myprofile \
+  --upload-path=/path/to/myfile.bam \
+  --metadata
+```
+
+Metadata file shape:
+
+```json
 {
-    "authz": ["/example/authz/resource"],
-    "aliases": ["example_alias"],
-    "metadata": {
-        "any": {
-            "arbitrary": ["json", "metadata"]
-        }
+  "authz": ["/example/authz/resource"],
+  "aliases": ["example_alias"],
+  "metadata": {
+    "any": {
+      "arbitrary": ["json", "metadata"]
     }
+  }
 }
 ```
 
-The `aliases` and `metadata` properties are optional. Some Gen3 data commons require the `authz` property to be specified in order to upload a data file.
-
-If you do not know what `authz` to use, you can look at your `Profile` tab or `/identity` page of the Gen3 data commons you are uploading to. You will see a list of _authz resources_ in the format `/example/authz/resource`: these are the authz resources you have access to.
+The `authz` list may be required by the target commons. The metadata in this
+file is public-facing and should not contain sensitive content.

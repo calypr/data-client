@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/calypr/data-client/conf"
+	"github.com/calypr/calypr-cli/conf"
 )
 
 func TestMergeImportedCredentialPreservesExplicitAPIEndpoint(t *testing.T) {

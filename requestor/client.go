@@ -3,16 +3,14 @@ package requestor
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/request"
 	"gopkg.in/yaml.v3"
 )
 
@@ -44,9 +42,9 @@ type RequestorInterface interface {
 }
 
 func (c *RequestorClient) ListRequests(ctx context.Context, mine bool, active bool, username string) ([]Request, error) {
-	url := c.Endpoint + "/requestor/request"
+	url := request.JoinURL(c.Endpoint, "requestor", "request")
 	if mine {
-		url += "/user"
+		url = request.JoinURL(c.Endpoint, "requestor", "request", "user")
 	}
 
 	params := []string{}
@@ -61,77 +59,61 @@ func (c *RequestorClient) ListRequests(ctx context.Context, mine bool, active bo
 		url += "?" + strings.Join(params, "&")
 	}
 
-	rb := c.New(http.MethodGet, url)
-	resp, err := c.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to list requests: status %d", resp.StatusCode)
-	}
-
 	var requests []Request
-	if err := json.NewDecoder(resp.Body).Decode(&requests); err != nil {
+	if err := request.DoJSON(
+		ctx,
+		c.RequestInterface,
+		c.New(http.MethodGet, url),
+		&requests,
+		request.WithAction("failed to list requests"),
+		request.WithExpectedStatus(http.StatusOK),
+	); err != nil {
 		return nil, err
 	}
 	return requests, nil
 }
 
 func (c *RequestorClient) CreateRequest(ctx context.Context, reqPayload CreateRequestRequest, revoke bool) (*Request, error) {
-	url := c.Endpoint + "/requestor/request"
+	url := request.JoinURL(c.Endpoint, "requestor", "request")
 	if revoke {
 		url += "?revoke"
 	}
 
-	rb := c.New(http.MethodPost, url)
-	rb, err := rb.WithJSONBody(reqPayload)
+	rb, err := request.NewJSON(c.RequestInterface, http.MethodPost, url, reqPayload)
 	if err != nil {
 		return nil, err
-	}
-
-	resp, err := c.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to create request: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var createdRequest Request
-	if err := json.NewDecoder(resp.Body).Decode(&createdRequest); err != nil {
+	if err := request.DoJSON(
+		ctx,
+		c.RequestInterface,
+		rb,
+		&createdRequest,
+		request.WithAction("failed to create request"),
+	); err != nil {
 		return nil, err
 	}
 	return &createdRequest, nil
 }
 
 func (c *RequestorClient) UpdateRequest(ctx context.Context, requestID string, status string) (*Request, error) {
-	url := fmt.Sprintf("%s/requestor/request/%s", c.Endpoint, requestID)
+	url := request.JoinURL(c.Endpoint, "requestor", "request", requestID)
 	payload := UpdateRequestRequest{Status: status}
 
-	rb := c.New(http.MethodPut, url)
-	rb, err := rb.WithJSONBody(payload)
+	rb, err := request.NewJSON(c.RequestInterface, http.MethodPut, url, payload)
 	if err != nil {
 		return nil, err
-	}
-
-	resp, err := c.Do(ctx, rb)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to update request: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var updatedRequest Request
-	if err := json.NewDecoder(resp.Body).Decode(&updatedRequest); err != nil {
+	if err := request.DoJSON(
+		ctx,
+		c.RequestInterface,
+		rb,
+		&updatedRequest,
+		request.WithAction("failed to update request"),
+	); err != nil {
 		return nil, err
 	}
 	return &updatedRequest, nil
@@ -157,8 +139,8 @@ func formatPolicy(policy CreateRequestRequest, projectID string, username string
 	}
 
 	if projectID != "" {
-		parts := strings.Split(projectID, "-")
-		if len(parts) >= 2 {
+		parts := strings.SplitN(projectID, "-", 2)
+		if len(parts) == 2 {
 			program := parts[0]
 			project := parts[1]
 
