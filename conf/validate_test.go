@@ -1,0 +1,181 @@
+package conf
+
+import (
+	"bytes"
+	"log/slog"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+func createTestToken(exp time.Time, iat time.Time) string {
+	claims := jwt.MapClaims{
+		"exp": exp.Unix(),
+		"iat": iat.Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	// We don't need a real signature for ParseUnverified
+	tokenString, _ := token.SignedString([]byte("secret"))
+	return tokenString
+}
+
+func TestIsTokenValid(t *testing.T) {
+	man := &Manager{}
+	now := time.Now().UTC()
+
+	tests := []struct {
+		name    string
+		token   string
+		want    bool
+		wantErr bool
+	}{
+		{
+			name:    "Valid Token",
+			token:   createTestToken(now.Add(time.Hour), now.Add(-time.Hour)),
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name:    "Expired Token",
+			token:   createTestToken(now.Add(-time.Hour), now.Add(-2*time.Hour)),
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name:    "Not Yet Valid Token",
+			token:   createTestToken(now.Add(2*time.Hour), now.Add(time.Hour)),
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name:    "Empty Token",
+			token:   "",
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name:    "Invalid Token Format",
+			token:   "not.a.token",
+			want:    false,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := man.IsTokenValid(tt.token)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("IsTokenValid() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("IsTokenValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsCredentialValid(t *testing.T) {
+	man := &Manager{}
+	now := time.Now().UTC()
+	validAccessToken := createTestToken(now.Add(time.Hour), now.Add(-time.Hour))
+	validAPIKey := createTestToken(now.Add(2*time.Hour), now.Add(-time.Hour))
+	expiredToken := createTestToken(now.Add(-time.Hour), now.Add(-2*time.Hour))
+
+	tests := []struct {
+		name    string
+		cred    *Credential
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "Both Valid",
+			cred: &Credential{
+				AccessToken: validAccessToken,
+				APIKey:      validAPIKey,
+			},
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "AccessToken Invalid, APIKey Valid (Needs Refresh)",
+			cred: &Credential{
+				AccessToken: expiredToken,
+				APIKey:      validAPIKey,
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "AccessToken Matches APIKey",
+			cred: &Credential{
+				AccessToken: validAccessToken,
+				APIKey:      validAccessToken,
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "Both Invalid",
+			cred: &Credential{
+				AccessToken: expiredToken,
+				APIKey:      expiredToken,
+			},
+			want:    false,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := man.IsCredentialValid(tt.cred)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("IsCredentialValid() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("IsCredentialValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsTokenValid_WarnsWhenTokenExpiresWithinSevenDays(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	man := &Manager{Logger: logger}
+	now := time.Now().UTC()
+
+	token := createTestToken(now.Add(6*24*time.Hour+2*time.Hour), now.Add(-time.Hour))
+	valid, err := man.IsTokenValid(token)
+	if err != nil {
+		t.Fatalf("IsTokenValid returned error: %v", err)
+	}
+	if !valid {
+		t.Fatal("expected token to be valid")
+	}
+	if !strings.Contains(out.String(), "Token will expire in") {
+		t.Fatalf("expected expiration warning, got %q", out.String())
+	}
+}
+
+func TestIsTokenValid_DoesNotWarnWhenTokenExpiresAfterSevenDays(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	man := &Manager{Logger: logger}
+	now := time.Now().UTC()
+
+	token := createTestToken(now.Add(8*24*time.Hour), now.Add(-time.Hour))
+	valid, err := man.IsTokenValid(token)
+	if err != nil {
+		t.Fatalf("IsTokenValid returned error: %v", err)
+	}
+	if !valid {
+		t.Fatal("expected token to be valid")
+	}
+	if strings.Contains(out.String(), "Token will expire in") {
+		t.Fatalf("did not expect expiration warning, got %q", out.String())
+	}
+}

@@ -1,0 +1,121 @@
+name: "Test Coverage Check"
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Tests with Coverage
+        run: |
+          CORE_PACKAGES=$(go list ./... | grep -Ev '/(cmd|mocks|tests)$')
+          go test -coverprofile=coverage.out -covermode=atomic $CORE_PACKAGES
+        continue-on-error: true
+
+      - name: Generate Coverage Report
+        id: coverage
+        run: |
+          CORE_PACKAGES=$(go list ./... | grep -Ev '/(cmd|mocks|tests)$')
+
+          # Get overall coverage
+          OVERALL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "overall=$OVERALL" >> $GITHUB_OUTPUT
+          
+          # Generate detailed report
+          echo "## Test Coverage Report" > coverage-report.md
+          echo "" >> coverage-report.md
+          echo "**Overall Coverage:** ${OVERALL}%" >> coverage-report.md
+          echo "" >> coverage-report.md
+          echo "### Package Coverage" >> coverage-report.md
+          echo "" >> coverage-report.md
+          echo "| Package | Coverage |" >> coverage-report.md
+          echo "|---------|----------|" >> coverage-report.md
+          
+          # Extract package coverage
+          go test -coverprofile=/dev/null -covermode=atomic $CORE_PACKAGES 2>&1 | \
+            awk '/^ok[[:space:]]/ {
+              pkg=$2;
+              cov=$5;
+              gsub(/github.com\/calypr\/calypr-cli\//, "", pkg);
+              print "| " pkg " | " cov " |"
+            }' >> coverage-report.md
+          
+          cat coverage-report.md
+
+      - name: Check Coverage Thresholds
+        run: |
+          set -euo pipefail
+
+          CORE_PACKAGES=$(go list ./... | grep -Ev '/(cmd|mocks|tests)$')
+
+          OVERALL=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+          if ! awk -v val="$OVERALL" -v min=30 'BEGIN { if (val + 0 < min) exit 1; exit 0 }'; then
+            echo "Overall coverage ${OVERALL}% is below the required minimum of 30%"
+            exit 1
+          fi
+
+          while read -r pkg cov; do
+            cov=${cov%%%}
+            if ! awk -v val="$cov" -v min=20 'BEGIN { if (val + 0 < min) exit 1; exit 0 }'; then
+              echo "Package ${pkg} coverage ${cov}% is below the required minimum of 20%"
+              exit 1
+            fi
+          done < <(
+            go test -coverprofile=/dev/null -covermode=atomic $CORE_PACKAGES 2>&1 | \
+              awk '/^ok[[:space:]]/ {
+                pkg=$2;
+                cov=$5;
+                gsub(/github.com\/calypr\/calypr-cli\//, "", pkg);
+                print pkg, cov
+              }'
+          )
+
+      - name: Upload Coverage to Codecov (Optional)
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Comment PR with Coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = fs.readFileSync('coverage-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: coverage
+            });
+
+      - name: Upload Coverage Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage-report.md
+          retention-days: 30

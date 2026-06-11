@@ -1,183 +1,94 @@
 package tests
 
 import (
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/common"
-	g3cmd "github.com/calypr/data-client/client/g3cmd"
-	"github.com/calypr/data-client/client/jwt"
-	"github.com/calypr/data-client/client/logs"
-	"github.com/calypr/data-client/client/mocks"
-	"go.uber.org/mock/gomock"
+	sylogs "github.com/calypr/syfon/client/logs"
+	"github.com/calypr/syfon/client/transfer"
+	"github.com/calypr/syfon/client/transfer/download"
 )
 
-// Add all other methods required by your logs.Logger interface!
+type fakeResolver struct {
+	obj *transfer.ResolvedObject
+	err error
+}
 
-// If Shepherd is deployed, attempt to get the filename from the Shepherd API.
+func (f *fakeResolver) Resolve(ctx context.Context, id string) (*transfer.ResolvedObject, error) {
+	return f.obj, f.err
+}
+
 func Test_askGen3ForFileInfo_withShepherd(t *testing.T) {
-	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
 	testFileName := "test-file"
 	testFileSize := int64(120)
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
 
-	// Expect AskGen3ForFileInfo to call shepherd looking for testGUID: respond with a valid file.
-	testBody := `{
-	"record": {
-		"file_name": "test-file",
-		"size": 120,
-		"did": "000000-0000000-0000000-000000"
-	},
-	"metadata": {
-		"_file_type": "PFB",
-		"_resource_paths": ["/open"],
-		"_uploader_id": 42,
-		"_bucket": "s3://gen3-bucket"
-	}
-}`
-	testResponse := http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(testBody)),
-	}
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(true, nil)
-	mockGen3Interface.
-		EXPECT().
-		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
-		Return("", &testResponse, nil)
-	// ----------
+	logger := sylogs.NewGen3Logger(nil, "", "test")
 
-	// Expect AskGen3ForFileInfo to return the correct filename and filesize from shepherd.
-	fileName, fileSize := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]g3cmd.RenamedOrSkippedFileInfo{})
-	if fileName != testFileName {
-		t.Errorf("Wanted filename %v, got %v", testFileName, fileName)
+	skipped := []download.RenamedOrSkippedFileInfo{}
+	resolver := &fakeResolver{obj: &transfer.ResolvedObject{Id: testGUID, Name: testFileName, Size: testFileSize}}
+	info, err := download.GetFileInfo(context.Background(), resolver, logger, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Error(err)
 	}
-	if fileSize != testFileSize {
-		t.Errorf("Wanted filesize %v, got %v", testFileSize, fileSize)
+
+	if info.Name != testFileName {
+		t.Errorf("Wanted filename %v, got %v", testFileName, info.Name)
+	}
+	if info.Size != testFileSize {
+		t.Errorf("Wanted filesize %v, got %v", testFileSize, info.Size)
+	}
+	if len(skipped) != 0 {
+		t.Errorf("Expected no skipped files, got %v", skipped)
 	}
 }
 
-// If there's an error while getting the filename from Shepherd, add the guid
-// to *renamedFiles, which tracks which files have errored.
 func Test_askGen3ForFileInfo_withShepherd_shepherdError(t *testing.T) {
-	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
 
-	// Expect AskGen3ForFileInfo to call indexd looking for testGUID:
-	// Respond with an error.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(true, nil)
-	mockGen3Interface.
-		EXPECT().
-		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID, "GET", "", nil).
-		Return("", nil, fmt.Errorf("Error getting metadata from Shepherd"))
-	// ----------
+	logger := sylogs.NewGen3Logger(nil, "", "test")
 
-	mockGen3Interface.
-		EXPECT().
-		Logger().
-		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
-		AnyTimes()
-
-	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
-	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
-	fileName, _ := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
-	expected := g3cmd.RenamedOrSkippedFileInfo{GUID: testGUID, OldFilename: "N/A", NewFilename: testGUID}
-	if skipped[0] != expected {
-		t.Errorf("Wanted skipped files list to contain %v, got %v", expected, skipped)
+	skipped := []download.RenamedOrSkippedFileInfo{}
+	resolver := &fakeResolver{err: fmt.Errorf("Indexd error")}
+	info, err := download.GetFileInfo(context.Background(), resolver, logger, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Expect the returned filename to be the file's GUID.
-	if fileName != testGUID {
-		t.Errorf("Wanted filename %v, got %v", testGUID, fileName)
+
+	if info == nil {
+		t.Fatal("AskGen3ForFileInfo returned nil when both Shepherd and Indexd failed. Expected fallback FileInfo with Name = GUID")
+	}
+
+	if info.Name != testGUID {
+		t.Errorf("Wanted fallback filename %v, got %v", testGUID, info.Name)
+	}
+
+	if len(skipped) != 1 {
+		t.Errorf("Expected exactly 1 skipped file, got %d", len(skipped))
+	} else if skipped[0].GUID != testGUID || skipped[0].NewFilename != testGUID {
+		t.Errorf("Skipped entry mismatch: %+v", skipped[0])
 	}
 }
 
-// If Shepherd is not deployed, attempt to get the filename from indexd.
 func Test_askGen3ForFileInfo_noShepherd(t *testing.T) {
-	// -- SETUP --
 	testGUID := "000000-0000000-0000000-000000"
 	testFileName := "test-file"
 	testFileSize := int64(120)
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
 
-	// Expect AskGen3ForFileInfo to call indexd looking for testGUID: respond with a valid file.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(false, nil)
-	mockGen3Interface.
-		EXPECT().
-		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
-		Return(jwt.JsonMessage{FileName: testFileName, Size: testFileSize}, nil)
-	// ----------
+	logger := sylogs.NewGen3Logger(nil, "", "test")
 
-	mockGen3Interface.
-		EXPECT().
-		Logger().
-		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
-		AnyTimes()
-
-	// Expect AskGen3ForFileInfo to return the correct filename and filesize from indexd.
-	fileName, fileSize := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &[]g3cmd.RenamedOrSkippedFileInfo{})
-	if fileName != testFileName {
-		t.Errorf("Wanted filename %v, got %v", testFileName, fileName)
+	skipped := []download.RenamedOrSkippedFileInfo{}
+	resolver := &fakeResolver{obj: &transfer.ResolvedObject{Id: testGUID, Name: testFileName, Size: testFileSize}}
+	info, err := download.GetFileInfo(context.Background(), resolver, logger, testGUID, "", "", "original", true, &skipped)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if fileSize != testFileSize {
-		t.Errorf("Wanted filesize %v, got %v", testFileSize, fileSize)
+
+	if info.Name != testFileName {
+		t.Errorf("Wanted filename %v, got %v", testFileName, info.Name)
 	}
-}
-
-// If there's an error while getting the filename from indexd, add the guid
-// to *renamedFiles, which tracks which files have errored.
-func Test_askGen3ForFileInfo_noShepherd_indexdError(t *testing.T) {
-	// -- SETUP --
-	testGUID := "000000-0000000-0000000-000000"
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	// Expect AskGen3ForFileInfo to call indexd looking for testGUID:
-	// Respond with an error.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(false, nil)
-	mockGen3Interface.
-		EXPECT().
-		DoRequestWithSignedHeader(common.IndexdIndexEndpoint+"/"+testGUID, "", nil).
-		Return(jwt.JsonMessage{}, fmt.Errorf("Error downloading file from Indexd"))
-	// ----------
-	mockGen3Interface.
-		EXPECT().
-		Logger().
-		Return(logs.NewTeeLogger("", "test", os.Stdout)). // Or your appropriate dummy logger
-		AnyTimes()
-
-	// Expect AskGen3ForFileInfo to add this file's GUID to the renamedOrSkippedFiles array.
-	skipped := []g3cmd.RenamedOrSkippedFileInfo{}
-	fileName, _ := g3cmd.AskGen3ForFileInfo(mockGen3Interface, testGUID, "", "", "original", true, &skipped)
-	expected := g3cmd.RenamedOrSkippedFileInfo{GUID: testGUID, OldFilename: "N/A", NewFilename: testGUID}
-	if skipped[0] != expected {
-		t.Errorf("Wanted skipped files list to contain %v, got %v", expected, skipped)
-	}
-	// Expect the returned filename to be the file's GUID.
-	if fileName != testGUID {
-		t.Errorf("Wanted filename %v, got %v", testGUID, fileName)
+	if info.Size != testFileSize {
+		t.Errorf("Wanted filesize %v, got %v", testFileSize, info.Size)
 	}
 }

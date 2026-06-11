@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/calypr/data-client/client/g3cmd"
+	"github.com/calypr/calypr-cli/cmd"
 )
 
 func main() {
-	g3cmd.Execute()
+	cmd.Execute()
 }

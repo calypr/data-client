@@ -1,241 +1,88 @@
 package tests
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/client/common"
-	g3cmd "github.com/calypr/data-client/client/g3cmd"
-	"github.com/calypr/data-client/client/jwt"
-	"github.com/calypr/data-client/client/mocks"
-	"go.uber.org/mock/gomock"
+	internalapi "github.com/calypr/syfon/apigen/client/internalapi"
+	sycommon "github.com/calypr/syfon/client/common"
+	sylogs "github.com/calypr/syfon/client/logs"
+	"github.com/calypr/syfon/client/transfer"
+	"github.com/calypr/syfon/client/transfer/upload"
 )
 
-// Expect GetDownloadResponse to:
-// 1. get the file download URL from Shepherd if it's deployed
-// 2. add the file download URL to the FileDownloadResponseObject
-// 3. GET the file download URL, and add the response to the FileDownloadResponseObject
-func TestGetDownloadResponse_withShepherd(t *testing.T) {
-	// -- SETUP --
-	testGUID := "000000-0000000-0000000-000000"
-	testFilename := "test-file"
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	// Mock the request that checks if Shepherd is deployed.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(true, nil)
-
-	// Mock the request to Shepherd for the download URL of this file.
-	mockDownloadURL := "https://example.com/example.pfb"
-	downloadURLBody := fmt.Sprintf(`{
-		"url": "%v"
-	}`, mockDownloadURL)
-	mockDownloadURLResponse := http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader(downloadURLBody)),
-	}
-	mockGen3Interface.
-		EXPECT().
-		GetResponse(common.ShepherdEndpoint+"/objects/"+testGUID+"/download", "GET", "", nil).
-		Return("", &mockDownloadURLResponse, nil)
-
-	// Mock the request for the file at mockDownloadURL.
-	mockFileResponse := http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader("It work")),
-	}
-	mockGen3Interface.
-		EXPECT().
-		MakeARequest(http.MethodGet, mockDownloadURL, "", "", map[string]string{}, nil, true).
-		Return(&mockFileResponse, nil)
-	// ----------
-
-	mockFDRObj := common.FileDownloadResponseObject{
-		Filename: testFilename,
-		GUID:     testGUID,
-		Range:    0,
-	}
-	err := g3cmd.GetDownloadResponse(mockGen3Interface, &mockFDRObj, "")
-	if err != nil {
-		t.Error(err)
-	}
-	if mockFDRObj.URL != mockDownloadURL {
-		t.Errorf("Wanted the DownloadPath to be set to %v, got %v", mockDownloadURL, mockFDRObj.DownloadPath)
-	}
-	if mockFDRObj.Response != &mockFileResponse {
-		t.Errorf("Wanted download response to be %v, got %v", mockFileResponse, mockFDRObj.Response)
-	}
+type fakeDownloader struct {
+	resolveFn  func(ctx context.Context, guid, accessID string) (string, error)
+	downloadFn func(ctx context.Context, url string, rangeStart, rangeEnd *int64) (*http.Response, error)
 }
 
-// Expect GetDownloadResponse to:
-// 1. get the file download URL from Fence if Shepherd is not deployed
-// 2. add the file download URL to the FileDownloadResponseObject
-// 3. GET the file download URL, and add the response to the FileDownloadResponseObject
-func TestGetDownloadResponse_noShepherd(t *testing.T) {
-	// -- SETUP --
-	testGUID := "000000-0000000-0000000-000000"
-	testFilename := "test-file"
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	// Mock the request that checks if Shepherd is deployed.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(false, nil)
-
-	// Mock the request to Fence for the download URL of this file.
-	mockDownloadURL := "https://example.com/example.pfb"
-	mockDownloadURLResponse := jwt.JsonMessage{
-		URL: mockDownloadURL,
-	}
-	mockGen3Interface.
-		EXPECT().
-		DoRequestWithSignedHeader(common.FenceDataDownloadEndpoint+"/"+testGUID, "", nil).
-		Return(mockDownloadURLResponse, nil)
-
-	// Mock the request for the file at mockDownloadURL.
-	mockFileResponse := http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(strings.NewReader("It work")),
-	}
-	mockGen3Interface.
-		EXPECT().
-		MakeARequest(http.MethodGet, mockDownloadURL, "", "", map[string]string{}, nil, true).
-		Return(&mockFileResponse, nil)
-	// ----------
-
-	mockFDRObj := common.FileDownloadResponseObject{
-		Filename: testFilename,
-		GUID:     testGUID,
-		Range:    0,
-	}
-	err := g3cmd.GetDownloadResponse(mockGen3Interface, &mockFDRObj, "")
-	if err != nil {
-		t.Error(err)
-	}
-	if mockFDRObj.URL != mockDownloadURL {
-		t.Errorf("Wanted the DownloadPath to be set to %v, got %v", mockDownloadURL, mockFDRObj.DownloadPath)
-	}
-	if mockFDRObj.Response != &mockFileResponse {
-		t.Errorf("Wanted download response to be %v, got %v", mockFileResponse, mockFDRObj.Response)
-	}
+func (f *fakeDownloader) Name() string { return "fake-downloader" }
+func (f *fakeDownloader) Logger() transfer.TransferLogger {
+	return sylogs.NewGen3Logger(nil, "", "test")
+}
+func (f *fakeDownloader) ResolveDownloadURL(ctx context.Context, guid, accessID string) (string, error) {
+	return f.resolveFn(ctx, guid, accessID)
+}
+func (f *fakeDownloader) Download(ctx context.Context, url string, rangeStart, rangeEnd *int64) (*http.Response, error) {
+	return f.downloadFn(ctx, url, rangeStart, rangeEnd)
 }
 
-// If Shepherd is not deployed, expect GeneratePresignedURL to hit fence's data upload
-// endpoint and return the presigned URL and guid.
-func TestGeneratePresignedURL_noShepherd(t *testing.T) {
-	// -- SETUP --
-	testFilename := "test-file"
-	testBucketname := "test-bucket"
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	// Mock the request that checks if Shepherd is deployed.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(false, nil)
-
-	// Mock the request to Fence's data upload endpoint to create a presigned url for this file name.
-	expectedReqBody := []byte(fmt.Sprintf(`{"file_name":"%v","bucket":"%v"}`, testFilename, testBucketname))
-	mockPresignedURL := "https://example.com/example.pfb"
-	mockGUID := "000000-0000000-0000000-000000"
-	mockUploadURLResponse := jwt.JsonMessage{
-		URL:  mockPresignedURL,
-		GUID: mockGUID,
-	}
-	mockGen3Interface.
-		EXPECT().
-		DoRequestWithSignedHeader(common.FenceDataUploadEndpoint, "application/json", expectedReqBody).
-		Return(mockUploadURLResponse, nil)
-	// ----------
-
-	url, guid, err := g3cmd.GeneratePresignedURL(mockGen3Interface, testFilename, common.FileMetadata{}, testBucketname)
-	if err != nil {
-		t.Error(err)
-	}
-	if url != mockPresignedURL {
-		t.Errorf("Wanted the presignedURL to be set to %v, got %v", mockPresignedURL, url)
-	}
-	if guid != mockGUID {
-		t.Errorf("Wanted generated GUID to be %v, got %v", mockGUID, guid)
-	}
+type fakeUploader struct {
+	resolveFn func(ctx context.Context, guid, filename string, metadata sycommon.FileMetadata, bucket string) (string, error)
 }
 
-// If Shepherd is deployed, expect GeneratePresignedURL to hit Shepherd's data upload
-// endpoint with the file name and file metadata. GeneratePresignedURL should then
-// return the guid and file name that it gets from the endpoint.
-func TestGeneratePresignedURL_withShepherd(t *testing.T) {
-	// -- SETUP --
+func (f *fakeUploader) Name() string                    { return "fake-uploader" }
+func (f *fakeUploader) Logger() transfer.TransferLogger { return sylogs.NewGen3Logger(nil, "", "test") }
+
+func (f *fakeUploader) ResolveUploadURL(ctx context.Context, guid, filename string, metadata sycommon.FileMetadata, bucket string) (string, error) {
+	return f.resolveFn(ctx, guid, filename, metadata, bucket)
+}
+func (f *fakeUploader) InitMultipartUpload(ctx context.Context, guid string, filename string, bucket string) (string, string, error) {
+	return "", "", nil
+}
+func (f *fakeUploader) GetMultipartUploadURL(ctx context.Context, key string, uploadID string, partNumber int32, bucket string) (string, error) {
+	return "", nil
+}
+func (f *fakeUploader) CompleteMultipartUpload(ctx context.Context, key string, uploadID string, parts []internalapi.InternalMultipartPart, bucket string) error {
+	return nil
+}
+func (f *fakeUploader) Upload(ctx context.Context, url string, body io.Reader, size int64) error {
+	return nil
+}
+func (f *fakeUploader) UploadPart(ctx context.Context, url string, body io.Reader, size int64) (string, error) {
+	return "", nil
+}
+func (f *fakeUploader) DeleteFile(ctx context.Context, guid string) (string, error) {
+	return "", nil
+}
+func (f *fakeUploader) CanonicalObjectURL(signedURL, bucketHint, fallbackDID string) (string, error) {
+	return signedURL, nil
+}
+
+func TestGeneratePresignedUploadURL(t *testing.T) {
 	testFilename := "test-file"
-	testBucketname := "test-bucket"
-	testMetadata := common.FileMetadata{
-		Aliases:  []string{"test-alias-1", "test-alias-2"},
-		Authz:    []string{"authz-resource-1", "authz-resource-2"},
-		Metadata: map[string]any{"arbitrary": "metadata"},
-	}
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
+	testBucket := "test-bucket"
+	mockUploadURL := "https://example.com/upload"
 
-	// Mock the request that checks if Shepherd is deployed.
-	mockGen3Interface := mocks.NewMockGen3Interface(mockCtrl)
-	mockGen3Interface.
-		EXPECT().
-		CheckForShepherdAPI().
-		Return(true, nil)
-
-	// Mock the request to Fence's data upload endpoint to create a presigned url for this file name.
-	expectedReq := g3cmd.ShepherdInitRequestObject{
-		Filename: testFilename,
-		Authz: struct {
-			Version       string   `json:"version"`
-			ResourcePaths []string `json:"resource_paths"`
-		}{
-			"0",
-			testMetadata.Authz,
+	bk := &fakeUploader{
+		resolveFn: func(ctx context.Context, guid, filename string, metadata sycommon.FileMetadata, bucket string) (string, error) {
+			if filename != testFilename {
+				t.Fatalf("unexpected filename: %s", filename)
+			}
+			if bucket != testBucket {
+				t.Fatalf("unexpected bucket: %s", bucket)
+			}
+			return mockUploadURL, nil
 		},
-		Aliases:  testMetadata.Aliases,
-		Metadata: testMetadata.Metadata,
 	}
-	expectedReqBody, err := json.Marshal(expectedReq)
-	if err != nil {
-		t.Error(err)
-	}
-	mockPresignedURL := "https://example.com/example.pfb"
-	mockGUID := "000000-0000000-0000000-000000"
-	presignedURLBody := fmt.Sprintf(`{
-		"guid": "%v",
-		"upload_url": "%v"
-	}`, mockGUID, mockPresignedURL)
-	mockUploadURLResponse := http.Response{
-		StatusCode: 201,
-		Body:       io.NopCloser(strings.NewReader(presignedURLBody)),
-	}
-	mockGen3Interface.
-		EXPECT().
-		GetResponse(common.ShepherdEndpoint+"/objects", "POST", "", expectedReqBody).
-		Return("", &mockUploadURLResponse, nil)
-	// ----------
 
-	url, guid, err := g3cmd.GeneratePresignedURL(mockGen3Interface, testFilename, testMetadata, testBucketname)
+	resp, err := upload.GeneratePresignedUploadURL(context.Background(), bk, testFilename, sycommon.FileMetadata{}, testBucket)
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if url != mockPresignedURL {
-		t.Errorf("Wanted the presignedURL to be set to %v, got %v", mockPresignedURL, url)
-	}
-	if guid != mockGUID {
-		t.Errorf("Wanted generated GUID to be %v, got %v", mockGUID, guid)
+	if resp != mockUploadURL {
+		t.Errorf("wanted URL %s, got %s", mockUploadURL, resp)
 	}
 }

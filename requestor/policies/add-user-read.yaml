@@ -1,0 +1,5 @@
+policies:
+- role_ids:
+    - reader
+  resource_paths:
+    - /programs/PROGRAM/projects/PROJECT

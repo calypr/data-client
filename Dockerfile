@@ -4,7 +4,7 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
 
-WORKDIR $GOPATH/src/github.com/calypr/data-client/
+WORKDIR $GOPATH/src/github.com/calypr/calypr-cli/
 
 COPY go.mod .
 COPY go.sum .
@@ -15,15 +15,15 @@ COPY . .
 
 RUN COMMIT=$(git rev-parse HEAD); \
     VERSION=$(git describe --always --tags); \
-    printf '%s\n' 'package g3cmd'\
+    printf '%s\n' 'package cmd'\
     ''\
     'const ('\
     '    gitcommit="'"${COMMIT}"'"'\
     '    gitversion="'"${VERSION}"'"'\
-    ')' > data-client/g3cmd/gitversion.go \
-    && go build -o /data-client
+    ')' > cmd/gitversion.go \
+    && go build -o /calypr-cli .
 
 FROM scratch
 COPY --from=build-deps /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=build-deps /data-client /data-client
-CMD ["/data-client"]
+COPY --from=build-deps /calypr-cli /calypr-cli
+CMD ["/calypr-cli"]

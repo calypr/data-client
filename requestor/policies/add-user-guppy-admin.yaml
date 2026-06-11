@@ -1,0 +1,9 @@
+policies:
+- role_ids:
+    - writer
+  resource_paths:
+    - /programs/PROGRAM/projects/PROJECT
+- role_ids:
+  - guppy_admin_user
+  resource_paths:
+  - /guppy_admin
