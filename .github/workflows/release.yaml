@@ -30,13 +30,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.next-tag.outputs.release_tag }}
-      release_sha: ${{ steps.bump-version.outputs.release_sha }}
+      release_sha: ${{ steps.resolve-sha.outputs.release_sha }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.workflow_run.head_branch }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_sha }}
+
+      - name: Resolve release SHA
+        id: resolve-sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "release_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Determine next release tag
         id: next-tag
@@ -96,34 +105,9 @@ jobs:
             core.info(`Next release tag: ${nextTag}`);
             core.setOutput("release_tag", nextTag);
 
-      - name: Bump source version file
-        id: bump-version
-        env:
-          RELEASE_TAG: ${{ steps.next-tag.outputs.release_tag }}
-          RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.workflow_run.head_branch }}
-        run: |
-          set -euo pipefail
-
-          version="${RELEASE_TAG#v}"
-          sed -E -i.bak "s/(gitversion *= *\")[^\"]+(\")/\1${version}\2/" cmd/gitversion.go
-          rm -f cmd/gitversion.go.bak
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cmd/gitversion.go
-
-          if git diff --cached --quiet; then
-            echo "cmd/gitversion.go already matches ${version}"
-          else
-            git commit -m "chore(release): bump version to ${version} [skip ci]"
-            git push origin "HEAD:${RELEASE_BRANCH}"
-          fi
-
-          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
       - name: Create annotated tag
         env:
-          RELEASE_SHA: ${{ steps.bump-version.outputs.release_sha }}
+          RELEASE_SHA: ${{ steps.resolve-sha.outputs.release_sha }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
