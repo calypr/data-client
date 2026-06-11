@@ -1,10 +1,9 @@
 # --- Variables ---
-# The name of the resulting binary (e.g., 'data-client' if your module is called data-client)
+# The name of the resulting binary. Defaults to the repo directory name.
 # Update this if your main package is not in the root directory.
 TARGET_NAME := $(shell basename $(shell pwd))
 
-# The default path to build the main package. Use '.' if your main package is in the root.
-# Change this if your main package is in a subdirectory (e.g., ./cmd/myapp)
+# The default build path. This repo keeps a root main package for `go build .`.
 MAIN_PACKAGE := .
 
 # The directory where the final binary will be placed
@@ -62,7 +61,7 @@ coverage-check: test-coverage
 	  awk '/^ok[[:space:]]/ { \
 	    pkg=$$2; \
 	    cov=$$5; \
-	    gsub(/github.com\\/calypr\\/data-client\\//, "", pkg); \
+	    gsub(/github.com\\/calypr\\/calypr-cli\\//, "", pkg); \
 	    print pkg, cov; \
 	  }' | \
 	  while read -r pkg cov; do \

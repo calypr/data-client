@@ -1,107 +1,124 @@
 # calypr-cli
 
-[![CI](https://github.com/calypr/calypr-cli/actions/workflows/ci.yaml/badge.svg?branch=master)](https://github.com/calypr/calypr-cli/actions/workflows/ci.yaml)
-[![Coverage](https://codecov.io/gh/calypr/calypr-cli/branch/develop/graph/badge.svg)](https://app.codecov.io/gh/calypr/calypr-cli/tree/develop)
-[![Go Report Card](https://goreportcard.com/badge/github.com/calypr/calypr-cli)](https://goreportcard.com/report/github.com/calypr/calypr-cli)
+[![CI](https://github.com/calypr/calypr-cli/actions/workflows/ci.yaml/badge.svg)](https://github.com/calypr/calypr-cli/actions/workflows/ci.yaml)
+[![Coverage](https://github.com/calypr/calypr-cli/actions/workflows/coverage.yaml/badge.svg)](https://github.com/calypr/calypr-cli/actions/workflows/coverage.yaml)
 [![Release](https://img.shields.io/github/v/release/calypr/calypr-cli?sort=semver)](https://github.com/calypr/calypr-cli/releases)
 
-`calypr-cli` is the Calypr command-line client for data transfer, permissions,
-collaboration, and portal operations.
+`calypr-cli` is Calypr's command-line client for working with Gen3-style data
+commons from a terminal. It combines the standard data transfer flows with
+operator-oriented surfaces for permissions, collaborators, and portal
+configuration.
 
-`calypr-cli` is built on Cobra, a library providing a simple interface to create
-powerful modern CLI interfaces similar to git and go tools. Read more about
-Cobra [here](https://github.com/spf13/cobra).
+## What It Does
 
-## Calypr Extensions
+The CLI currently groups into four main areas:
 
-This fork includes additional operator-focused command groups for permissions
-management and portal configuration.
+| Command group | Purpose |
+| --- | --- |
+| `configure`, `auth` | Store credentials, create named profiles, and check connectivity |
+| `upload*`, `download*`, `retry-upload` | Transfer files to and from supported backends |
+| `collaborators` | Manage collaboration requests and approvals |
+| `permissions`, `portal` | Operator workflows for Arborist-backed permissions and Gecko-backed portal config |
 
-### Support Matrix
+Most commands require a configured `--profile`, and the default backend is
+`gen3`.
 
-| Command group | Purpose | Supported surface | Not supported |
-| --- | --- | --- | --- |
-| `calypr-cli permissions` | Ownership, direct access, org membership, and auth mapping power tools | Public Gen3 `/authz` routes exposed through revproxy | Raw Arborist catalog/admin CRUD such as users, roles, resources, and arbitrary policy mutation |
-| `calypr-cli portal` | Portal health checks and configuration management | Public `/gecko` routes exposed through revproxy | Direct backend-only Gecko paths or undocumented admin-only config flows |
+## Operator Surfaces
 
-### Guides
+Two command groups are specific to the Calypr fork rather than the legacy data
+transfer client:
 
-- [docs/permissions-cli.md](docs/permissions-cli.md): current permissions support,
-  command examples, and deliberate non-support.
-- [docs/portal-cli.md](docs/portal-cli.md): current portal support, command
-  shapes, JSON payload expectations, and config-route behavior.
+| Command group | Supported surface | Deliberate non-goals |
+| --- | --- | --- |
+| `permissions` | Public Gen3 `/authz` routes exposed through revproxy | Raw Arborist catalog/admin CRUD and arbitrary policy mutation |
+| `portal` | Public `/gecko` routes exposed through revproxy | Backend-only Gecko paths and undocumented admin-only flows |
 
-## Installation
+Detailed operator docs live here:
 
-First, [install Go](https://golang.org/doc/install) if you have not already.
+- [permissions CLI guide](docs/permissions-cli.md)
+- [portal CLI guide](docs/portal-cli.md)
+- [developer docs](docs/DEVELOPER_DOCS.md)
 
-The canonical install path for the renamed CLI is:
+## Install And Build
+
+The repo keeps a root `main` package, so the primary local build path is the
+repo root:
 
 ```bash
-go install ./cmd/calypr-cli
+go build .
 ```
 
-From the repo root you can also build an explicit binary:
+To install the current checkout:
 
 ```bash
-go build -o calypr-cli ./cmd/calypr-cli
+go install .
 ```
 
-## Enabling New Gen3 Object Management API
+There is also a compatibility entrypoint under `./cmd/calypr-cli` if you need a
+subdirectory main package explicitly:
 
-Some Gen3 data commons support uploading files through the new Gen3 Object Management API.
-
-> NOTE: The service powering this API is sometimes referred to as our object "Shepherd"
-
-To enable `calypr-cli` to upload using the Gen3 Object Management API, pass
-`use-shepherd=true` to `calypr-cli configure`, for example:
-
-```
-$ calypr-cli configure --profile=myprofile --cred=/path/to/cred --apiendpoint=https://example.com --use-shepherd=true
+```bash
+go build ./cmd/calypr-cli
 ```
 
-If this flag is set, `calypr-cli` will attempt to use the Gen3 Object Management
-API to upload files, falling back to Fence/Indexd in case of failure.
+## Common Setup
 
-> You may also need to configure the version of the Gen3 Object Management API that the client will interact with. This is set to a default of Gen3 Object Management API `v2.0.0`, but can
-> be raised or lowered by passing the `min-shepherd-version` flag to
-> `calypr-cli configure`, e.g.:
->
-> ```
-> $ calypr-cli configure --profile=myprofile --cred=/path/to/cred --apiendpoint=https://example.com --use-shepherd=true --min-shepherd-version=1.3.0
-> ```
+Configure a profile with credentials and an API endpoint:
 
-### Uploading Additional File Object Metadata to Gen3 Object Management API
-
-The Gen3 Object Management API supports uploading additional _public access_ file object metadata when uploading data files.
-
-> WARNING: Additional File Object Metadata is exposed publically and thus should not be controlled/sensitive data
-
-You can upload file metadata using the `calypr-cli upload` command with the
-`--metadata` flag. For example:
-
-```
-calypr-cli upload --profile=my-profile --upload-path=/path/to/myfile.bam --metadata
+```bash
+calypr-cli configure \
+  --profile=myprofile \
+  --cred=/path/to/credentials.json \
+  --apiendpoint=https://example.com
 ```
 
-This will tell `calypr-cli` to look for a metadata file `myfile_metadata.json` in
-the same folder as `myfile.bam`.
-A metadata file should be located in the same folder as the file to be uploaded, and should be named `[filename]_metadata.json`.
+Check the resulting profile or auth state:
 
-The metadata file should be a JSON file in the format:
-
+```bash
+calypr-cli auth --profile=myprofile
 ```
+
+## Upload Behavior
+
+`calypr-cli` supports the newer Gen3 object management upload flow via the
+`--use-shepherd=true` configure flag. When enabled, uploads attempt that API
+first and fall back to the older Fence/Indexd path if needed.
+
+Example:
+
+```bash
+calypr-cli configure \
+  --profile=myprofile \
+  --cred=/path/to/credentials.json \
+  --apiendpoint=https://example.com \
+  --use-shepherd=true
+```
+
+Uploads can also attach public file object metadata with `--metadata`. The CLI
+looks for a sibling file named `[filename]_metadata.json`.
+
+Example:
+
+```bash
+calypr-cli upload \
+  --profile=myprofile \
+  --upload-path=/path/to/myfile.bam \
+  --metadata
+```
+
+Metadata file shape:
+
+```json
 {
-    "authz": ["/example/authz/resource"],
-    "aliases": ["example_alias"],
-    "metadata": {
-        "any": {
-            "arbitrary": ["json", "metadata"]
-        }
+  "authz": ["/example/authz/resource"],
+  "aliases": ["example_alias"],
+  "metadata": {
+    "any": {
+      "arbitrary": ["json", "metadata"]
     }
+  }
 }
 ```
 
-The `aliases` and `metadata` properties are optional. Some Gen3 data commons require the `authz` property to be specified in order to upload a data file.
-
-If you do not know what `authz` to use, you can look at your `Profile` tab or `/identity` page of the Gen3 data commons you are uploading to. You will see a list of _authz resources_ in the format `/example/authz/resource`: these are the authz resources you have access to.
+The `authz` list may be required by the target commons. The metadata in this
+file is public-facing and should not contain sensitive content.
