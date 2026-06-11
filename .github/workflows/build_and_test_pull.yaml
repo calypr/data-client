@@ -25,7 +25,7 @@ jobs:
               SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_SECRET_ACCESS_KEY }}
 
           - name: Run Tests
-            run: go test -v github.com/uc-cdis/gen3-client/tests
+            run: go test -v github.com/calypr/calypr-cli/tests
 
     build:
         env:
@@ -37,13 +37,13 @@ jobs:
             include:
               - goos: linux
                 goarch: amd64
-                zipfile: dataclient_linux.zip
+                zipfile: calypr-cli_linux.zip
               - goos: darwin
                 goarch: amd64
-                zipfile: dataclient_osx.zip
+                zipfile: calypr-cli_osx.zip
               - goos: windows
                 goarch: amd64
-                zipfile: dataclient_win64.zip
+                zipfile: calypr-cli_win64.zip
         steps:
           - name: Checkout Code
             uses: actions/checkout@v4

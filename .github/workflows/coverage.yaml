@@ -52,7 +52,7 @@ jobs:
             awk '/^ok[[:space:]]/ {
               pkg=$2;
               cov=$5;
-              gsub(/github.com\/calypr\/data-client\//, "", pkg);
+              gsub(/github.com\/calypr\/calypr-cli\//, "", pkg);
               print "| " pkg " | " cov " |"
             }' >> coverage-report.md
           
@@ -81,7 +81,7 @@ jobs:
               awk '/^ok[[:space:]]/ {
                 pkg=$2;
                 cov=$5;
-                gsub(/github.com\/calypr\/data-client\//, "", pkg);
+                gsub(/github.com\/calypr\/calypr-cli\//, "", pkg);
                 print pkg, cov
               }'
           )

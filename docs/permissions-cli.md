@@ -1,28 +1,28 @@
-# Arborist Power Tools CLI
+# Permissions CLI
 
-`data-client arborist` is the operator-facing CLI for the Arborist routes that
-are actually exposed through the public Gen3 `/authz` surface.
+`calypr-cli permissions` is the operator-facing CLI for the Arborist routes
+that are actually exposed through the public Gen3 `/authz` surface.
 
 This is intentionally not a full Arborist admin client. Raw Arborist catalog
 routes like user, role, and resource CRUD are not exposed through revproxy, so
-`data-client` does not try to support them.
+`calypr-cli` does not try to support them.
 
-Use `data-client collaborators` when a user is asking for access they do not
-already have. Use `data-client arborist` when an admin needs to inspect or
+Use `calypr-cli collaborators` when a user is asking for access they do not
+already have. Use `calypr-cli permissions` when an admin needs to inspect or
 change the ownership and direct-access state that Arborist exposes publicly.
 
 ## Basic Shape
 
-All commands use the normal data-client profile:
+All commands use the normal calypr-cli profile:
 
 ```bash
-data-client --profile calypr arborist <command>
+calypr-cli --profile calypr permissions <command>
 ```
 
 Add `--json` when you need raw output for debugging or scripts:
 
 ```bash
-data-client --profile calypr arborist --json auth mapping
+calypr-cli --profile calypr permissions --json auth mapping
 ```
 
 ## Current Auth Mapping
@@ -30,7 +30,7 @@ data-client --profile calypr arborist --json auth mapping
 Show the current profile user's Arborist mapping:
 
 ```bash
-data-client --profile calypr arborist auth mapping
+calypr-cli --profile calypr permissions auth mapping
 ```
 
 This command reads the public `GET /authz/mapping` surface for the current
@@ -42,8 +42,8 @@ Organization membership is a convenience wrapper around Arborist direct-access
 grants on `/programs/<org>/projects`.
 
 ```bash
-data-client --profile calypr arborist org-membership add user@ohsu.edu Ellrott_Lab
-data-client --profile calypr arborist org-membership rm user@ohsu.edu Ellrott_Lab
+calypr-cli --profile calypr permissions org-membership add user@ohsu.edu Ellrott_Lab
+calypr-cli --profile calypr permissions org-membership rm user@ohsu.edu Ellrott_Lab
 ```
 
 The default role is `org-member`. It carries only
@@ -53,7 +53,7 @@ existing organization without granting ownership or access on existing projects.
 You can specify another role when needed:
 
 ```bash
-data-client --profile calypr arborist org-membership add user@ohsu.edu Ellrott_Lab --role org-member
+calypr-cli --profile calypr permissions org-membership add user@ohsu.edu Ellrott_Lab --role org-member
 ```
 
 Do not pass a resource path to `org-membership`. This is valid:
@@ -73,7 +73,7 @@ This is invalid:
 Create a new organization resource and make the caller its owner:
 
 ```bash
-data-client --profile calypr arborist ownership create-descendant \
+calypr-cli --profile calypr permissions ownership create-descendant \
   --parent /programs \
   --name Ellrott_Lab \
   --template gen3-program
@@ -83,7 +83,7 @@ Create a new project resource under an organization and make the caller its
 owner:
 
 ```bash
-data-client --profile calypr arborist ownership create-descendant \
+calypr-cli --profile calypr permissions ownership create-descendant \
   --parent /programs/Ellrott_Lab/projects \
   --name git_drs_test \
   --template gen3-project
@@ -92,11 +92,11 @@ data-client --profile calypr arborist ownership create-descendant \
 Add or remove owners:
 
 ```bash
-data-client --profile calypr arborist ownership add-owner \
+calypr-cli --profile calypr permissions ownership add-owner \
   --resource /programs/Ellrott_Lab \
   --user user@ohsu.edu
 
-data-client --profile calypr arborist ownership rm-owner \
+calypr-cli --profile calypr permissions ownership rm-owner \
   --resource /programs/Ellrott_Lab \
   --user user@ohsu.edu
 ```
@@ -104,7 +104,7 @@ data-client --profile calypr arborist ownership rm-owner \
 Read the normalized ownership and direct-access state for a resource:
 
 ```bash
-data-client --profile calypr arborist ownership get-resource \
+calypr-cli --profile calypr permissions ownership get-resource \
   --resource /programs/Ellrott_Lab/projects/git_drs_test \
   --include-admins \
   --include-children
@@ -115,12 +115,12 @@ data-client --profile calypr arborist ownership get-resource \
 Grant or revoke direct non-owner access on an existing resource:
 
 ```bash
-data-client --profile calypr arborist access grant-user \
+calypr-cli --profile calypr permissions access grant-user \
   --resource /programs/Ellrott_Lab/projects/git_drs_test \
   --user user@ohsu.edu \
   --role writer
 
-data-client --profile calypr arborist access revoke-user \
+calypr-cli --profile calypr permissions access revoke-user \
   --resource /programs/Ellrott_Lab/projects/git_drs_test \
   --user user@ohsu.edu \
   --role writer
@@ -131,7 +131,7 @@ owner changes.
 
 ## Deliberate Non-Support
 
-`data-client arborist` does not support raw Arborist catalog/admin routes such
+`calypr-cli permissions` does not support raw Arborist catalog/admin routes such
 as:
 
 - user CRUD
@@ -142,3 +142,6 @@ as:
 
 Those routes are not part of the supported public Gen3 revproxy surface, so the
 CLI does not expose them.
+
+The legacy backend-oriented command name `calypr-cli arborist` still works as a
+compatibility alias, but `permissions` is the supported user-facing name.

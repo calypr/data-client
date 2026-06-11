@@ -3,8 +3,8 @@ package cmd
 import (
 	"context"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	syclient "github.com/calypr/syfon/client"
 	sycommon "github.com/calypr/syfon/client/common"
 
@@ -15,10 +15,11 @@ func init() {
 	var failedLogPath, profile string
 
 	var retryUploadCmd = &cobra.Command{
+		Hidden:  true,
 		Use:     "retry-upload",
 		Short:   "Retry failed uploads from a failed_log.json",
 		Long:    `Re-uploads files listed in a failed log using exponential backoff and progress bars.`,
-		Example: `./data-client retry-upload --profile=myprofile --failed-log-path=/path/to/failed_log.json`,
+		Example: `./calypr-cli retry-upload --profile=myprofile --failed-log-path=/path/to/failed_log.json`,
 		Run: func(cmd *cobra.Command, args []string) {
 			Logger, closer := logs.New(profile,
 				logs.WithConsole(),

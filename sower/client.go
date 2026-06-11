@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/request"
 )
 
 const (

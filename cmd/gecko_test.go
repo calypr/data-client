@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestGeckoCommandRegistersExpectedSubcommands(t *testing.T) {
-	geckoCmd := findSubcommand(t, RootCmd, "gecko")
+func TestPortalCommandRegistersExpectedSubcommands(t *testing.T) {
+	geckoCmd := findSubcommand(t, RootCmd, "portal")
 	findSubcommand(t, geckoCmd, "health")
 
 	configCmd := findSubcommand(t, geckoCmd, "config")
@@ -30,6 +30,16 @@ func TestGeckoCommandRegistersExpectedSubcommands(t *testing.T) {
 	findSubcommandPrefix(t, appCardCmd, "delete")
 	if putAppCardCmd.Flags().Lookup("file") == nil {
 		t.Fatal("gecko appcard put missing --file flag")
+	}
+}
+
+func TestPortalLegacyAliasStillWorks(t *testing.T) {
+	cmd, _, err := RootCmd.Find([]string{"gecko", "health"})
+	if err != nil {
+		t.Fatalf("legacy alias lookup failed: %v", err)
+	}
+	if cmd == nil || cmd.CommandPath() != "calypr-cli portal health" {
+		t.Fatalf("expected gecko alias to resolve to portal health, got %v", cmd)
 	}
 }
 

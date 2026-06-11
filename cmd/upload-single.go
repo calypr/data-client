@@ -5,8 +5,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	syclient "github.com/calypr/syfon/client"
 	"github.com/spf13/cobra"
 )
@@ -17,10 +17,11 @@ func init() {
 	var bucketName string
 
 	var uploadSingleCmd = &cobra.Command{
+		Hidden:  true,
 		Use:     "upload-single",
 		Short:   "Upload a single file to a GUID",
 		Long:    `Gets a presigned URL for which to upload a file associated with a GUID and then uploads the specified file.`,
-		Example: `./data-client upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
+		Example: `./calypr-cli upload-single --profile=<profile-name> --guid=f6923cf3-xxxx-xxxx-xxxx-14ab3f84f9d6 --file=<path-to-file>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard(), logs.WithConsole())
 			defer closer()

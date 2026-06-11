@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/fence"
-	"github.com/calypr/data-client/gecko"
-	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/request"
-	"github.com/calypr/data-client/requestor"
-	"github.com/calypr/data-client/sower"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/fence"
+	"github.com/calypr/calypr-cli/gecko"
+	"github.com/calypr/calypr-cli/logs"
+	"github.com/calypr/calypr-cli/request"
+	"github.com/calypr/calypr-cli/requestor"
+	"github.com/calypr/calypr-cli/sower"
 	syconfig "github.com/calypr/syfon/client/config"
 	version "github.com/hashicorp/go-version"
 )
 
-//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/data-client/g3client Gen3Interface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_gen3interface.go -package=mocks github.com/calypr/calypr-cli/g3client Gen3Interface
 
 type Gen3Interface interface {
 	request.RequestInterface

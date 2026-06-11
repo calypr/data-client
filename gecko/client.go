@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/githubutil"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/githubutil"
+	"github.com/calypr/calypr-cli/request"
 )
 
 var validateProjectRepoURL = githubutil.ValidateRepositoryURL

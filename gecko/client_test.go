@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/request"
 	"github.com/hashicorp/go-retryablehttp"
 )
 

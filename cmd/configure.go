@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ func init() {
 		Short: "Add or modify a configuration profile to your config file",
 		Long: `Configuration file located at ~/.gen3/gen3_client_config.ini
 	If a field is left empty, the existing value (if it exists) will remain unchanged`,
-		Example: `./data-client configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org`,
+		Example: `./calypr-cli configure --profile=<profile-name> --cred=<path-to-credential/cred.json> --apiendpoint=https://data.mycommons.org`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// don't initialize transmission logs for non-uploading related commands
 			cred := &conf.Credential{

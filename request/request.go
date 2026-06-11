@@ -1,6 +1,6 @@
 package request
 
-//go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/data-client/request RequestInterface
+//go:generate mockgen -destination=../mocks/mock_request.go -package=mocks github.com/calypr/calypr-cli/request RequestInterface
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/logs"
 	"github.com/hashicorp/go-retryablehttp"
 )
 

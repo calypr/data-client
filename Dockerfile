@@ -4,7 +4,7 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
 
-WORKDIR $GOPATH/src/github.com/calypr/data-client/
+WORKDIR $GOPATH/src/github.com/calypr/calypr-cli/
 
 COPY go.mod .
 COPY go.sum .

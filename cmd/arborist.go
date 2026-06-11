@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/data-client/arborist"
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/arborist"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -19,9 +19,10 @@ type arboristCommandOptions struct {
 var arboristOpts arboristCommandOptions
 
 var arboristCmd = &cobra.Command{
-	Use:   "arborist",
-	Short: "Arborist ownership and access power tools",
-	Long: "Arborist ownership and access power tools. These commands use the Arborist routes exposed through " +
+	Use:     "permissions",
+	Aliases: []string{"arborist"},
+	Short:   "Manage permissions, ownership, and organization access",
+	Long: "Permissions and ownership power tools. These commands use the Arborist routes exposed through " +
 		"the configured Gen3 profile.",
 	RunE: groupHelpOrUnknownError,
 }
@@ -96,7 +97,7 @@ func groupHelpOrUnknownError(cmd *cobra.Command, args []string) error {
 }
 
 func registerArboristAuthCommands() {
-	authCmd := &cobra.Command{Use: "auth", Short: "Inspect Arborist authorization", RunE: groupHelpOrUnknownError}
+	authCmd := &cobra.Command{Use: "auth", Short: "Inspect current authorization mapping", RunE: groupHelpOrUnknownError}
 	authCmd.AddCommand(&cobra.Command{
 		Use:   "mapping",
 		Short: "Get auth mapping for the current token",
@@ -113,7 +114,7 @@ func registerArboristAuthCommands() {
 }
 
 func registerArboristOwnershipCommands() {
-	ownershipCmd := &cobra.Command{Use: "ownership", Short: "Manage ownership-backed Arborist state", RunE: groupHelpOrUnknownError}
+	ownershipCmd := &cobra.Command{Use: "ownership", Short: "Manage ownership-backed access state", RunE: groupHelpOrUnknownError}
 	var parentPath, childName, templateName, description string
 	createDescendantCmd := &cobra.Command{
 		Use:   "create-descendant",
@@ -149,7 +150,7 @@ func registerArboristOwnershipCommands() {
 func registerArboristAccessCommands() {
 	accessCmd := &cobra.Command{
 		Use:   "access",
-		Short: "Manage direct non-owner Arborist access grants",
+		Short: "Manage direct non-owner access grants",
 		RunE:  groupHelpOrUnknownError,
 	}
 	accessCmd.AddCommand(accessUserMutationCmd("grant-user", "Grant direct user access on a resource", true))
@@ -160,7 +161,7 @@ func registerArboristAccessCommands() {
 func registerArboristOrgMembershipCommands() {
 	orgCmd := &cobra.Command{
 		Use:   "org-membership",
-		Short: "Manage Calypr organization membership grants",
+		Short: "Manage organization membership grants",
 		Long: "Convenience wrapper around direct access grants. The default role is org-member, which grants " +
 			"project creation under the organization without granting ownership over existing projects.",
 		RunE: groupHelpOrUnknownError,

@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/request"
 	"gopkg.in/yaml.v3"
 )
 

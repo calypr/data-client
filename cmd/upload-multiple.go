@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	syclient "github.com/calypr/syfon/client"
 	"github.com/spf13/cobra"
 )
@@ -20,17 +20,18 @@ func init() {
 	var includeSubDirName bool
 
 	uploadMultipleCmd := &cobra.Command{
-		Use:   "upload-multiple",
-		Short: "Upload multiple files from a specified manifest (uses pre-existing GUIDs)",
+		Hidden: true,
+		Use:    "upload-multiple",
+		Short:  "Upload multiple files from a specified manifest (uses pre-existing GUIDs)",
 		Long: `Get presigned URLs for multiple files specified in a manifest file and then upload all of them.
 This command is for uploading to existing GUIDs (e.g., from a downloaded manifest).
-For new uploads (new GUIDs generated), use "data-client upload" instead.
+For new uploads (new GUIDs generated), use "calypr-cli upload" instead.
 
 Options to run multipart uploads for large files and parallel batch uploading are available.`,
-		Example: `./data-client upload-multiple --profile=<profile-name> --manifest=<path-to-manifest/manifest.json> --upload-path=<path-to-file-dir/> --bucket=<bucket-name> --batch`,
+		Example: `./calypr-cli upload-multiple --profile=<profile-name> --manifest=<path-to-manifest/manifest.json> --upload-path=<path-to-file-dir/> --bucket=<bucket-name> --batch`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Warning message
-			fmt.Printf("Notice: this command uploads to pre-existing GUIDs from a manifest.\nIf you want to upload new files (new GUIDs generated automatically), use \"./data-client upload\" instead.\n\n")
+			fmt.Printf("Notice: this command uploads to pre-existing GUIDs from a manifest.\nIf you want to upload new files (new GUIDs generated automatically), use \"./calypr-cli upload\" instead.\n\n")
 
 			ctx := context.Background()
 			logger, closer := logs.New(profile, logs.WithSucceededLog(), logs.WithFailedLog(), logs.WithScoreboard())

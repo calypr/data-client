@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/logs"
 )
 
 func TestNewRequestInterface(t *testing.T) {

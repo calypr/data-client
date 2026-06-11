@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -23,9 +23,9 @@ func init() {
 		Use:   "auth",
 		Short: "Return resource access privileges from profile",
 		Long:  `Gets resource access privileges for specified profile.`,
-		Example: `./data-client auth --profile=<profile-name>
-./data-client auth --profile=<profile-name> --all
-./data-client auth --profile=<profile-name> --json`,
+		Example: `./calypr-cli auth --profile=<profile-name>
+./calypr-cli auth --profile=<profile-name> --all
+./calypr-cli auth --profile=<profile-name> --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// don't initialize transmission logs for non-uploading related commands
 

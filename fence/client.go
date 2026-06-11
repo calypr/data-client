@@ -14,8 +14,8 @@ import (
 
 	"log/slog"
 
-	"github.com/calypr/data-client/conf"
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/conf"
+	"github.com/calypr/calypr-cli/request"
 	sycommon "github.com/calypr/syfon/client/common"
 	"github.com/hashicorp/go-version"
 )
@@ -38,7 +38,7 @@ const (
 	defaultMinShepherdVersion          = "2.0.0"
 )
 
-//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/data-client/fence FenceInterface
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=../mocks/mock_fence.go -package=mocks github.com/calypr/calypr-cli/fence FenceInterface
 
 // FenceInterface defines the interface for Fence client
 type FenceInterface interface {

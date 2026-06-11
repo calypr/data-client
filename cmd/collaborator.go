@@ -7,9 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/calypr/data-client/g3client"
-	"github.com/calypr/data-client/logs"
-	"github.com/calypr/data-client/requestor"
+	"github.com/calypr/calypr-cli/g3client"
+	"github.com/calypr/calypr-cli/logs"
+	"github.com/calypr/calypr-cli/requestor"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/request"
+	"github.com/calypr/calypr-cli/request"
 )
 
 type fakeRequest struct {

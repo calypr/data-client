@@ -1,6 +1,6 @@
-# Gecko CLI
+# Portal CLI
 
-`data-client gecko` is the operator-facing CLI for the Gecko routes exposed
+`calypr-cli portal` is the operator-facing CLI for the portal routes exposed
 through the public Gen3 `/gecko` surface.
 
 This is a configuration and health client. It is not a generic Gecko admin
@@ -8,21 +8,21 @@ shell for every internal backend route.
 
 ## Basic Shape
 
-All commands use a normal data-client profile:
+All commands use a normal calypr-cli profile:
 
 ```bash
-data-client --profile calypr gecko <command>
+calypr-cli --profile calypr portal <command>
 ```
 
 Add `--json` when you want raw output for debugging or scripts:
 
 ```bash
-data-client --profile calypr gecko --json config types
+calypr-cli --profile calypr portal --json config types
 ```
 
 ## Current Support
 
-`data-client gecko` currently supports:
+`calypr-cli portal` currently supports:
 
 - service health checks
 - listing Gecko config types
@@ -48,7 +48,7 @@ commands target the public `/gecko/projects/...` route shape.
 Check whether Gecko is reachable through revproxy:
 
 ```bash
-data-client --profile calypr gecko health
+calypr-cli --profile calypr portal health
 ```
 
 ## Generic Config Inspection
@@ -56,22 +56,22 @@ data-client --profile calypr gecko health
 List the config types Gecko reports:
 
 ```bash
-data-client --profile calypr gecko config types
+calypr-cli --profile calypr portal config types
 ```
 
 List config IDs for a type:
 
 ```bash
-data-client --profile calypr gecko config list explorer
-data-client --profile calypr gecko config list nav
-data-client --profile calypr gecko config list apps_page
+calypr-cli --profile calypr portal config list explorer
+calypr-cli --profile calypr portal config list nav
+calypr-cli --profile calypr portal config list apps_page
 ```
 
 Fetch a config by type and ID:
 
 ```bash
-data-client --profile calypr gecko config get explorer default
-data-client --profile calypr gecko config get nav default
+calypr-cli --profile calypr portal config get explorer default
+calypr-cli --profile calypr portal config get nav default
 ```
 
 Use `config` when you need typed config inspection. Use the dedicated commands
@@ -97,19 +97,19 @@ BForePC
 Get a project config:
 
 ```bash
-data-client --profile calypr gecko project get HTAN_INT/BForePC
+calypr-cli --profile calypr portal project get HTAN_INT/BForePC
 ```
 
 Create or replace a project config from JSON:
 
 ```bash
-data-client --profile calypr gecko project put HTAN_INT/BForePC --file project.json
+calypr-cli --profile calypr portal project put HTAN_INT/BForePC --file project.json
 ```
 
 Delete a project config:
 
 ```bash
-data-client --profile calypr gecko project delete HTAN_INT/BForePC
+calypr-cli --profile calypr portal project delete HTAN_INT/BForePC
 ```
 
 Expected JSON shape:
@@ -136,19 +136,19 @@ App-card commands use a project ID, usually in `ORG-PROJECT` form.
 Get an app card:
 
 ```bash
-data-client --profile calypr gecko appcard get HTAN_INT-BForePC
+calypr-cli --profile calypr portal appcard get HTAN_INT-BForePC
 ```
 
 Create or replace an app card from JSON:
 
 ```bash
-data-client --profile calypr gecko appcard put HTAN_INT-BForePC --file appcard.json
+calypr-cli --profile calypr portal appcard put HTAN_INT-BForePC --file appcard.json
 ```
 
 Delete an app card:
 
 ```bash
-data-client --profile calypr gecko appcard delete HTAN_INT-BForePC
+calypr-cli --profile calypr portal appcard delete HTAN_INT-BForePC
 ```
 
 Expected JSON shape:
@@ -165,7 +165,7 @@ Expected JSON shape:
 
 ## Deliberate Non-Support
 
-`data-client gecko` does not try to expose every internal Gecko backend route.
+`calypr-cli portal` does not try to expose every internal Gecko backend route.
 It is currently scoped to the public revproxy-backed Gecko surface that this
 client already knows how to model:
 
@@ -173,3 +173,6 @@ client already knows how to model:
 - config type and config inspection
 - project config CRUD
 - app-card CRUD
+
+The legacy backend-oriented command name `calypr-cli gecko` still works as a
+compatibility alias, but `portal` is the supported user-facing name.

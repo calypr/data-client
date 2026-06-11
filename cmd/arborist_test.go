@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestArboristCommandRegistersOwnershipAndAccessSubcommands(t *testing.T) {
-	arboristCmd := findSubcommand(t, RootCmd, "arborist")
+func TestPermissionsCommandRegistersOwnershipAndAccessSubcommands(t *testing.T) {
+	arboristCmd := findSubcommand(t, RootCmd, "permissions")
 	ownershipCmd := findSubcommand(t, arboristCmd, "ownership")
 	accessCmd := findSubcommand(t, arboristCmd, "access")
 	findSubcommand(t, arboristCmd, "auth")
@@ -46,19 +46,29 @@ func TestArboristCommandRegistersOwnershipAndAccessSubcommands(t *testing.T) {
 	}
 }
 
-func TestArboristRejectsUnknownLegacySubcommand(t *testing.T) {
+func TestPermissionsRejectsUnknownLegacySubcommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	RootCmd.SetOut(&stdout)
 	RootCmd.SetErr(&stderr)
-	RootCmd.SetArgs([]string{"arborist", "policy", "ownership", "--profile", "dev"})
+	RootCmd.SetArgs([]string{"permissions", "policy", "ownership", "--profile", "dev"})
 
 	_, err := RootCmd.ExecuteC()
 	if err == nil {
-		t.Fatal("expected invalid arborist subcommand to fail")
+		t.Fatal("expected invalid permissions subcommand to fail")
 	}
 	if !strings.Contains(err.Error(), "unknown command") && !strings.Contains(err.Error(), "accepts 0 arg(s)") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPermissionsLegacyAliasStillWorks(t *testing.T) {
+	cmd, _, err := RootCmd.Find([]string{"arborist", "auth", "mapping"})
+	if err != nil {
+		t.Fatalf("legacy alias lookup failed: %v", err)
+	}
+	if cmd == nil || cmd.CommandPath() != "calypr-cli permissions auth mapping" {
+		t.Fatalf("expected arborist alias to resolve to permissions auth mapping, got %v", cmd)
 	}
 }
 

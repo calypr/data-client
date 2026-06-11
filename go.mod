@@ -1,4 +1,4 @@
-module github.com/calypr/data-client
+module github.com/calypr/calypr-cli
 
 go 1.26.2
 
