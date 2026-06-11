@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-main
+  group: release-default-branch
   cancel-in-progress: false
 
 permissions:
@@ -22,7 +22,10 @@ jobs:
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main'
+        (
+          github.event.workflow_run.head_branch == 'master' ||
+          github.event.workflow_run.head_branch == 'main'
+        )
       )
     runs-on: ubuntu-latest
     outputs:
