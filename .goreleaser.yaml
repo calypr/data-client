@@ -20,7 +20,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/calypr/calypr-cli/cmd.gitversion={{ .Version }} -X github.com/calypr/calypr-cli/cmd.gitcommit={{ .Commit }}
+      - -s -w -X github.com/calypr/calypr-cli/cmd.gitversion={{ .Version }} -X github.com/calypr/calypr-cli/cmd.gitcommit={{ .Commit }} -X github.com/calypr/calypr-cli/cmd.gitdate={{ .Date }}
 
 archives:
   - id: default
