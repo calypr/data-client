@@ -144,6 +144,11 @@ func (man *Manager) Save(profileConfig *Credential) error {
 			profileConfig: Credential object represents config of a profile
 			configPath: file path to config file
 	*/
+	if err := man.EnsureExists(); err != nil {
+		errs := fmt.Errorf("error occurred when ensuring config file exists: %s", err.Error())
+		man.Logger.Error(errs.Error())
+		return errs
+	}
 	configPath, err := man.configPath()
 	if err != nil {
 		errs := fmt.Errorf("error occurred when getting config path: %s", err.Error())

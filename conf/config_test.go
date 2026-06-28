@@ -207,6 +207,39 @@ func TestEnsureExists(t *testing.T) {
 	}
 }
 
+func TestSaveBootstrapsMissingConfig(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	manager := &Manager{Logger: logger}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cred := &Credential{
+		Profile:            "origin",
+		KeyID:              "kid",
+		APIKey:             "api-key",
+		AccessToken:        "access-token",
+		APIEndpoint:        "https://example.org",
+		UseShepherd:        "false",
+		MinShepherdVersion: "",
+	}
+
+	if err := manager.Save(cred); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	got, err := manager.Load("origin")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got.APIEndpoint != cred.APIEndpoint {
+		t.Fatalf("APIEndpoint = %q, want %q", got.APIEndpoint, cred.APIEndpoint)
+	}
+	if got.AccessToken != cred.AccessToken {
+		t.Fatalf("AccessToken = %q, want %q", got.AccessToken, cred.AccessToken)
+	}
+}
+
 func TestLoad_ProfileNotFound(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	manager := &Manager{Logger: logger}
